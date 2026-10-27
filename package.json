@@ -48,6 +48,11 @@
   ],
   "license": "MIT",
   "author": "dsh-persona-framework contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/re3uofall/dsh-persona-framework"
+  },
+  "homepage": "https://github.com/re3uofall/dsh-persona-framework#readme",
   "engines": {
     "node": ">=20",
     "dsh": ">=0.2.0-rc.2"
