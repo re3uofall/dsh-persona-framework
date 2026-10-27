@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Persona Framework">
+  <defs>
+    <linearGradient id="fg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7ec8ff"/>
+      <stop offset="1" stop-color="#1f5fa8"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="13" fill="#0f1a2b"/>
+  <!-- 四层切分：同一条被切四次，块越来越窄，缝留出来 -->
+  <g fill="url(#fg)">
+    <rect x="13" y="12" width="38" height="8" rx="2.4"/>
+    <rect x="17" y="23" width="30" height="7" rx="2.1"/>
+    <rect x="21" y="33" width="22" height="6" rx="1.9"/>
+    <rect x="26" y="42" width="13" height="5" rx="1.6"/>
+  </g>
+  <!-- 残余：从上一块漏到下一块的那一点 -->
+  <g fill="#bfe2ff" opacity="0.85">
+    <rect x="34" y="20.4" width="2" height="2.2" rx="0.7"/>
+    <rect x="36.6" y="30.4" width="1.8" height="2.2" rx="0.6"/>
+    <rect x="41.4" y="39.4" width="1.6" height="2.2" rx="0.6"/>
+  </g>
+  <!-- 缝：不填 -->
+  <path d="M12 52h40" stroke="#5c8fc4" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="3 3" opacity="0.7"/>
+</svg>

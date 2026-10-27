@@ -1,0 +1,41 @@
+# ============================================================================
+# dsh-persona-framework —— 插件自己带的挂载声明
+# ============================================================================
+# 装好后 install_bundle 会把本包列进 `dsh.profile.bundles`；下面这些 config 都能改，
+# 改完重启 DSH 生效。
+# ============================================================================
+
+- insert:
+    - id: persona-framework
+      name: dsh-persona-framework
+      config:
+        # 框架文件。留空 = 会话工作区下的 `.persona-framework/FRAMEWORK.md`；
+        # 也没有就用插件自带那份（framework/FRAMEWORK.md）。
+        frameworkFile: ''
+
+        # 模块库索引。留空 = 插件自带的 framework/MODULES.md；
+        # 工作区里有 `persona-ai/modules/00-目录.md` 时会优先用那份。
+        modulesFile: ''
+
+        # full=整份注入 / compact=只注入「是什么＋骨架＋判据」 / off=不注入（工具仍可用）
+        mode: full
+
+        # 注入正文上限（字）；超了在段落处截断
+        maxChars: 9000
+
+        # 注入里附模块索引：off=不附 / index=附（46 个模块各一句话）
+        includeModules: index
+
+        # 模块索引注入上限（字）
+        maxModulesChars: 2600
+
+        # 收尾口头禅清单。插件本身不带任何人的口癖；要查就把它自己的口头禅填进来。
+        # 例：closingTics: ['回头聊', '就这些']
+        closingTics: []
+
+        # 系统提示词里的排序位。现有占位：人格 10、成果 12、日记 13、探索 20。
+        # 框架默认 22——跟在探索后面，避开 20 这个同号撞车的位置。
+        order: 22
+
+        # 附上「怎么用这套框架」那段说明
+        guide: true
