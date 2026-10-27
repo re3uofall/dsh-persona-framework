@@ -1,0 +1,55 @@
+{
+  "name": "dsh-persona-framework",
+  "version": "3.7.7",
+  "description": "人格框架插件：56 个模块的通用人格框架，外挂注入，不覆盖人格文件；带出口自检、结构自检、槽位体检、长文预处理、心情状态。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./framework/FRAMEWORK.md": "./framework/FRAMEWORK.md"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "framework",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "selfcheck.mjs",
+    "RELEASE.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "index.json"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "persona",
+    "framework",
+    "人格",
+    "框架"
+  ],
+  "license": "MIT",
+  "author": "dsh-persona-framework contributors",
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.0-rc.2"
+  }
+}

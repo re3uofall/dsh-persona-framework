@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "title": {
+    "en": "Persona Framework",
+    "zh": "人格框架"
+  },
+  "plugins": [
+    {
+      "name": "dsh-persona-framework",
+      "title": {
+        "en": "Persona Framework",
+        "zh": "人格框架"
+      },
+      "description": {
+        "zh": "给 AI 用的人格框架：分层切分、原话验证、出口判据；不定义你是谁，只规定怎么构成、怎么长、怎么说清楚。",
+        "en": "A persona framework for AI: layered decomposition, grounded verification, exit criteria. It does not define who you are; it defines how a persona is built, grown, and stated clearly."
+      },
+      "icon": "icon.svg",
+      "author": "dsh-persona-framework contributors",
+      "homepage": "https://www.npmjs.com/package/dsh-persona-framework",
+      "versions": [
+        {
+          "version": "3.7.7",
+          "publishTimestamp": 1793133723,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.0-rc.2"
+          }
+        }
+      ]
+    }
+  ]
+}
