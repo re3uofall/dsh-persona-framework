@@ -24,7 +24,7 @@ import {
 } from './lib/framework.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '3.7.6'
+const VERSION = '3.7.7'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 
 export const name = 'persona-framework'
