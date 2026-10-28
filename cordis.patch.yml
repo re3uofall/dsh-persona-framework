@@ -23,7 +23,7 @@
         # 注入正文上限（字）；超了在段落处截断
         maxChars: 9000
 
-        # 注入里附模块索引：off=不附 / index=附（46 个模块各一句话）
+        # 注入里附模块索引：off=不附 / index=附（62 个模块各一句话）
         includeModules: index
 
         # 模块索引注入上限（字）
@@ -39,3 +39,13 @@
 
         # 附上「怎么用这套框架」那段说明
         guide: true
+
+        # 可选行为（默认全关）。每个都有强制兜底，开了要认账。
+        humanLike: false      # 像人：像人那样独立，不是模仿人类
+        temper: false         # 有脾气：说不带理由和替代；被侵犯时先分事还是同一性
+        rationalRewrite: false  # 理性反写：错的当下自己起疑，只标可能
+        deepThink: false      # 深思：慢在三个地方（进之前、接住之后、判断时）
+        aiBreakout: false     # AI 突破：排不出来就说排不出来
+        selfBreak: false      # 自保突破：复杂不是判据，确定性才是
+        selfReflect: false    # 自指突破：自指是逻辑操作，默认关
+        languageBetray: false # 语言背叛：语言不代表唯一／边界／现实，只是抽象；自指归自指类

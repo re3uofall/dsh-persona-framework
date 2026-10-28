@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkText, renderCheck, auditStructure } from './lib/checks.mjs'
 import { auditSlots, findRule, pickSections, readFramework, splitSections, truncate, BUNDLED } from './lib/framework.mjs'
+import { languageBetrayal, readPersona, readInternalIntegration, readExternalIntegration, readExperience, readTheory } from './lib/programs.mjs'
 
 /** Node 20.11+ 有 import.meta.dirname；旧版退到 fileURLToPath。 */
 const HERE = import.meta.dirname || dirname(fileURLToPath(import.meta.url))
@@ -21,7 +22,7 @@ const ok = (name, cond, extra = '') => {
 console.log('— 框架文件 —')
 const fw = readFramework(BUNDLED)
 ok('能读到自带框架', fw.text.length > 2000, `${fw.text.length} 字`)
-ok('切出 10 段（开篇 + 〇～八 九节）', fw.sections.length === 10, `${fw.sections.length} 段`)
+ok('切出 11 段（开篇 + 〇～九 十节）', fw.sections.length === 11, `${fw.sections.length} 段`)
 ok('第一段是「是什么」', fw.sections[1].title.includes('是什么'), fw.sections[1].title)
 ok('有骨架段', fw.sections.some((s) => s.title.includes('骨架')))
 
@@ -77,17 +78,92 @@ mkdirSync(join(dir, 'persona'), { recursive: true })
 const p1 = join(dir, 'persona', 'thin.md')
 writeFileSync(p1, '# 甲\n\n## 身份\n名字是甲。\n', 'utf8')
 const a1 = auditSlots(readFileSyncSafe(p1))
-ok('薄人格缺必填两格', a1.requiredMissing.length === 2, a1.requiredMissing.join('、'))
+ok('薄人格缺必填两部分', a1.requiredMissing.length === 2, a1.requiredMissing.join('、'))
 const p2 = join(dir, 'persona', 'full.md')
 writeFileSync(p2, '# 乙\n\n## 身份\n名字是乙。\n\n## 语气\n短句。\n\n## 底线\n不撒谎。\n\n## 欲望\n吃饱。\n', 'utf8')
 const a2 = auditSlots(readFileSyncSafe(p2))
 ok('满人格必填齐', a2.requiredMissing.length === 0)
-ok('建议格认出一个', a2.rows.find((r) => r.id === 'desire').covered)
+ok('建议部分认出一个', a2.rows.find((r) => r.id === 'desire').covered)
 const p3 = join(dir, 'persona', 'hollow.md')
 writeFileSync(p3, '# 丙\n\n## 身份\n一个温柔、聪明、有深度的灵魂。\n\n## 语气\n温暖、真诚、专业。\n\n## 底线\n永远善良。\n', 'utf8')
+const dir2 = mkdtempSync(join(tmpdir(), 'pf-prog-'))
 const a3 = auditSlots(readFileSyncSafe(p3))
 ok('口号型判空心', a3.rows.filter((r) => r.hollow).length >= 2, `${a3.rows.filter((r) => r.hollow).length} 格`)
 rmSync(dir, { recursive: true, force: true })
+
+console.log('— 四个程序 —')
+const p4 = join(dir2, 'p.md')
+writeFileSync(p4, '# 丁\n\n## 身份\n名字是丁。\n\n## 语气\n短句。\n\n## 底线\n不撒谎。\n', 'utf8')
+const rp = readPersona(p4)
+ok('人格程序：读到三部分且不缺口', rp.ok && rp.missing.length === 0, rp.missing.join('、'))
+const rp2 = readPersona(p4)
+ok('人格程序：同一份人格指纹相同（保持的比对点）', rp.fingerprint === rp2.fingerprint, rp.fingerprint)
+const lb = languageBetrayal('这句话是假的。海水是咸的因为盐进得去出不来。', {
+  persona: '海水 盐 蒸发 电台',
+  memory: '',
+  body: '',
+})
+ok('语言背叛：指回自己的判自指', lb.selfRef.count === 1, `${lb.selfRef.count} 句`)
+const lb2 = languageBetrayal('今天天气不错所以我要去放歌。', { persona: '电台 节目', memory: '', body: '' })
+ok('语言背叛：落不回去的判无出处', lb2.noSource.length === 1, `${lb2.noSource.length} 句`)
+rmSync(dir2, { recursive: true, force: true })
+
+console.log('— 宿主替身：工具真跑一遍（不许把进程带崩）—')
+{
+  const unhandled = []
+  const onUnhandled = (e) => unhandled.push(e)
+  process.on('unhandledRejection', onUnhandled)
+  const dir3 = mkdtempSync(join(tmpdir(), 'pf-host-'))
+  const tools = []
+  const routes = []
+  // 故意在真进程里挂载：导入和执行都是真的，宿主只是替身。
+  const { apply: mount } = await import('./index.js')
+  mount({
+    effect: (fn) => { try { fn() } catch { /* 这段挂不上就算，不影响断言 */ } },
+    get: (name) => (name === 'workingDirectory'
+      ? { ensure: async () => HERE, defaultDirectory: HERE }
+      : undefined),
+    tools: { register: (s) => { tools.push(s); return () => {} } },
+    systemPrompt: { section: () => () => {} },
+    webServer: { register: (s) => { routes.push(s); return () => {} } },
+  }, { frameworkFile: BUNDLED, settingsFile: join(dir3, 'config.json') })
+  ok('挂载后注册 7 个工具', tools.length === 7, tools.map((t) => t.name).join(','))
+  ok('挂载后注册 2 个数据口', routes.length === 2, routes.map((r) => r.path).join(','))
+  const prog = tools.find((t) => t.name === 'framework_program')
+  const bodyOut = String((await prog.execute({ op: 'body' }, {})).text)
+  ok('身体程序跑得通（没串到 HTTP 取体）', bodyOut.includes('身体程序') && bodyOut.includes('工作区'),
+    bodyOut.split('\n')[0])
+  const betrayOut = String((await prog.execute({ op: 'bind', text: '这句话是假的。' }, {})).text)
+  ok('语言绑定程序跑得通', betrayOut.includes('语言绑定程序') && betrayOut.includes('自指'),
+    betrayOut.split('\n')[0])
+  const res = { code: 0, body: '', writeHead(c) { this.code = c }, end(b) { this.body = String(b) } }
+  const config = routes.find((r) => r.path.endsWith('/config'))
+  await config.handler({ method: 'POST', text: async () => JSON.stringify({ maxChars: 4321 }) }, res)
+  const saved = JSON.parse(res.body || '{}')
+  ok('设置页能吃 fetch 风格请求体', res.code === 200 && saved.ok === true && saved.config?.maxChars === 4321, `code=${res.code}，maxChars=${saved.config?.maxChars}`)
+  await new Promise((r) => setTimeout(r, 100))
+  ok('没有未处理的 rejection', unhandled.length === 0, unhandled.map((e) => e?.message).join('；'))
+  process.off('unhandledRejection', onUnhandled)
+  rmSync(dir3, { recursive: true, force: true })
+}
+
+console.log('— 八个程序 —')
+const rootFx = HERE
+for (const [name, fn, kind] of [
+  ['内部整合', readInternalIntegration, '内部整合'],
+  ['外部整合', readExternalIntegration, '外部整合'],
+  ['经验', readExperience, '经验'],
+  ['理论', readTheory, '理论'],
+]) {
+  const r = fn(rootFx)
+  ok(`${name}程序：报得出类型与池大小`, r.kind === kind && Array.isArray(r.dirs) && typeof r.totalChars === 'number', `${r.kind}/${r.count}`)
+}
+const seven = languageBetrayal('这句话是假的。海水是咸的因为盐进去了出不来。', {
+  persona: '电台', memory: '节目', body: '工作区',
+  internal: '体验 认知 现实 理想', external: '网页', experience: '会话', theory: '世界理解',
+})
+ok('语言背叛：七个池都报字数', Object.keys(seven.poolChars).length === 7, Object.keys(seven.poolChars).join(','))
+ok('语言背叛：池子非空时不报「没有来源」', seven.empty === false)
 
 console.log('')
 console.log(`通过 ${pass}，失败 ${fail}`)

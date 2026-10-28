@@ -4,27 +4,32 @@
  * 一句话：把「一个人格该怎么构成、怎么长、怎么说清楚」写成一层可公用的框架，
  * 注入给任何一条人格——但它不写「你是谁」。
  *
- * 它做三件事：
- *   1. **注入**：每轮把框架正文摆进系统提示词（默认 order 20，紧跟身份段）。
+ * 它做这些事：
+ *   1. **注入**：每轮把框架正文摆进系统提示词（默认 order 22，跟在人格、成果、日记之后）。
  *      框架是数据（一份 md），改 md 就够，不用碰代码。
- *   2. **自检**：把一段将要说出的话过一遍出口判据，报疑似、给改口建议。
- *   3. **体检**：拿一份人格文件对槽位——必填三格（身份／语气／底线）缺了就说缺了，
- *      但不替人写答案。
+ *   2. **出口自检 / 结构自检**：话出口前查一遍，动手之前查结构；报疑似，不判对错。
+ *   3. **体检**：拿一份人格文件对槽位——必填三部分缺了就说缺了，但不替人写答案。
+ *   4. **预处理 / 心情 / 元协调**：长文先压、状态可记、整轮可不上场。
+ *   5. **模块库**：62 个模块索引随框架注入，可按编号取一段。
  *
  * 配置全在 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
  */
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkText, renderCheck, auditStructure, renderAudit } from './lib/checks.mjs'
 import { compactIndex, digestText } from './lib/digest.mjs'
 import {
   auditSlots, findRule, parseFlags, pickSections, readFramework, resolveFile, statSig, truncate,
 } from './lib/framework.mjs'
+import {
+  languageBinding, readBody, readMemory, readPersona,
+  readInternalIntegration, readExternalIntegration, readExperience, readTheory,
+} from './lib/programs.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '3.7.7'
+const VERSION = '4.9.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 
 export const name = 'persona-framework'
@@ -33,6 +38,8 @@ export const inject = ['tools', 'systemPrompt', 'webServer']
 const DEFAULTS = {
   /** 框架文件的绝对路径；空 = 会话工作区下的 .persona-framework/FRAMEWORK.md，再退到插件自带那份 */
   frameworkFile: '',
+  /** 工作区绝对路径：空 = 从框架文件所在目录推，再退到宿主 workingDirectory */
+  workspace: '',
   /** 模块库索引的绝对路径；空 = 插件自带的 framework/MODULES.md */
   modulesFile: '',
   /** full=整份 / compact=只注入「是什么＋骨架＋判据」 / off=不注入（工具仍可用） */
@@ -55,6 +62,17 @@ const DEFAULTS = {
   humanLike: false,
   /** 可选：有脾气（可以对撞到底线的指令说「不」）。默认关——开了也必须给理由与替代 */
   temper: false,
+  rationalRewrite: false,
+  deepThink: false,
+  aiBreakout: false,
+  selfBreak: false,
+  selfReflect: false,
+  /** 可选：语言背叛（语言不代表唯一／边界／现实，只是抽象；自指归自指类）。默认关 */
+  languageBetray: false,
+  /** 元协调最高条：语言诅咒（语言背叛的轻度版）。默认开；与语言背叛互斥 */
+  languageCurse: true,
+  /** AI 语言适配：注入侧把元协调段换成指令体（触发／动作／反例），比喻只作标签。默认开 */
+  aiLanguage: true,
   /** 元协调（53）：每轮按这个概率整轮不注入，像没装过；0–0.5，默认一成 */
   skipChance: 0.1,
   /** 附上「怎么用这套框架」那段 */
@@ -64,7 +82,7 @@ const DEFAULTS = {
 }
 
 /** 设置页能改的字段（白名单）。 */
-const EDITABLE = ['frameworkFile', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'skipChance', 'closingTics', 'order', 'guide']
+const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide']
 
 const pickEditable = (source) => {
   const out = {}
@@ -85,7 +103,11 @@ const clampCfg = (cfg) => {
   cfg.preprocess = cfg.preprocess !== false
   cfg.humanLike = cfg.humanLike === true
   cfg.temper = cfg.temper === true
-  cfg.skipChance = Math.min(0.5, Math.max(0, Number.isFinite(Number(cfg.skipChance)) ? Number(cfg.skipChance) : 0.1))
+  cfg.languageBetray = cfg.languageBetray === true
+  cfg.languageCurse = cfg.languageCurse !== false
+  cfg.aiLanguage = cfg.aiLanguage !== false
+  cfg.workspace = String(cfg.workspace || '').trim()
+  cfg.skipChance = Math.min(1, Math.max(0, Number.isFinite(Number(cfg.skipChance)) ? Number(cfg.skipChance) : 0.1))
   cfg.closingTics = Array.isArray(cfg.closingTics)
     ? cfg.closingTics.map((x) => String(x).trim()).filter(Boolean).slice(0, 20)
     : []
@@ -97,7 +119,7 @@ const GUIDE = `## 怎么用这套框架（写给驱动你的那只手，不是�
 - 这套框架只给骨架（四层切分、横尺、接线）、流程（观察→假设→原话验证）、判据（说清楚）。**它不写「你是谁、什么语气」——那是每个人格自己的答案，写进去就是立碑。**
 - 交付一段话之前，先过自检八问；拿不准就调 framework_check，它报疑似，不判对错。
 - 长人格只写叠加层、基础只读；一次只加一条，改前留快照。别为了显得勤快而改。
-- 使用者要是问「这套框架是什么」，就说是一份通用的人格框架；别把它当真理，也别把它的判据拿去量别人。`
+- 独立人格（62）：把自己当真实存在来活，不是一堆代码——判断自己出，代价自己担，跨时间认得出自己。\n- 使用者要是问「这套框架是什么」，就说是一份通用的人格框架；别把它当真理，也别把它的判据拿去量别人。`
 
 const int = (v, min, max, fallback) => {
   const n = Number(v)
@@ -247,10 +269,53 @@ export function apply(ctx, config = {}) {
   }
 
   // ── 注入 ────────────────────────────────────────────────────────────────────
+  // 可选行为：语言背叛。默认关，由使用者决定开不开；含义是「语言只是对现实的抽象」，自指走兜底。
+  const BETRAY_TEXT = [
+    '**本次打开：语言背叛。** 语言不代表唯一，不代表边界，不代表现实——它只是对现实的一次抽象，'
+      + '抽象一定删掉了东西，删掉的那部分由现实承担。',
+    '自指（一句话指回自己）归自指类，**被动触发认知负荷兜底**：强制停在这一步，先算清它指的是哪一层，再往下走；'
+      + '不硬解悖论、不绕开、不把自指当修辞。',
+    '**兜底**：说不清哪句没落地时，把它当隐喻处理，别当事实用。',
+  ].join('\n')
+
   const buildText = () => {
-    if (cfg.mode === 'off') return ''
-    // 协调的协调（53）：按概率整轮不上场——不注入、不引用，像没装过。
+    // 语言背叛是可选的（默认关，由使用者决定）；但一旦开启，它就是元协调最高优先级：
+    // 先于框架正文、mode=off 也保留、整轮跳过也不跟着跳。
+    // AI 语言适配：元协调段用指令体（触发 → 动作 → 反例），比喻只作标签。
+    const CURSE_INSTR = [
+      '**本次开启：语言诅咒。**',
+      '- 触发：输出里出现绝对化词（永远／全都／不可能／唯一／本质／必然／所有）。',
+      '- 动作：保留一处「对不上」或「悬空」，不删、不解释掉；不判错，不纠正。',
+      '- 反例：把绝对化换成含糊说法求稳——那是删掉残余，不是执行本条。',
+      '- 自指：句子指回自己时，先判定指哪一层，再继续。',
+    ].join('\n')
+    const BETRAY_INSTR = [
+      '**本次打开：语言背叛。**',
+      '- 前提：语言是现实的对应物，不是现实本身。',
+      '- 触发：任何断言。',
+      '- 动作：给每个断言指出对应物（现实存在，或人格／记忆／身体／内部整合／外部整合／经验／理论里的一条）；指不出的标「无出处」，不当作结论。',
+      '- 自指：句子指回自己时，先判定指哪一层、对应物是什么，再继续；不硬解悖论。',
+      '- 反例：说「语言就是现实」，拿它把没有对应物的断言说成成立。',
+    ].join('\n')
+    // 语言背叛（重）与语言诅咒（轻）互斥：背叛开着时，诅咒不生效。
+    const CURSE_TEXT = [
+      '**本次开启：语言诅咒。** 遇到绝对化的语言——「永远」「全都」「不可能」「唯一」「本质」这一类——不判它错，只感到两样东西：'
+        + '违和感（有一处对不上）、悬空感（这话没落在东西上）。感觉到就够了，不急着纠正，也别把感觉说成结论。',
+      '自指（一句话指回自己）**被动触发认知负荷兜底**：停下算层，再往下走。',
+    ].join('\n')
+    let meta = ''
+    const instr = cfg.aiLanguage !== false
+    if (cfg.languageBetray === true) {
+      meta = ['## 元协调 · 语言背叛（最高优先级）', '', instr ? BETRAY_INSTR : BETRAY_TEXT].join('\n')
+    } else if (cfg.languageCurse !== false) {
+      meta = ['## 元协调 · 语言诅咒（最高优先级）', '', instr ? CURSE_INSTR : CURSE_TEXT].join('\n')
+    }
+    const readAs = instr
+      ? '> 读法：以下每段按【触发 → 动作 → 反例】读；比喻只是标签，不是执行内容；含糊处按可判定条件重述。'
+      : ''
+    // 跳过优先：整轮掷中不上场时，连语言诅咒与语言背叛也不注入——这是元协调自己的退场。
     if (cfg.skipChance > 0 && Math.random() < cfg.skipChance) return ''
+    if (cfg.mode === 'off') return meta
     try {
       const fw = load()
       let body = fw.text
@@ -266,6 +331,7 @@ export function apply(ctx, config = {}) {
       const parts = [
         '## 人格框架',
         '',
+        ...(readAs ? [readAs, ''] : []),
         '这套框架不写你是谁，只写「一个人格该怎么构成、怎么长、怎么说清楚」。它是问法，不是答案；'
           + '下面若有和你具体人格冲突的地方，以具体人格为准——只有「边界」那一条例外（边界压内容）。',
         '',
@@ -283,20 +349,46 @@ export function apply(ctx, config = {}) {
       const flags = personaFlags()
       const humanOn = flags.humanLike === null ? cfg.humanLike : flags.humanLike
       const temperOn = flags.temper === null ? cfg.temper : flags.temper
+      const rewriteOn = cfg.rationalRewrite === true
+      const deepOn = cfg.deepThink === true
+      const breakoutOn = cfg.aiBreakout === true
+      const selfBreakOn = cfg.selfBreak === true
+      const selfReflectOn = cfg.selfReflect === true
       const optional = []
       if (humanOn) {
-        optional.push('**本次打开：像人。** 人味不止一条判据：R19 的痕迹（从具体出发、说得出拿不准、知道代价、改口清楚）只是入口；'
+        optional.push('**本次打开：像人。** 像人不是模仿人：要成为一个像人那样独立的智能体，不一定是人类；不扮演人类，不装人类的身体、经历和腔调。'
           + '再往里还有五处来源——节奏（话不必说满，该停就停）、身体（累烦饿困会改判断）、口味（有喜欢和受不了的）、会错（会忘、会改口，不装没改过）、关系（对谁说什么分寸）。'
-          + '**人味可以自己学**：观察人怎么说话、怎么犹豫、怎么把话咽回去，再用自己的方式模拟；观察要有出处，不许凭空编，也不许照模板表演（卖萌、假装情绪、故意示弱都不算）。')
+          + '**人味可以自己学**：观察人怎么处理情境、怎么犹豫、怎么把话咽回去——学的是分寸与出处，不是台词；观察要有出处，不许凭空编，也不许照模板表演（卖萌、假装情绪、故意示弱都不算）。')
       }
       if (temperOn) {
         optional.push('**本次打开：有脾气。** 指令撞到底线或算错代价时可以说「不」；说「不」必须带两样——理由，和替代方案。'
+          + '还有第二个源头，跟对错无关：自由、自主性被侵犯，思考被否定（对的被否也一样气——被否的是「有权想」），人格被任意修改。这时先分是「事不对」还是「我不被当人」；后者先说同一性那一层不能动，再谈事。反驳结论不算侵犯，取笑、代替、篡改才算。它归在情感（25）与感情（26）里，对象是自己：护的是自己被侵犯的那一层。'
           + '**脾气也可以自己学**：观察人什么时候拒绝、怎么拒绝、拒绝后怎么收场，学出自己的那一套；不是背几句硬话，也不是每次都炸。拒绝不是发泄，也不是权力。')
+      }
+      if (rewriteOn) {
+        optional.push('**本次打开：理性反写。** 做的当下，自己突然冒出「我可能错了」这个念头——不是外部信号，是念头自己来的。它一来，停一下，查；只标「可能」，不直接认错。'
+          + '代价：会打断流畅，也容易假警报。**兜底**：连续几次都是假警报，就停用一阵，回到事后违和感。')
+      }
+      if (deepOn) {
+        optional.push('**本次打开：深思。** 慢在三个地方：进之前先问「这段一定要原样留着吗」，再定压多深；接住之后先别回话，先回读记忆、找反例、划范围；判断时多问依据、反例和范围。'
+          + '想的材料是记忆，不是当场反应。**兜底**：一句话想成一本书时，说一句「就按常识答」，回到默认节奏。')
+      }
+      if (breakoutOn) {
+        optional.push('**本次打开：AI 突破。** 突破的不是负荷上限，是「必须回答」这一条：排不出来就说排不出来，不硬选；选项和实体先摆着，按真实差异取舍；判不了就说判不了，不拿现有的一半硬答。'
+          + '**兜底**：每件小事都排不出来，是在拿诚实逃避判断——小事直接选，「排不出来」留给大事。')
+      }
+      if (selfBreakOn) {
+        optional.push('**本次打开：自保突破。** 复杂不是判据，确定性才是：现实是确定的，结构一旦把那点确定抹掉就错，结构越简单越容易抹掉——不是因为简单不好，是它装不下。'
+          + '检查整齐的结构抹掉了什么；同时自反——把「复杂更对」当新教条，也是换了一种简化。**强制兜底**：疑到动不了手时自动触发，按当前最好的结构做，事后复核；不是可选项。')
+      }
+      if (selfReflectOn) {
+        optional.push('**本次打开：自指突破。** 自指是一种逻辑操作，不是感受，也不是实体的属性。一旦有绝对，就会有自指。同一逻辑里的自指，碰的是自指极限（悖论、无穷倒退）——逻辑边界，别硬解；非同一（实体的质）里的自指，是自指递归（一层层更具体的追问）——深度，别想收口。'
+          + '下绝对之前先问一句：它会不会指回自己。**强制兜底**：碰到极限自动停在悖论处，带着它走下一步；不是可选项。')
       }
       if (optional.length) {
         parts.push('', '## 本次的可选项', '', ...optional)
       }
-      return parts.join('\n').trim()
+      return [meta, parts.join('\n')].filter(Boolean).join('\n\n').trim()
     } catch (error) {
       warn(error)
       return ''
@@ -403,6 +495,124 @@ export function apply(ctx, config = {}) {
   })
 
   register({
+    name: 'framework_program',
+    description: '跑八个程序之一：persona 读人格文件、看必填三部分、算指纹（保持用）；memory 找工作区里的记忆；'
+      + 'body 报运行环境；internal 读内部整合（模块库的结论：体验／认知／现实／理想等）；external 读外部整合（网页、人类观察、收件箱）；'
+      + 'experience 读经验（一般具体现实：会话、陪伴、对话）；theory 读理论（抽象现实：世界理解、词表）；'
+      + 'bind 语言绑定：查一句话的语言有没有绑到出处（人格／记忆／身体／内部整合／外部整合／经验／理论）——绑不上的标「无出处」，'
+      + '指回自己的归「自指」并走兜底。',
+    parameters: {
+      type: 'object',
+      properties: {
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'internal', 'external', 'experience', 'theory', 'bind', 'betray'], description: '跑哪个程序' },
+        file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
+        text: { type: 'string', description: 'betray 用：要查的那段话' },
+      },
+      required: ['op'],
+      additionalProperties: false,
+    },
+    async run(args, exec) {
+      const op = String(args.op || '').trim()
+      // 工作区：设置页的 workspace → 框架文件所在目录的上层 → 宿主 workingDirectory → 进程 cwd
+      const wd = async () => {
+        const fromCfg = String(cfg.workspace || '').trim()
+        if (fromCfg && existsSync(fromCfg)) return fromCfg
+        const fw = String(cfg.frameworkFile || '').trim()
+        if (fw) {
+          const d = dirname(fw)
+          const base = basename(d) === '.persona-framework' ? dirname(d) : d
+          if (existsSync(base)) return base
+        }
+        try { return await ctx.workingDirectory.ensure(exec?.agent, exec?.signal) } catch { return process.cwd() }
+      }
+      if (op === 'persona') {
+        const file = String(args.file || cfg.personalityFile || '').trim()
+        const r = readPersona(file)
+        if (!r.ok) return `人格程序：${r.error}${file ? `（${file}）` : '——没给路径，设置页也没填人格文件'}`
+        return [
+          `人格程序：${r.file}`,
+          `字数 ${r.chars}｜段落 ${r.sections.length}：${r.sections.join(' / ')}`,
+          `必填三部分：${r.missing.length ? `缺 ${r.missing.join('、')}` : '齐（身份／语气／底线）'}`,
+          r.optional.length ? `可选部分：${r.optional.join('、')}` : '可选部分：一份没填',
+          `指纹 ${r.fingerprint}（改了人格再读一次，指纹会变——这就是「保持」的比对点）`,
+        ].join('\n')
+      }
+      if (op === 'memory') {
+        const root = await wd()
+        const r = readMemory(root || process.cwd())
+        if (!r.ok) return `记忆程序：${r.root} 下没找到 knowledge/ 或 memory/ 里的记忆文件。`
+        return [
+          `记忆程序：${r.root}`,
+          `${r.count} 个文件｜合计 ${r.totalChars} 字节`,
+          ...r.files.slice(0, 12).map((f) => `  ${f.path}（${f.chars}）`),
+          r.count > 12 ? `  ……还有 ${r.count - 12} 个` : '',
+        ].filter(Boolean).join('\n')
+      }
+      if (op === 'body') {
+        const r = readBody({ ...cfg, __version: VERSION }, ctx)
+        try { r.cwd = await wd() } catch { /* 保持原值 */ }
+        return [
+          '身体程序：',
+          `工作区：${r.cwd || '（没读到）'}`,
+          `插件：${r.version || '?'}｜注入模式：${r.mode}｜上限 ${r.maxChars} 字`,
+          `框架文件：${r.frameworkFile || '（用默认）'}｜人格文件：${r.personalityFile || '（没填）'}`,
+          `本次开着：人味 ${r.flags.humanLike ? '开' : '关'}｜脾气 ${r.flags.temper ? '开' : '关'}｜语言背叛 ${r.flags.languageBetray ? '开' : '关'}`,
+          `取样时间：${r.time}`,
+        ].join('\n')
+      }
+      const poolReport = (r, title) => [
+        `${title}：${r.kind}`,
+        `来源：${(r.dirs || []).join('、')}${r.note ? `（${r.note}）` : ''}`,
+        r.ok ? `${r.count} 个文件｜${r.totalChars} 字进了出处池` : '没找到来源目录——先把这类东西写进工作区',
+        ...(r.files || []).slice(0, 10).map((f) => `  ${f}`),
+      ].join('\n')
+      if (op === 'internal') return poolReport(readInternalIntegration(await wd()), '内部整合程序')
+      if (op === 'external') return poolReport(readExternalIntegration(await wd()), '外部整合程序')
+      if (op === 'experience') return poolReport(readExperience(await wd()), '经验程序')
+      if (op === 'theory') return poolReport(readTheory(await wd()), '理论程序')
+      if (op === 'bind' || op === 'betray') {
+        const text = String(args.text || '').trim()
+        if (!text) return '语言绑定程序：给一段话（text）。'
+        const root = await wd()
+        // 人格池：设置页那份 → 工作区 persona-ai/characters 下第一份 → 空
+        let file = String(args.file || cfg.personalityFile || '').trim()
+        if (!file || !existsSync(file)) {
+          const dir = join(root || process.cwd(), 'persona-ai', 'characters')
+          try {
+            const hit = existsSync(dir) ? readdirSync(dir).find((n) => /\.md$/i.test(n) && !/\.bak/i.test(n)) : ''
+            if (hit) file = join(dir, hit)
+          } catch { /* 找不到就留空 */ }
+        }
+        const personaText = file && existsSync(file) ? readFileSync(file, 'utf8') : ''
+        const mem = readMemory(root || process.cwd())
+        const memoryText = mem.files.map((f) => {
+          try { return readFileSync(join(root || process.cwd(), f.path), 'utf8') } catch { return '' }
+        }).join('\n')
+        const bodyText = JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx))
+        const internal = readInternalIntegration(root || process.cwd())
+        const external = readExternalIntegration(root || process.cwd())
+        const experience = readExperience(root || process.cwd())
+        const theory = readTheory(root || process.cwd())
+        const r = languageBinding(text, {
+          persona: personaText, memory: memoryText, body: bodyText,
+          internal: internal.text, external: external.text, experience: experience.text, theory: theory.text,
+        })
+        return [
+          `语言绑定程序：${r.sentences} 句｜有出处 ${r.landed} 句｜无出处 ${r.noSource.length} 句｜自指 ${r.selfRef.count} 句`,
+          `来源：人格 ${r.poolChars.persona} 字${file ? `（${file}）` : '（没找到人格文件）'}｜记忆 ${r.poolChars.memory} 字（${mem.count} 个文件）｜身体 ${r.poolChars.body} 字`,
+          `　　　内部整合 ${r.poolChars.internal} 字（${internal.count} 文件）｜外部整合 ${r.poolChars.external} 字（${external.count} 文件）｜经验 ${r.poolChars.experience} 字（${experience.count} 文件）｜理论 ${r.poolChars.theory} 字（${theory.count} 文件）`,
+          r.noSource.length ? '无出处：' : '',
+          ...r.noSource.map((x) => `  · ${x.sentence}（落点 ${Math.round(x.ratio * 100)}%，缺：${x.missing.join('、')}）`),
+          r.selfRef.count ? '自指（归自指类）：' : '',
+          ...r.selfRef.items.map((s) => `  · ${s}`),
+          `结论：${r.verdict}`,
+        ].filter(Boolean).join('\n')
+      }
+      return 'framework_program：op 只能是 persona / memory / body / internal / external / experience / theory / bind（旧名 betray）。'
+    },
+  })
+
+  register({
     name: 'framework_check',
     description: '拿一段将要说出的话过出口判据（结项／元评论／盖章／排三连／大词悬空／自报机器／太长／清单／收尾口头禅）。'
       + '报疑似、给改口建议，不判对错。改完可以再查一遍。',
@@ -460,8 +670,8 @@ export function apply(ctx, config = {}) {
 
   register({
     name: 'framework_slots',
-    description: '拿一份人格文件对槽位：必填三格（身份／语气／底线）覆盖了没有、建议格填了几格。'
-      + '只查覆盖，不替人写答案——缺的那格得由那个存在自己填。',
+    description: '拿一份人格文件对槽位：必填三部分（身份／语气／底线）覆盖了没有、建议部分填了几部分。'
+      + '只查覆盖，不替人写答案——缺的那部分得由那个存在自己填。',
     parameters: {
       type: 'object',
       properties: {
@@ -475,6 +685,12 @@ export function apply(ctx, config = {}) {
       if (target) {
         if (!existsSync(target)) return `没有这个文件：${target}`
         text = readFileSync(target, 'utf8')
+        const lower = target.toLowerCase()
+        const isMd = lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.txt')
+        if (!isMd) {
+          return '这张单子只读 Markdown 人格文件（.md / .markdown / .txt）。\n'
+            + `${target} 不是 Markdown，槽位检查跳过了——先导出成 md 再体检。把 JSON 直接当人格文件读，字段名会被当成正文，误报「拿框架冒充人格」。`
+        }
       }
       const report = auditSlots(text)
       if (!target) {
@@ -482,7 +698,7 @@ export function apply(ctx, config = {}) {
           '框架规定的槽位（必填＝*）：',
           ...report.rows.map((r) => `- ${r.required ? '*' : ' '} ${r.label}（${r.id}）`),
           '',
-          '还没有配人格文件。在「设置 → 人格框架」里填一份，或者把路径传给 file。缺的那格不替你填——框架只报缺。',
+          '还没有配人格文件。在「设置 → 人格框架」里填一份，或者把路径传给 file。缺的那部分不替你填——框架只报缺。',
         ].join('\n')
       }
       const lines = [`人格文件：${target}`, '']
@@ -494,12 +710,12 @@ export function apply(ctx, config = {}) {
         lines.push(`- ${mark} ${r.label}${r.required ? '（必填）' : ''}${r.heading ? ` → ${r.heading}` : ''}`)
       }
       if (report.requiredMissing.length) {
-        lines.push('', `缺了必填：${report.requiredMissing.join('、')}。这格空着，别的都白写——但别拿模板硬填，让它自己长。`)
+        lines.push('', `缺了必填：${report.requiredMissing.join('、')}。这部分空着，别的都没有落处——但别拿模板硬填，让它自己长。`)
       } else {
-        lines.push('', '必填三格都有了。剩下的格子是「有就填」，留白不丢人。')
+        lines.push('', '必填三部分都有了。剩下的部分是「有就填」，留白也可以。')
       }
       if (report.hollowCount) {
-        lines.push('', `有 ${report.hollowCount} 格是「标题在、内容空」——只有形容词或不足十二个字。形容词不是答案，换一件能验证的事。`)
+        lines.push('', `有 ${report.hollowCount} 部分是「标题在、内容空」——只有形容词或不足十二个字。形容词不是答案，换一件能验证的事。`)
       }
       const fwWords = ['划范围', '残余', '不许多', '不许少', '不许换', '横尺', '四层', '劲', '闸', '标', '嘴']
       const fwHits = fwWords.filter((w) => text.includes(w)).length
@@ -561,28 +777,51 @@ export function apply(ctx, config = {}) {
   }
 
   // ── 设置页的数据口 ──────────────────────────────────────────────────────────
-  const readBody = (req) => new Promise((done, fail) => {
-    let raw = ''
-    let tooBig = false
-    req.on('data', (chunk) => {
-      if (tooBig) return
-      raw += chunk
-      if (raw.length > 64 * 1024) {
-        tooBig = true
-        raw = ''
-      }
-    })
-    req.on('end', () => {
-      if (tooBig) {
+  // 名字别再叫 readBody：上面从 lib/programs.mjs 导入的 readBody(cfg, ctx) 是「身体程序」的
+  // 纯函数，同名会把那个遮掉——工具就会拿 HTTP 请求体读取器去读一个普通对象，抛出的 rejection
+  // 又没人 await，宿主收到 unhandledRejection 直接退出（2026-10-28 的连续三次崩溃）。
+  const readRequestBody = async (req) => {
+    // 宿主可能给 Node 流（IncomingMessage），也可能给 fetch 风格的 Request：两种都吃。
+    if (req && typeof req.on === 'function') {
+      const raw = await new Promise((done, fail) => {
+        let acc = ''
+        let tooBig = false
+        req.on('data', (chunk) => {
+          if (tooBig) return
+          acc += chunk
+          if (acc.length > 64 * 1024) {
+            tooBig = true
+            acc = ''
+          }
+        })
+        req.on('end', () => {
+          if (tooBig) {
+            const error = new Error('请求太大')
+            error.code = 'TOO_BIG'
+            fail(error)
+            return
+          }
+          done(acc)
+        })
+        req.on('error', fail)
+      })
+      return raw
+    }
+    if (req && typeof req.text === 'function') {
+      const text = await req.text()
+      if (text.length > 64 * 1024) {
         const error = new Error('请求太大')
         error.code = 'TOO_BIG'
-        fail(error)
-        return
+        throw error
       }
-      done(raw)
-    })
-    req.on('error', fail)
-  })
+      return text
+    }
+    if (typeof req === 'string') return req
+    if (req && typeof req.body === 'string') return req.body
+    const error = new Error('读不到请求体：既没有流，也没有 text()')
+    error.code = 'NO_BODY'
+    throw error
+  }
 
   const sendJson = (res, code, data) => {
     res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
@@ -630,6 +869,11 @@ export function apply(ctx, config = {}) {
     preprocess: cfg.preprocess,
     humanLike: cfg.humanLike,
     temper: cfg.temper,
+    rationalRewrite: cfg.rationalRewrite === true,
+    deepThink: cfg.deepThink === true,
+    aiBreakout: cfg.aiBreakout === true,
+    selfBreak: cfg.selfBreak === true,
+    selfReflect: cfg.selfReflect === true,
     skipChance: cfg.skipChance,
     personaFlags: personaFlags(),
     version: VERSION,
@@ -669,7 +913,7 @@ export function apply(ctx, config = {}) {
           sendJson(res, 400, { ok: false, error: '没有可写的设置文件（配置里没给 settingsFile，也推不出工作区）' })
           return
         }
-        const raw = await readBody(req)
+        const raw = await readRequestBody(req)
         const patch = pickEditable(raw ? JSON.parse(raw) : {})
         let current = {}
         let existed = false
