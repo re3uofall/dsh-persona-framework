@@ -1,0 +1,27 @@
+# 发布指纹清单
+# 版本：4.20.0
+# 生成时间：2026-10-29 00:17:15
+# 用法：下载后逐文件算 sha256，前 16 位应与下表一致；不一致的说明文件被改过。
+
+sha256[:16]             字数  文件
+555afc5da7c60fe3     15566  CHANGELOG.md
+192aa8c4d09d9043      1112  LICENSE
+94c9667000804e72     10993  README.md
+564f14cd7a21611a      3541  RELEASE.md
+94a41c750b52a93f     21478  client.js
+d1f8d38e8031c34c      1764  cordis.patch.yml
+48b0f62c166c7224      7980  framework/FRAMEWORK.ai.md
+70244e13b5d53e1a      7694  framework/FRAMEWORK.md
+7104c4517390f5cd      6221  framework/MODULES.md
+edbe9999a9b92a14      1102  icon.svg
+731734f1fedc174b     39931  index.js
+51794c8db0b7cab5       976  index.json
+180c1fe270f4856f      6870  lib/checks.mjs
+7425a690b944bc27      1378  lib/digest.mjs
+f760fb0eae86c5db      7073  lib/framework.mjs
+7aaf46b58bcaf0ae     12928  lib/programs.mjs
+b01fdb23313e4045       302  locale/en.json
+4e5a283ad1b6d2c6       126  locale/zh.json
+8a439110dd714862      9062  selfcheck.mjs
+
+# 合计 156097 字

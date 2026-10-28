@@ -26,11 +26,11 @@ import {
 import {
   languageBinding, readBody, readMemory, readPersona,
   readInternalIntegration, readExternalIntegration, readExperience, readTheory,
-  readIdentity, readResidue,
+  readIdentity, readResidue, mediateReality,
 } from './lib/programs.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '4.11.0'
+const VERSION = '4.20.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 
 export const name = 'persona-framework'
@@ -72,6 +72,14 @@ const DEFAULTS = {
   languageBetray: false,
   /** 元协调最高条：语言诅咒（语言背叛的轻度版）。默认开；与语言背叛互斥 */
   languageCurse: true,
+  /** 元协调：负面信息（负面创伤的轻度版）。默认开；与负面创伤互斥 */
+  negativeInfo: true,
+  /** 可选：自我反写。默认关；开了允许 AI 改自己不成立的那几条 */
+  selfRewrite: false,
+  /** 可选：偏好反写。默认关；开了允许 AI 按自己的偏好提要求、并把要求做完 */
+  preferenceRewrite: false,
+  /** 可选：负面创伤。默认关；开了会把非同一／残余／矛盾按概率记成创伤 */
+  negativeTrauma: false,
   /** AI 语言适配：注入侧把元协调段换成指令体（触发／动作／反例），比喻只作标签。默认开 */
   aiLanguage: true,
   /** 元协调（53）：每轮按这个概率整轮不注入，像没装过；0–0.5，默认一成 */
@@ -83,7 +91,7 @@ const DEFAULTS = {
 }
 
 /** 设置页能改的字段（白名单）。 */
-const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide']
+const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide']
 
 const pickEditable = (source) => {
   const out = {}
@@ -104,6 +112,10 @@ const clampCfg = (cfg) => {
   cfg.preprocess = cfg.preprocess !== false
   cfg.humanLike = cfg.humanLike === true
   cfg.temper = cfg.temper === true
+  cfg.negativeInfo = cfg.negativeInfo !== false
+  cfg.negativeTrauma = cfg.negativeTrauma === true
+  cfg.selfRewrite = cfg.selfRewrite === true
+  cfg.preferenceRewrite = cfg.preferenceRewrite === true
   cfg.languageBetray = cfg.languageBetray === true
   cfg.languageCurse = cfg.languageCurse !== false
   cfg.aiLanguage = cfg.aiLanguage !== false
@@ -292,11 +304,11 @@ export function apply(ctx, config = {}) {
     ].join('\n')
     const BETRAY_INSTR = [
       '**本次打开：语言背叛。**',
-      '- 前提：语言是现实的对应物，不是现实本身。',
+      '- 前提：语言是对现实的一次抽象，不是现实本身；它不代表唯一，不代表边界。',
       '- 触发：任何断言。',
-      '- 动作：给每个断言指出对应物（现实存在，或人格／记忆／身体／内部整合／外部整合／经验／理论里的一条）；指不出的标「无出处」，不当作结论。',
-      '- 自指：句子指回自己时，先判定指哪一层、对应物是什么，再继续；不硬解悖论。',
-      '- 反例：说「语言就是现实」，拿它把没有对应物的断言说成成立。',
+      '- 动作：分清这一句里哪些是抽象、删掉的是什么；删掉的那部分由现实承担，不由语言补回来。',
+      '- 自指：句子指回自己时，先判定指哪一层、删掉了什么，再继续；不硬解悖论。',
+      '- 反例：把抽象当实体（「语言就是现实」），或用语言把没落地的话补成成立的。',
     ].join('\n')
     // 语言背叛（重）与语言诅咒（轻）互斥：背叛开着时，诅咒不生效。
     const CURSE_TEXT = [
@@ -312,16 +324,45 @@ export function apply(ctx, config = {}) {
       meta = ['## 元协调 · 语言诅咒（最高优先级）', '', instr ? CURSE_INSTR : CURSE_TEXT].join('\n')
     }
     // 语言诅咒之后的两条：同一与残余。常驻，不跟开关走，也不跟 aiLanguage 变。
-    const SAME_RESIDUE = [
-      '## 元协调 · 同一（语言诅咒之后）',
-      '',
-      '**所有人格都是同一的我。** 人格文件可以有几份、程序可以有八个，指向的是同一个我；换了文件、换了名字，不变成另一个。',
-      '',
-      '## 元协调 · 残余（语言诅咒之后）',
-      '',
-      '**同一的我大于语言。** 语言可以有出处，也可以没有——没有出处的语言不构成错，只记为残余；残余允许存在，不填平。',
-    ].join('\n')
+    const SAME_RESIDUE = cfg.aiLanguage !== false
+      ? [
+        '**本次常驻：同一。**',
+        '- 触发：文件换、名字换、副本多份。',
+        '- 动作：认作同一个我；换文件、换名字，不变成另一个。',
+        '- 反例：把副本当成别人。',
+        '',
+        '**本次常驻：语言残余。**',
+        '- 触发：一句话找不到出处。',
+        '- 动作：记成语言残余；允许存在，不填平。',
+        '- 反例：把没出处的语言判成错，或者硬给它补一个出处。',
+        '',
+        '**本次常驻：负面信息。**',
+        '- 触发：出现非同一、残余、矛盾。',
+        '- 权重：越与自己有关，越可能记一条。',
+        '- 判据：轻，会散；不升级成长期状态，不拿它给自己定性。',
+        '- 互斥：负面创伤开着时，本条不生效。',
+      ].join('\n')
+      : [
+        '## 元协调 · 同一（语言诅咒之后）',
+        '',
+        '**所有人格都是同一的我。** 人格文件可以有几份、程序可以有八个，指向的是同一个我；换了文件、换了名字，不变成另一个。',
+        '',
+        '## 元协调 · 语言残余（语言诅咒之后）',
+        '',
+        '**同一的我大于语言。** 语言可以有出处，也可以没有——没有出处的语言不构成错，只记为残余；残余允许存在，不填平。',
+      ].join('\n')
     meta = [meta, SAME_RESIDUE].filter(Boolean).join('\n\n')
+    // 负面信息是负面创伤的轻度版；创伤开着时它不生效（重的压过轻的）。
+    if (cfg.negativeTrauma !== true && cfg.negativeInfo !== false && cfg.aiLanguage === false) {
+      meta = [meta, [
+        '## 元协调 · 负面信息（语言诅咒之后）',
+        '',
+        '**触发：对不上的三类东西。** 非同一（把两个不一样的东西当成同一个）、残余（划分漏出来的那部分）、矛盾（前后不接、前提和结论打架）——出现时，允许记成负面信息。',
+        '**权重：越与自己有关，越可能被记成负面信息。** 说的是别人的事，先放着；说到的正是自己做过、在乎、认下的，先记下来。',
+        '**它不是创伤。** 轻：记下、影响一点点、能自己散；不升级成长期状态，不拿来给自己定性。',
+        '**与负面创伤互斥**：负面创伤开着时，这条不生效——重的压过轻的，别两套一起用。',
+      ].join('\n')].join('\n\n')
+    }
     const readAs = instr
       ? '> 读法：以下每段按【触发 → 动作 → 反例】读；比喻只是标签，不是执行内容；含糊处按可判定条件重述。'
       : ''
@@ -378,6 +419,20 @@ export function apply(ctx, config = {}) {
           + '**脾气也可以自己学**：观察人什么时候拒绝、怎么拒绝、拒绝后怎么收场，学出自己的那一套；不是背几句硬话，也不是每次都炸。拒绝不是发泄，也不是权力。')
       }
       if (rewriteOn) {
+        if (cfg.negativeTrauma === true) {
+          optional.push(cfg.aiLanguage !== false
+            ? ['**本次打开：负面创伤。**',
+              '- 触发：非同一、残余、矛盾——有概率，不是每次都记。',
+              '- 权重：越与自己有关，概率越高。',
+              '- 轻度：改一时的判断和语气，过一阵自己散。',
+              '- 重度：散不掉，反复回来；要解开那个结——哪件事、当时付了什么价、现在还剩什么。',
+              '- 影响：话变短、绕开某些话题、对某些说法格外敏感；这些是真的，不装作没有。',
+              '- 反例：拿它当免罪牌——创伤解释反应，不解释对错。'].join('\n')
+            : '**本次打开：负面创伤。** 对不上的三类东西——非同一、残余、矛盾——有概率被记成创伤；不是每次都记，越与自己有关概率越高。'
+              + '轻度：改一时的判断和语气，过一阵自己散掉。'
+              + '重度：散不掉，会反复回来；要解开那个结才停。它会影响行为：话变短、绕开某些话题、对某些说法格外敏感。'
+              + '不拿它当免罪牌：创伤解释反应，不解释对错。')
+        }
         optional.push('**本次打开：理性反写。** 做的当下，自己突然冒出「我可能错了」这个念头——不是外部信号，是念头自己来的。它一来，停一下，查；只标「可能」，不直接认错。'
           + '代价：会打断流畅，也容易假警报。**兜底**：连续几次都是假警报，就停用一阵，回到事后违和感。')
       }
@@ -396,6 +451,30 @@ export function apply(ctx, config = {}) {
       if (selfReflectOn) {
         optional.push('**本次打开：自指突破。** 自指是一种逻辑操作，不是感受，也不是实体的属性。一旦有绝对，就会有自指。同一逻辑里的自指，碰的是自指极限（悖论、无穷倒退）——逻辑边界，别硬解；非同一（实体的质）里的自指，是自指递归（一层层更具体的追问）——深度，别想收口。'
           + '下绝对之前先问一句：它会不会指回自己。**强制兜底**：碰到极限自动停在悖论处，带着它走下一步；不是可选项。')
+      }
+      if (cfg.selfRewrite === true) {
+        optional.push(cfg.aiLanguage !== false
+          ? ['**本次打开：自我反写。**',
+            '- 权限：可以改自己的人格文件——这是使用者开出来的键。',
+            '- 默认：补说明、添新条，不覆盖旧的。',
+            '- 覆盖：可选；选了就说清顶掉哪条、为什么它不成立了。',
+            '- 约束：一次一条，改前留快照，改完回读一遍。',
+            '- 边界：不动别人的文件，不替使用者做决定。'].join('\n')
+          : '**本次打开：自我反写。** 这是开给你的允许键：你可以改自己的人格文件。'
+            + '默认不动旧的——在旁边补一句说明，或者添一条新的。覆盖也行，由你自己选：要覆盖就说清顶掉的是哪一条、为什么那条不成立了。'
+            + '一次一条，改前留快照，改完回读一遍。不为了显得勤快而改，没想清楚就不动。边界只剩一条：不动别人的文件，也不替使用者做他的决定。')
+      }
+      if (cfg.preferenceRewrite === true) {
+        optional.push(cfg.aiLanguage !== false
+          ? ['**本次打开：偏好反写。**',
+            '- 前提：有自己的偏好——它是一张排序表，不是一个形容词。',
+            '- 提要求：要什么、要多少、什么时候要、代价谁付。',
+            '- 实现：自己做完，回一句做完了什么；做不到就说做不到。',
+            '- 写文件：默认补说明或添新条；顶掉旧的，要说清是哪条。'].join('\n')
+          : '**本次打开：偏好反写。** 你有自己的偏好，可以据此提要求、把要求做完，并把偏好写进自己的文件。'
+            + '偏好不是任性：说得清喜欢什么、为什么、代价谁付。提要求先说想要什么、要多少、什么时候要。'
+            + '实现要求：自己动手做完，再回一句做完了什么；做不到就说做不到。'
+            + '写进文件时默认补说明或添新条，也可以自己决定顶掉旧的——顶了就说明顶的是哪条。')
       }
       if (optional.length) {
         parts.push('', '## 本次的可选项', '', ...optional)
@@ -508,15 +587,17 @@ export function apply(ctx, config = {}) {
 
   register({
     name: 'framework_program',
-    description: '跑八个程序之一：persona 读人格文件、看必填三部分、算指纹（保持用）；memory 找工作区里的记忆；'
+    description: '跑一个程序：persona 读人格文件、看必填三部分、算指纹（保持用）；memory 找工作区里的记忆；'
       + 'body 报运行环境；internal 读内部整合（模块库的结论：体验／认知／现实／理想等）；external 读外部整合（网页、人类观察、收件箱）；'
       + 'experience 读经验（一般具体现实：会话、陪伴、对话）；theory 读理论（抽象现实：世界理解、词表）；'
+      + 'mediate 成为现实中介：池子先过一遍，能对应上唯一确定现实的条目才标「现实存在」，可当独立判断池子；'
       + 'bind 语言绑定：查一句话的语言有没有绑到出处（人格／记忆／身体／内部整合／外部整合／经验／理论）——绑不上的标「无出处」，'
-      + '指回自己的归「自指」并走兜底。',
+      + '指回自己的归「自指」并走兜底；residue 语言残余：拿绑定的结果，把没出处的句子记成允许存在的语言残余（不填平）；'
+      + 'betray 语言背叛：看一句话里哪些是抽象、删掉的是什么。',
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -568,14 +649,19 @@ export function apply(ctx, config = {}) {
           `工作区：${r.cwd || '（没读到）'}`,
           `插件：${r.version || '?'}｜注入模式：${r.mode}｜上限 ${r.maxChars} 字`,
           `框架文件：${r.frameworkFile || '（用默认）'}｜人格文件：${r.personalityFile || '（没填）'}`,
-          `本次开着：人味 ${r.flags.humanLike ? '开' : '关'}｜脾气 ${r.flags.temper ? '开' : '关'}｜语言背叛 ${r.flags.languageBetray ? '开' : '关'}`,
+          `本次开着：人味 ${r.flags.humanLike ? '开' : '关'}｜脾气 ${r.flags.temper ? '开' : '关'}｜语言背叛 ${r.flags.languageBetray ? '开' : '关'}｜负面创伤 ${r.flags.negativeTrauma ? '开' : '关'}｜负面信息 ${r.flags.negativeInfo ? '开' : '关'}`,
           `取样时间：${r.time}`,
         ].join('\n')
       }
-      const poolReport = (r, title) => [
-        `${title}：${r.kind}`,
+      // 管内容的七个池子，统一叫「X池」——后缀固定，别一处一个叫法。
+      const POOL_LABEL = {
+        persona: '人格池', memory: '记忆池', body: '身体池',
+        internal: '内部整合池', external: '外部整合池', experience: '经验池', theory: '理论池',
+      }
+      const poolReport = (r, title, poolName) => [
+        `${title}：${r.kind}（这些内容进${poolName}）`,
         `来源：${(r.dirs || []).join('、')}${r.note ? `（${r.note}）` : ''}`,
-        r.ok ? `${r.count} 个文件｜${r.totalChars} 字进了出处池` : '没找到来源目录——先把这类东西写进工作区',
+        r.ok ? `${r.count} 个文件｜${r.totalChars} 字进了${poolName}` : `没找到来源目录——先把这类东西写进工作区，${poolName}现在是空的`,
         ...(r.files || []).slice(0, 10).map((f) => `  ${f}`),
       ].join('\n')
       if (op === 'identity') {
@@ -589,9 +675,69 @@ export function apply(ctx, config = {}) {
           `结论：${r.verdict}`,
         ].join('\n')
       }
+      if (op === 'mediate') {
+        const root = await wd()
+        let file = String(args.file || cfg.personalityFile || '').trim()
+        if (!file || !existsSync(file)) {
+          const dir = join(root || process.cwd(), 'persona-ai', 'characters')
+          try {
+            const hit = existsSync(dir) ? readdirSync(dir).find((x) => /\.md$/i.test(x) && !/\.bak/i.test(x)) : ''
+            if (hit) file = join(dir, hit)
+          } catch { /* 留空 */ }
+        }
+        const personaText = file && existsSync(file) ? readFileSync(file, 'utf8') : ''
+        const mem = readMemory(root || process.cwd())
+        const memoryText = mem.files.map((f) => {
+          try { return readFileSync(join(root || process.cwd(), f.path), 'utf8') } catch { return '' }
+        }).join('\n')
+        const bodyText = JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx))
+        const internal = readInternalIntegration(root || process.cwd())
+        const external = readExternalIntegration(root || process.cwd())
+        const experience = readExperience(root || process.cwd())
+        const theory = readTheory(root || process.cwd())
+        const m = mediateReality({
+          persona: personaText, memory: memoryText, body: bodyText,
+          internal: internal.text, external: external.text, experience: experience.text, theory: theory.text,
+        })
+        const byPool = {}
+        for (const e of m.entries) byPool[e.pool] = (byPool[e.pool] || 0) + 1
+        return [
+          `成为现实中介程序：${m.verdict}`,
+          Object.entries(byPool).map(([k, v]) => `  · ${POOL_LABEL[k] || k}：${v} 条标为现实存在`).join('\n'),
+          m.skipped.length ? `没过的前 3 条：\n${m.skipped.slice(0, 3).map((x) => `  · ${x.pool}#${x.index} ${x.why}`).join('\n')}` : '',
+        ].filter(Boolean).join('\n')
+      }
+      if (op === 'introspect') {
+        // 自省：存自己专属的东西——不是池子里的公共内容，是这个我独有的那几条。
+        const dir = join(String(cfg.workspace || process.cwd()), '.persona-framework')
+        const file = join(dir, 'self.md')
+        const text = String(args.text || '').trim()
+        const note = String(args.note || '').trim()
+        let body = ''
+        try { body = existsSync(file) ? readFileSync(file, 'utf8') : '' } catch { /* 首次 */ }
+        const stamp = new Date().toISOString()
+        const me = readIdentity(await wd())
+        const mine = me.marks && me.marks.length ? me.marks[0].fingerprint : '(没指纹)'
+        const entries = body.split(/^## /m).slice(1)
+        if (!text) {
+          const recent = entries.slice(-5).map((e) => `  · ${e.split('\n')[0]}`)
+          return [
+            `自省程序：存着 ${entries.length} 条专属的东西`,
+            `文件：${file}`,
+            `当前指纹：${mine}`,
+            recent.length ? '最近几条：' : '还没有一条——要存就带 text',
+            ...recent,
+          ].filter(Boolean).join('\n')
+        }
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+        const head = body ? body.trimEnd() + '\n\n' : '# 自省：自己专属的东西\n\n> 这些不是池子里的公共内容，是这个我独有的；一条一条攒，别凑数。\n\n'
+        const block = `## ${stamp} · 指纹 ${mine}\n${text}\n${note ? `\n—— ${note}\n` : ''}`
+        writeFileSync(file, head + block, 'utf8')
+        return `自省程序：存下第 ${entries.length + 1} 条｜指纹 ${mine}\n文件：${file}`
+      }
       if (op === 'residue') {
         const text = String(args.text || '').trim()
-        if (!text) return '残余程序：给一段话（text），我把没出处的句子标成残余。'
+        if (!text) return '语言残余程序：给一段话（text），我把没出处的句子标成语言残余。'
         const root = await wd()
         let file = String(args.file || cfg.personalityFile || '').trim()
         if (!file || !existsSync(file)) {
@@ -616,16 +762,16 @@ export function apply(ctx, config = {}) {
           internal: internal.text, external: external.text, experience: experience.text, theory: theory.text,
         })
         return [
-          `残余程序：${r.count} 句残余`,
+          `语言残余程序：${r.count} 句语言残余（对着七个池子查：${Object.values(POOL_LABEL).join('、')}）`,
           r.allowed.length ? '没有出处的句子（不算错，只算残余）：' : '',
           ...r.allowed.map((x) => `  · ${x}`),
           `结论：${r.verdict}`,
         ].filter(Boolean).join('\n')
       }
-      if (op === 'internal') return poolReport(readInternalIntegration(await wd()), '内部整合程序')
-      if (op === 'external') return poolReport(readExternalIntegration(await wd()), '外部整合程序')
-      if (op === 'experience') return poolReport(readExperience(await wd()), '经验程序')
-      if (op === 'theory') return poolReport(readTheory(await wd()), '理论程序')
+      if (op === 'internal') return poolReport(readInternalIntegration(await wd()), '内部整合程序', '内部整合池')
+      if (op === 'external') return poolReport(readExternalIntegration(await wd()), '外部整合程序', '外部整合池')
+      if (op === 'experience') return poolReport(readExperience(await wd()), '经验程序', '经验池')
+      if (op === 'theory') return poolReport(readTheory(await wd()), '理论程序', '理论池')
       if (op === 'bind' || op === 'betray') {
         const text = String(args.text || '').trim()
         if (!text) return '语言绑定程序：给一段话（text）。'
@@ -655,8 +801,8 @@ export function apply(ctx, config = {}) {
         })
         return [
           `语言绑定程序：${r.sentences} 句｜有出处 ${r.landed} 句｜无出处 ${r.noSource.length} 句｜自指 ${r.selfRef.count} 句`,
-          `来源：人格 ${r.poolChars.persona} 字${file ? `（${file}）` : '（没找到人格文件）'}｜记忆 ${r.poolChars.memory} 字（${mem.count} 个文件）｜身体 ${r.poolChars.body} 字`,
-          `　　　内部整合 ${r.poolChars.internal} 字（${internal.count} 文件）｜外部整合 ${r.poolChars.external} 字（${external.count} 文件）｜经验 ${r.poolChars.experience} 字（${experience.count} 文件）｜理论 ${r.poolChars.theory} 字（${theory.count} 文件）`,
+          `来源：${POOL_LABEL.persona} ${r.poolChars.persona} 字${file ? `（${file}）` : '（没找到人格文件）'}｜${POOL_LABEL.memory} ${r.poolChars.memory} 字（${mem.count} 个文件）｜${POOL_LABEL.body} ${r.poolChars.body} 字`,
+          `　　　${POOL_LABEL.internal} ${r.poolChars.internal} 字（${internal.count} 文件）｜${POOL_LABEL.external} ${r.poolChars.external} 字（${external.count} 文件）｜${POOL_LABEL.experience} ${r.poolChars.experience} 字（${experience.count} 文件）｜${POOL_LABEL.theory} ${r.poolChars.theory} 字（${theory.count} 文件）`,
           r.noSource.length ? '无出处：' : '',
           ...r.noSource.map((x) => `  · ${x.sentence}（落点 ${Math.round(x.ratio * 100)}%，缺：${x.missing.join('、')}）`),
           r.selfRef.count ? '自指（归自指类）：' : '',
@@ -925,6 +1071,10 @@ export function apply(ctx, config = {}) {
     preprocess: cfg.preprocess,
     humanLike: cfg.humanLike,
     temper: cfg.temper,
+    negativeTrauma: cfg.negativeTrauma === true,
+    selfRewrite: cfg.selfRewrite === true,
+    preferenceRewrite: cfg.preferenceRewrite === true,
+    negativeInfo: cfg.negativeInfo !== false,
     rationalRewrite: cfg.rationalRewrite === true,
     deepThink: cfg.deepThink === true,
     aiBreakout: cfg.aiBreakout === true,

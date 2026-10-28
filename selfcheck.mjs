@@ -12,6 +12,8 @@ import { languageBetrayal, readPersona, readInternalIntegration, readExternalInt
 
 /** Node 20.11+ 有 import.meta.dirname；旧版退到 fileURLToPath。 */
 const HERE = import.meta.dirname || dirname(fileURLToPath(import.meta.url))
+/** 包里对外声称的版本，唯一来源是 package.json。 */
+const PKG_VERSION = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8')).version
 
 let pass = 0
 let fail = 0
@@ -22,7 +24,22 @@ const ok = (name, cond, extra = '') => {
 console.log('— 框架文件 —')
 const fw = readFramework(BUNDLED)
 ok('能读到自带框架', fw.text.length > 2000, `${fw.text.length} 字`)
-ok('切出 11 段（开篇 + 〇～九 十节）', fw.sections.length === 11, `${fw.sections.length} 段`)
+ok('CHANGELOG 最新条目等于插件版本', (() => {
+  try {
+    const first = readFileSync(new URL('./CHANGELOG.md', import.meta.url), 'utf8')
+      .split('\n').find((l) => /^## \d/.test(l)) || ''
+    return first.includes(PKG_VERSION)
+  } catch { return false }
+})(), 'CHANGELOG 顶部不是当前版本')
+
+ok('MANIFEST 版本等于插件版本', (() => {
+  try {
+    const mf = readFileSync(new URL('./MANIFEST.txt', import.meta.url), 'utf8')
+    return mf.includes(`# 版本：${PKG_VERSION}`)
+  } catch { return false }
+})(), 'MANIFEST 版本行不是当前版本')
+
+ok('切出 14 段（开篇 + 〇～十二 十三节）', fw.sections.length === 14, `${fw.sections.length} 段`)
 ok('第一段是「是什么」', fw.sections[1].title.includes('是什么'), fw.sections[1].title)
 ok('有骨架段', fw.sections.some((s) => s.title.includes('骨架')))
 
