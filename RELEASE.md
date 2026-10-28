@@ -11,7 +11,7 @@
 ```json
 {
   "name": "dsh-persona-framework",
-  "version": "4.4.1",
+  "version": "4.20.0",
   "private": false,
   "license": "MIT",
   "author": "你的名字",
@@ -33,7 +33,7 @@
 ```bash
 git init
 git add .
-git commit -m "dsh-persona-framework 4.4.1"
+git commit -m "dsh-persona-framework 4.20.0"
 git remote add origin https://github.com/你/dsh-persona-framework.git
 git push -u origin main
 git rev-parse HEAD   # 记下 40 位 commit
@@ -83,7 +83,7 @@ npm publish --access public
       "repository": { "url": "https://github.com/你/dsh-persona-framework" },
       "versions": [
         {
-          "version": "4.4.1",
+          "version": "4.20.0",
           "publishTimestamp": 1793000000,
           "source": { "type": "git", "url": "https://github.com/你/dsh-persona-framework", "commit": "40位sha" },
           "engines": { "dsh": ">=0.2.0-rc.2" }
