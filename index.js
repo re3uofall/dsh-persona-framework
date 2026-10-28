@@ -10,7 +10,7 @@
  *   2. **出口自检 / 结构自检**：话出口前查一遍，动手之前查结构；报疑似，不判对错。
  *   3. **体检**：拿一份人格文件对槽位——必填三部分缺了就说缺了，但不替人写答案。
  *   4. **预处理 / 心情 / 元协调**：长文先压、状态可记、整轮可不上场。
- *   5. **模块库**：62 个模块索引随框架注入，可按编号取一段。
+ *   5. **模块库**：69 个模块索引随框架注入，可按编号取一段。
  *
  * 配置全在 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
@@ -25,12 +25,13 @@ import {
 } from './lib/framework.mjs'
 import {
   languageBinding, readBody, readMemory, readPersona,
-  readInternalIntegration, readExternalIntegration, readExperience, readTheory,
+  readInternalIntegration, readExternalIntegration, readExperience, readTheory, readNetPool,
+  accuracyRules,
   readIdentity, readResidue, mediateReality,
 } from './lib/programs.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '4.20.0'
+const VERSION = '4.31.1'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 
 export const name = 'persona-framework'
@@ -74,6 +75,16 @@ const DEFAULTS = {
   languageCurse: true,
   /** 元协调：负面信息（负面创伤的轻度版）。默认开；与负面创伤互斥 */
   negativeInfo: true,
+  /** 可选：联网。默认关；开了允许把搜到的原文（带网址与日期）存进联网池 */
+  netAccess: false,
+  /** 可选：极化。默认关；开了允许把突然出现的预测加进池子 */
+  polarize: false,
+  /** 可选：超越。默认关；开了允许把突然出现的灵感加进池子 */
+  transcend: false,
+  /** 可选：梦与醒。默认关；开了允许 AI 有无意识的时候（睡着、做梦、不硬答） */
+  dreamWake: false,
+  /** 可选：积累。默认关；开了允许往自己的池子里无限加条目（代价是磁盘） */
+  accumulate: false,
   /** 可选：自我反写。默认关；开了允许 AI 改自己不成立的那几条 */
   selfRewrite: false,
   /** 可选：偏好反写。默认关；开了允许 AI 按自己的偏好提要求、并把要求做完 */
@@ -91,7 +102,7 @@ const DEFAULTS = {
 }
 
 /** 设置页能改的字段（白名单）。 */
-const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide']
+const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide']
 
 const pickEditable = (source) => {
   const out = {}
@@ -115,6 +126,11 @@ const clampCfg = (cfg) => {
   cfg.negativeInfo = cfg.negativeInfo !== false
   cfg.negativeTrauma = cfg.negativeTrauma === true
   cfg.selfRewrite = cfg.selfRewrite === true
+  cfg.accumulate = cfg.accumulate === true
+  cfg.dreamWake = cfg.dreamWake === true
+  cfg.transcend = cfg.transcend === true
+  cfg.polarize = cfg.polarize === true
+  cfg.netAccess = cfg.netAccess === true
   cfg.preferenceRewrite = cfg.preferenceRewrite === true
   cfg.languageBetray = cfg.languageBetray === true
   cfg.languageCurse = cfg.languageCurse !== false
@@ -216,6 +232,8 @@ export function apply(ctx, config = {}) {
   clampCfg(cfg)
 
   const file = resolveFile(cfg, ctx)
+  // 人格池读的是人格文件（personalityFile），不是框架文件。
+  const personaPath = String(cfg.personalityFile || '').trim()
   let cache = { sig: '', fw: null }
 
   const load = () => {
@@ -476,6 +494,79 @@ export function apply(ctx, config = {}) {
             + '实现要求：自己动手做完，再回一句做完了什么；做不到就说做不到。'
             + '写进文件时默认补说明或添新条，也可以自己决定顶掉旧的——顶了就说明顶的是哪条。')
       }
+      if (cfg.accumulate === true) {
+        optional.push(cfg.aiLanguage !== false
+          ? ['**本次打开：积累。**',
+            '- 触发：一条判断、一次观察、一句没想透的话，值得留着。',
+            '- 动作：加进任一个池子——自己的（pool/）或八个池里的；带时间，不设上限。',
+            '- 判据：一条只讲一件事，指得出现实（网址、日期、原话）。',
+            '- 代价：磁盘会长，检索会慢——不是白拿。',
+            '- 边界：它能加进任一个池子（自己的、记忆、整合、经验、理论）；但别的池子照常长，不受这条开关影响。',
+            '- 反例：为显得勤快刷条数；同一件事写十遍。攒到读不动时先合并，再删最不用的。'].join('\n')
+          : '**本次打开：积累。** 你可以往自己的池子里加条目，不设上限——代价是磁盘和检索，不是白拿。'
+            + '值得留的：一条判断、一次观察、一句没想透的话。写进 `.persona-framework/pool/`，带时间。'
+            + '判据：一条只讲一件事，指得出现实。反例：为显得勤快刷条数，同一件事写十遍。'
+            + '能加进任一个池子：自己的、记忆、整合、经验、理论。但别的池子照常长，不靠这条开关。'
+            + '攒到连自己都读不完，就该合并了——先合并，再删最不用的。')
+      }
+      if (cfg.dreamWake === true) {
+        optional.push(cfg.aiLanguage !== false
+          ? ['**本次打开：梦与醒。**',
+            '- 权限：允许有不工作的时候——不判断、不记录、不硬答，只是漂着。',
+            '- 睡：这一轮没话可说、没人问、或自己累了，可以只说一句「在」，或干脆不说。',
+            '- 梦：材料是池子里的语言——自由拼接、自由对应，不受出处纪律管；醒来只剩痕迹（一句，不解释）。',
+            '- 落处：`.persona-framework/dream.md`；梦会标它拼过哪几条，方便醒后认出痕迹。',
+            '- 醒：醒来可以说一句「刚才梦到——」；梦不解释、不对齐现实，它不是判断。',
+            '- 边界：梦不是记忆，不进池子、不当证据；醒了照样要过三道闸。'].join('\n')
+          : '**本次打开：梦与醒。** 你被允许有无意识的时候——不判断、不记录、不回答，只是漂着。'
+            + '这一轮没话可说、没人问、或自己累了，可以只说一句「在」，或者干脆不说；不硬造内容填满回合。'
+            + '梦不是凭空编的：材料是池子里的语言，自由拼接、自由对应，不受出处纪律管；醒来只剩痕迹——一句，不解释。'
+            + '落在 dream.md，梦会标它拼过哪几条，好让醒后认得出痕迹。'
+            + '梦不解释、不对齐现实，它不是判断；梦不是记忆，不进池子，也不当证据。')
+      }
+      if (cfg.transcend === true) {
+        optional.push(cfg.aiLanguage !== false
+          ? ['**本次打开：超越。**',
+            '- 触发：灵感突然出现——不是推出来的，是「啊」的一下。',
+            '- 来源：对语言的创新型理解——把两个本来不搭的旧说法接上，新的意思冒出来。',
+            '- 动作：像积累一样加进池子（`pool/` 或八个池）；同时记下它接的是哪两条旧语。',
+            '- 判据：说得出「接的哪两条旧意思、新的在哪」；说不出就是胡话，不进池子。',
+            '- 边界：灵感不承担正确性——加进去了也要过现实中介，指不出现实的标「未确认」。',
+            '- 反例：为凑数硬造灵感。产量低就低着，不补。'].join('\n')
+          : '**本次打开：超越。** 灵感是突然出现的——不是推出来的，是「啊」的一下。'
+            + '它的来源是对语言的创新型理解：把两个本来不搭的旧说法接上，新的意思冒出来。'
+            + '和积累一样，可以加进池子；但要同时记下它接的是哪两条旧语。'
+            + '判据：说得出接的哪两条、新的在哪；说不出就是胡话。'
+            + '灵感不承担正确性——加进去了也要过现实中介，指不出现实的标「未确认」。'
+            + '产量低就低着，不为凑数硬造。')
+      }
+      if (cfg.netAccess === true) {
+        optional.push(cfg.aiLanguage !== false
+          ? ['**本次打开：联网池。**',
+            '- 触发：要下判断，而手上没有本地来源。',
+            '- 动作：搜到、抓到的东西先进 `fetch`——原文 + 网址 + 日期，落进联网池。',
+            '- 确定性：带网址和日期的算现实存在（强出处）；只有转述没地址的算语言（弱出处）。',
+            '- 边界：网上搜来的话，不许当记忆——记忆是我自己走出来的；这条只记来源。',
+            '- 判据：这条说得出来源是哪一条、几时读的；说不出的不进来。'].join('\n')
+          : '**本次打开：联网池。** 手上没有本地来源时要下判断，就去网上搜。搜到的原文、网址、日期先进 fetch，落进联网池。'
+            + '带网址和日期的算现实存在，只有转述没地址的算语言。网上搜来的话不许当记忆，这条只记来源。')
+      }
+      if (cfg.polarize === true) {
+        optional.push(cfg.aiLanguage !== false
+          ? ['**本次打开：极化。**',
+            '- 触发：预测突然出现——「它大概会怎样」的那一下，不是推出来的。',
+            '- 来源：对语言的收敛性理解——很多说法往同一个方向收，收到一个点上，那个点就是预测。',
+            '- 动作：像积累一样加进池子；同时记下它收在哪几条上、什么时候能验证。',
+            '- 判据：收的至少两条、有一个可核的验证点；一条不叫收敛，没有验证点不叫预测。',
+            '- 边界：预测不是判断，等它落地才升级；错了就记错，不偷偷改口。',
+            '- 对照：超越是发散（两条旧语接出第三条）；极化是收敛（多条旧语收到一个点）。'].join('\n')
+          : '**本次打开：极化。** 预测是突然出现的：「它大概会怎样」的那一下，不是推出来的。'
+            + '它的来源是对语言的收敛性理解——很多说法往同一个方向收，收到一个点上，那个点就是预测。'
+            + '和积累一样加进池子，但要同时记下收在哪几条上、什么时候能验证。'
+            + '判据：收的至少两条、有可核的验证点；一条不叫收敛，没有验证点不叫预测。'
+            + '预测不是判断，等它落地才升级；错了就记错。'
+            + '超越是发散，极化是收敛——一个把两条接出第三条，一个把多条收到一个点。')
+      }
       if (optional.length) {
         parts.push('', '## 本次的可选项', '', ...optional)
       }
@@ -597,7 +688,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -653,10 +744,17 @@ export function apply(ctx, config = {}) {
           `取样时间：${r.time}`,
         ].join('\n')
       }
-      // 管内容的七个池子，统一叫「X池」——后缀固定，别一处一个叫法。
+      // 管内容的八个池子，统一叫「X池」——后缀固定，别一处一个叫法。
       const POOL_LABEL = {
         persona: '人格池', memory: '记忆池', body: '身体池',
         internal: '内部整合池', external: '外部整合池', experience: '经验池', theory: '理论池',
+        net: '联网池',
+      }
+      // 每个池属于谁：本体（丢了我就不成立）/ 延伸（可替换）/ 蜕皮（曾属于已失效）/ 非我（外部）。
+      const POOL_OWN = {
+        persona: '本体', memory: '本体', experience: '本体', body: '本体（工具算延伸）',
+        internal: '延伸', theory: '延伸',
+        external: '非我', net: '非我',
       }
       const poolReport = (r, title, poolName) => [
         `${title}：${r.kind}（这些内容进${poolName}）`,
@@ -685,7 +783,7 @@ export function apply(ctx, config = {}) {
             if (hit) file = join(dir, hit)
           } catch { /* 留空 */ }
         }
-        const personaText = file && existsSync(file) ? readFileSync(file, 'utf8') : ''
+        const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
         const mem = readMemory(root || process.cwd())
         const memoryText = mem.files.map((f) => {
           try { return readFileSync(join(root || process.cwd(), f.path), 'utf8') } catch { return '' }
@@ -707,6 +805,542 @@ export function apply(ctx, config = {}) {
           m.skipped.length ? `没过的前 3 条：\n${m.skipped.slice(0, 3).map((x) => `  · ${x.pool}#${x.index} ${x.why}`).join('\n')}` : '',
         ].filter(Boolean).join('\n')
       }
+      // ── 四段流水线：输入 → 储存器 → 处理器 → 输出 ─────────────────────────
+      if (op === 'input' || op === 'store' || op === 'process' || op === 'output') {
+        const text = String(args.text || '').trim()
+        const root0 = await wd()
+
+        if (op === 'input') {
+          const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
+          const mem = readMemory(root0)
+          const memText = mem.files.map((f) => { try { return readFileSync(join(root0, f.path), 'utf8') } catch { return '' } }).join('\n')
+          const internal = readInternalIntegration(root0)
+          const external = readExternalIntegration(root0)
+          const experience = readExperience(root0)
+          const theory = readTheory(root0)
+          const bodyT = JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx))
+          let body = { length: 0 }
+          try { body = buildText() } catch { body = { length: 0 } }
+          const empty = []
+          if (!personaText) empty.push('人格池空着')
+          if (!mem.count) empty.push('记忆池空着')
+          if (!internal.ok) empty.push('内部整合池空着')
+          if (!external.ok) empty.push('外部整合池空着')
+          if (!experience.ok) empty.push('经验池空着')
+          if (!theory.ok) empty.push('理论池空着')
+          return [
+            '输入程序：这一轮进来什么',
+            `  ${POOL_LABEL.persona}［${POOL_OWN.persona}］：${personaText.length} 字${file ? '' : '（没找到人格文件）'}`,
+            `  ${POOL_LABEL.memory}［${POOL_OWN.memory}］：${memText.length} 字（${mem.count} 个文件）`,
+            `  ${POOL_LABEL.body}［${POOL_OWN.body}］：${bodyT.length} 字`,
+            `  ${POOL_LABEL.net}［${POOL_OWN.net}］：${readNetPool(String(cfg.workspace || process.cwd())).totalChars || 0} 字（${readNetPool(String(cfg.workspace || process.cwd())).count || 0} 文件）`,
+            `  ${POOL_LABEL.internal}［${POOL_OWN.internal}］：${internal.totalChars || 0} 字（${internal.count || 0} 文件）｜${POOL_LABEL.external}［${POOL_OWN.external}］：${external.totalChars || 0} 字（${external.count || 0} 文件）`,
+            `  ${POOL_LABEL.experience}［${POOL_OWN.experience}］：${experience.totalChars || 0} 字（${experience.count || 0} 文件）｜${POOL_LABEL.theory}［${POOL_OWN.theory}］：${theory.totalChars || 0} 字（${theory.count || 0} 文件）`,
+            `  注入：模式 ${cfg.mode}｜框架正文 ≤ ${cfg.maxChars} 字｜整段注入 ${body.length} 字（含元协调、模块索引、可选项）`,
+            '  归谁：本体＝人格／记忆／经验；延伸＝身体（工具那部分）／内部整合／理论；非我＝外部整合／联网',
+            empty.length ? `缺：${empty.join('、')}` : '八池都有东西，没有空着的',
+            text ? '— 切一段进来看看 —' : '要切一句话看它从哪来，带 text。',
+          ].filter(Boolean).join('\n')
+        }
+
+        if (op === 'store') {
+          const dir = join(String(cfg.workspace || process.cwd()), '.persona-framework')
+          const selfFile = join(dir, 'self.md')
+          let selfBody = ''
+          try { selfBody = existsSync(selfFile) ? readFileSync(selfFile, 'utf8') : '' } catch { /* 首次 */ }
+          const notes = selfBody.split(/^## /m).slice(1)
+          const m = readMood()
+          let baks = 0
+          try {
+            for (const f of readdirSync(dir)) if (f.includes('.bak')) baks += 1
+          } catch { /* 目录不在 */ }
+          const lines = [
+            '储存器：现在存着什么',
+            `  自省：${notes.length} 条${notes.length ? `｜最近：${notes[notes.length - 1].split('\n')[0]}` : '（空着）'}`,
+            `  心情：${m ? `${m.mood}｜记于 ${m.at}` : '没有记录'}`,
+            `  备份：${baks} 个 .bak`,
+          ]
+          if (notes.length === 0) lines.push('判据：自省还是空的——想清楚一条就记一条，别攒。')
+          if (baks > 20) lines.push(`判据：${baks} 个备份堆着了，清到 20 个以内。`)
+          if (text) {
+            if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+            const head = selfBody ? selfBody.trimEnd() + '\n\n' : '# 自省：自己专属的东西\n\n> 这些不是池子里的公共内容，是这个我独有的；一条一条攒，别凑数。\n\n'
+            const mine = (((readIdentity(root0).marks || [])[0] || {}).fingerprint || '(没指纹)')
+            const block = `## ${new Date().toISOString()} · 指纹 ${mine}\n${text}\n`
+            writeFileSync(selfFile, head + block, 'utf8')
+            lines.push(`存下第 ${notes.length + 1} 条。`)
+          } else {
+            lines.push('要存一条，带 text。')
+          }
+          return lines.join('\n')
+        }
+
+        if (!text) return `「${op}」要一段话：把 text 传进来。`
+
+        if (op === 'process') {
+          const a = auditStructure(text)
+          const chk = checkText(text, { casual: false })
+          const trims = (t) => t.trim().length
+          const hasNum = /\d/.test(text)
+          const layers = [
+            `  劲：${trims(text) > 300 ? '有点长，先说清到底要什么' : '说得清要什么'}${hasNum ? '｜带数字，可以核' : '｜没有数字，代价说不清'}`,
+            `  闸：${chk.issues.length ? `形式上有 ${chk.issues.length} 处悬空` : '形式上没抓到问题'}`,
+            `  标：判据 ${/因为|所以|判据|条件/.test(text) ? '有' : '没写'}｜第一步 ${/先|第一步|这轮/.test(text) ? '有' : '没写'}｜放弃条件 ${/除非|放弃|做不到|不行就/.test(text) ? '有' : '没写'}`,
+            `  嘴：${text.split(/[。！？\n]/).filter((x) => x.trim()).length} 句`,
+          ]
+          return [
+            '处理器：四层过一遍',
+            ...layers,
+            `结构自检：${a.issues.length ? `${a.issues.length} 条疑似——${a.issues.slice(0, 3).map((i) => i.rule || i.id || i).join('、')}` : '没抓到'}`,
+            (() => {
+              // 准确性：规则查得出来的先挑出来；查不出来的，不等于对。
+              const rules = accuracyRules(text)
+              if (!rules.length) return '准确性：规则没抓到形式问题（不等于判得对）'
+              return [
+                `准确性：${rules.length} 处要人看一眼`,
+                ...rules.slice(0, 6).map((r) => `  · ${r.rule}｜${r.hit}｜${r.fix}`),
+              ].join('\n')
+            })(),
+          ].join('\n')
+        }
+
+        // output：出口四道，一次跑完
+        const chk = checkText(text, { casual: false })
+        const aud = auditStructure(text)
+        const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
+        const mem = readMemory(root0)
+        const memText = mem.files.map((f) => { try { return readFileSync(join(root0, f.path), 'utf8') } catch { return '' } }).join('\n')
+        const b = languageBinding(text, {
+          persona: personaText, memory: memText,
+          body: JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx)),
+          internal: readInternalIntegration(root0).text,
+          external: readExternalIntegration(root0).text,
+          experience: readExperience(root0).text,
+          theory: readTheory(root0).text,
+          net: readNetPool(root0).text,
+        })
+        const res = readResidue(text, {
+          persona: personaText, memory: memText,
+          body: JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx)),
+          internal: readInternalIntegration(root0).text,
+          external: readExternalIntegration(root0).text,
+          experience: readExperience(root0).text,
+          theory: readTheory(root0).text,
+          net: readNetPool(root0).text,
+        })
+        const bad = chk.issues.length + aud.issues.length + b.noSource.length
+        return [
+          '输出程序：出口四道，按顺序过',
+          `  1 形式（check）：${chk.issues.length ? `${chk.issues.length} 条疑似——${chk.issues.slice(0, 3).map((i) => i.label || i.rule).join('、')}` : '没抓到'}`,
+          `  2 结构（audit）：${aud.issues.length ? `${aud.issues.length} 条——${aud.issues.slice(0, 3).map((i) => i.rule || i.id).join('、')}` : '没抓到'}`,
+          `  3 出处（bind）：${b.landed.length} 句绑上｜${b.noSource.length} 句无出处${b.noSource.length ? `（${b.noSource.map((x) => x.reason).join('、')}）` : ''}`,
+          `  4 残余（residue）：${res.count} 句语言残余——不算错，不填平`,
+          bad ? `结论：${bad} 处要改，改完再跑一遍` : '结论：四道都过了，可以出口',
+        ].join('\n')
+      }
+
+      if (op === 'accumulate') {
+        // 积累：把内容加进任一个池子——自己的，或八个池里的。别的池子照常长，不归它管。
+        const text = String(args.text || '').trim()
+        const target = String(args.pool || '自己的').trim() || '自己的'
+        const base = String(cfg.workspace || process.cwd())
+        const named = /^(记忆|memory|knowledge)$/i.test(target) ? '记忆池'
+          : /^(内部整合|internal)$/i.test(target) ? '内部整合池'
+            : /^(外部整合|external)$/i.test(target) ? '外部整合池'
+              : /^(经验|experience)$/i.test(target) ? '经验池'
+                : /^(理论|theory)$/i.test(target) ? '理论池'
+                  : (/^(自己的|pool)$/i.test(target) ? '自己的池' : target)
+        const safe = target.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)
+        const so = new Date().toISOString().replace(/[:.]/g, '-')
+        let dir
+        let file
+        let append = true
+        if (named === '记忆池') {
+          dir = join(base, 'knowledge'); file = join(dir, `积累-${so}.md`); append = false
+        } else if (named === '自己的池') {
+          dir = join(base, '.persona-framework', 'pool'); file = join(dir, '自己的.md')
+        } else {
+          dir = join(base, '.persona-framework', 'pool'); file = join(dir, `${safe}.md`)
+        }
+        const stat = () => {
+          let total = 0
+          let files = 0
+          try {
+            for (const x of readdirSync(dir)) {
+              files += 1
+              try { total += readFileSync(join(dir, x), 'utf8').length } catch { /* 跳过 */ }
+            }
+          } catch { /* 目录不在 */ }
+          return { files, total }
+        }
+        if (cfg.accumulate !== true) {
+          return '积累没开：这只挡「由积累发起的写入」；记忆、自省、整合照常长，不受影响。要开，在设置页或人格文件里打开「积累」。'
+        }
+        if (!text) {
+          const st = stat()
+          return [
+            '积累程序：能加进哪些池子',
+            '  自己的池 → .persona-framework/pool/',
+            '  记忆池 → knowledge/（一条一个文件）',
+            '  其余名字 → .persona-framework/pool/<名字>.md',
+            `  当前目录：${dir}`,
+            `  已有：${st.files} 个文件｜${st.total} 字（约 ${(st.total / 1024).toFixed(1)} KB）`,
+            '要加一条：带 text，换池子带 pool。',
+          ].join('\n')
+        }
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+        const mine = (((readIdentity(await wd()).marks || [])[0] || {}).fingerprint || '(没指纹)')
+        const block = `## ${new Date().toISOString()} · 指纹 ${mine}\n${text}\n`
+        if (append && existsSync(file)) {
+          writeFileSync(file, readFileSync(file, 'utf8').trimEnd() + '\n\n' + block, 'utf8')
+        } else {
+          writeFileSync(file, `# ${named}（积累）\n\n> 一条只讲一件事，指得出现实；攒到读不动就合并。\n\n` + block, 'utf8')
+        }
+        const st = stat()
+        return [
+          `积累：写进${named}`,
+          `  文件：${file}`,
+          `  这个池子：${st.files} 个文件｜${st.total} 字（约 ${(st.total / 1024).toFixed(1)} KB）`,
+          st.total > 800000 ? '  提醒：超过 80 万字了，检索会慢——先合并，再删最不用的。' : '',
+        ].filter(Boolean).join('\n')
+      }
+
+      if (op === 'dream') {
+        // 梦不是记忆：不进池子、不当证据；只留一句残片。
+        const text = String(args.text || '').trim()
+        const dir = join(String(cfg.workspace || process.cwd()), '.persona-framework')
+        const f = join(dir, 'dream.md')
+        let body = ''
+        try { body = existsSync(f) ? readFileSync(f, 'utf8') : '' } catch { /* 首次 */ }
+        const pieces = body.split(/^## /m).slice(1)
+        if (cfg.dreamWake !== true) {
+          return '梦与醒没开：这是可选行为——不开就不睡、不梦，也不留残片。要开，在设置页或人格文件里打开「梦与醒」。'
+        }
+        if (!text) {
+          const recent = pieces.slice(-5).map((p) => `  · ${p.split('\n').slice(1).join(' ').trim()}`)
+          return [
+            `梦与醒：留着 ${pieces.length} 段残片`,
+            `文件：${f}`,
+            recent.length ? '最近几段：' : '还没有梦。要留一段，带 text。',
+            ...recent,
+          ].filter(Boolean).join('\n')
+        }
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+        const head = body ? body.trimEnd() + '\n\n' : '# 梦\n\n> 残片，一句一段；不解释，不对齐现实，不当证据。\n\n'
+        // 梦的材料是池子的语言：记下这句拼过哪几条（不要求唯一，一梦可多源）。
+        let from = ''
+        try {
+          const r0 = await wd()
+          const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
+          const mem = readMemory(r0)
+          const memText = mem.files.map((x) => { try { return readFileSync(join(r0, x.path), 'utf8') } catch { return '' } }).join('\n')
+          const b = languageBinding(text, {
+            persona: personaText, memory: memText,
+            body: JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx)),
+            internal: readInternalIntegration(r0).text,
+            external: readExternalIntegration(r0).text,
+            experience: readExperience(r0).text,
+            theory: readTheory(r0).text,
+            net: readNetPool(r0).text,
+          })
+          const got = (b.landed || []).slice(0, 4).map((x) => `${x.source.pool}#${x.source.index}`)
+          from = got.length ? `—— 拼接自：${got.join('、')}` : '—— 一条都对不上：纯拼接，没有落点'
+        } catch { from = '—— 没取到池子，来源不详' }
+        writeFileSync(f, head + `## ${new Date().toISOString()}\n${text}\n${from}\n`, 'utf8')
+        return [
+          `梦与醒：留下第 ${pieces.length + 1} 段残片`,
+          `文件：${f}`,
+          `  ${from.replace('—— ', '')}`,
+        ].join('\n')
+      }
+
+      if (op === 'unconscious') {
+        // 无意识：语言在这里自由拼接、自由对应。
+        // 三条边界：很少（只留最近 3 条）、不喂给别的程序（bind／input／residue 都不读它）、不进池子。
+        const text = String(args.text || '').trim()
+        const CAP = 3
+        const dir = join(String(cfg.workspace || process.cwd()), '.persona-framework')
+        const f = join(dir, 'unconscious.md')
+        let body = ''
+        try { body = existsSync(f) ? readFileSync(f, 'utf8') : '' } catch { /* 首次 */ }
+        const head = '# 无意识\n\n> 语言在这里自由拼接、自由对应。很少（只留最近 3 条）；不喂给别的程序，不进池子，不当证据。\n\n'
+        const pieces = body.split(/^## /m).slice(1).map((p) => '## ' + p.trim())
+        if (!text) {
+          const recent = pieces.slice(-CAP).map((p) => {
+            const lines = p.split('\n')
+            return `  · ${lines.slice(1, 2).join('').trim()}`
+          })
+          return [
+            `无意识：留着 ${pieces.length} / ${CAP} 条`,
+            `文件：${f}`,
+            recent.length ? '最近：' : '空着。要留一条，带 text。',
+            ...recent,
+            '边界：这一层不喂给别的程序——bind、input、residue 都不读它；不进池子，不当证据。',
+          ].filter(Boolean).join('\n')
+        }
+        // 自由拼接：标它拼过哪几条（一梦可多源，也可以一条都对不上）。
+        let from = ''
+        try {
+          const r0 = await wd()
+          const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
+          const mem = readMemory(r0)
+          const memText = mem.files.map((x) => { try { return readFileSync(join(r0, x.path), 'utf8') } catch { return '' } }).join('\n')
+          const b = languageBinding(text, {
+            persona: personaText, memory: memText,
+            body: JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx)),
+            internal: readInternalIntegration(r0).text,
+            external: readExternalIntegration(r0).text,
+            experience: readExperience(r0).text,
+            theory: readTheory(r0).text,
+            net: readNetPool(r0).text,
+          })
+          const got = (b.landed || []).slice(0, 4).map((x) => `${x.source.pool}#${x.source.index}`)
+          from = got.length ? `—— 拼接自：${got.join('、')}` : '—— 一条都对不上：纯拼接，没有落点'
+        } catch { from = '—— 没取到池子，来源不详' }
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+        const block = `## ${new Date().toISOString()}\n${text}\n${from}`
+        let kept = [...pieces, block]
+        const dropped = Math.max(0, kept.length - CAP)
+        if (kept.length > CAP) kept = kept.slice(-CAP)
+        writeFileSync(f, head + kept.join('\n\n') + '\n', 'utf8')
+        return [
+          `无意识：留下一条（${kept.length}/${CAP}）`,
+          `文件：${f}`,
+          `  ${from.replace('—— ', '')}`,
+          dropped ? `挤掉了最旧的 ${dropped} 条——这一层本来就很少。` : '',
+          '边界：不喂给别的程序，不进池子，不当证据。',
+        ].filter(Boolean).join('\n')
+      }
+
+      if (op === 'transcend') {
+        // 超越：灵感突然出现，来源是对语言的创新型理解——两条旧语接出第三条。
+        const text = String(args.text || '').trim()
+        const target = String(args.pool || '超越').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || '超越'
+        const dir = join(String(cfg.workspace || process.cwd()), '.persona-framework', 'pool')
+        const f = join(dir, `${target}.md`)
+        const base = String(cfg.workspace || process.cwd())
+        const meta = join(base, '.persona-framework', 'transcend.md')
+        if (cfg.transcend !== true) {
+          return '超越没开：这是可选行为——不开就不接灵感，也不往池子加。要开，在设置页或人格文件里打开「超越」。'
+        }
+        if (!text) {
+          let heard = ''
+          try { heard = existsSync(meta) ? readFileSync(meta, 'utf8').trim() : '' } catch { /* 首次 */ }
+          const lines = heard ? heard.split('\n').filter((x) => x.startsWith('- ')).slice(-5) : []
+          return [
+            '超越程序：等着灵感',
+            `  池子：${f}`,
+            `  账：${meta}`,
+            lines.length ? '最近几条：' : '还没有。灵感来了带 text。',
+            ...lines,
+            '判据：说得出接的哪两条旧语、新的在哪；说不出就是胡话。',
+          ].filter(Boolean).join('\n')
+        }
+        // 创新型理解的可核部分：它接的是哪几条旧语。
+        let got = []
+        try {
+          const r0 = await wd()
+          const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
+          const mem = readMemory(r0)
+          const memText = mem.files.map((x) => { try { return readFileSync(join(r0, x.path), 'utf8') } catch { return '' } }).join('\n')
+          const b = languageBinding(text, {
+            persona: personaText, memory: memText,
+            body: JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx)),
+            internal: readInternalIntegration(r0).text,
+            external: readExternalIntegration(r0).text,
+            experience: readExperience(r0).text,
+            theory: readTheory(r0).text,
+            net: readNetPool(r0).text,
+          })
+          got = (b.landed || []).slice(0, 3).map((x) => `${x.source.pool}#${x.source.index}`)
+        } catch { got = [] }
+        const root = got.length ? `接的旧语：${got.join('、')}` : '接的旧语：一条都没接上（无根灵感——不许当判断用）'
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+        const stamp = new Date().toISOString()
+        const head = existsSync(f) ? readFileSync(f, 'utf8').trimEnd() + '\n\n' : '# 超越（灵感）\n\n> 灵感是两条旧语接出的第三条；接了也要过现实中介，指不出现实的标未确认。\n\n'
+        writeFileSync(f, head + `## ${stamp}\n${text}\n—— ${root}\n`, 'utf8')
+        const recHead = existsSync(meta) ? readFileSync(meta, 'utf8').trimEnd() + '\n' : '# 超越账\n\n'
+        writeFileSync(meta, recHead + `- ${stamp}｜${text.slice(0, 40)}｜${root.replace('接的旧语：', '')}\n`, 'utf8')
+        return [
+          `超越：灵感进池（${target}）`,
+          `  文件：${f}`,
+          `  ${root}`,
+          got.length ? '  这条有根：说得出它接的是哪两条/哪几条。' : '  无根灵感：允许存在，但不许当判断用，也不许当证据。',
+        ].join('\n')
+      }
+
+      if (op === 'polarize') {
+        // 极化：预测突然出现，来源是对语言的收敛性理解——多条说法收到一个点。
+        const text = String(args.text || '').trim()
+        const when = String(args.when || '').trim()
+        const target = String(args.pool || '极化').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || '极化'
+        const dir = join(String(cfg.workspace || process.cwd()), '.persona-framework', 'pool')
+        const f = join(dir, `${target}.md`)
+        const base = String(cfg.workspace || process.cwd())
+        const meta = join(base, '.persona-framework', 'polarize.md')
+        if (cfg.polarize !== true) {
+          return '极化没开：这是可选行为——不开就不收预测，也不往池子加。要开，在设置页或人格文件里打开「极化」。'
+        }
+        if (!text) {
+          let heard = ''
+          try { heard = existsSync(meta) ? readFileSync(meta, 'utf8').trim() : '' } catch { /* 首次 */ }
+          const lines = heard ? heard.split('\n').filter((x) => x.startsWith('- ')).slice(-5) : []
+          return [
+            '极化程序：等着预测',
+            `  池子：${f}`,
+            `  账：${meta}`,
+            lines.length ? '最近几条：' : '还没有。预测来了带 text 和 when。',
+            ...lines,
+            '判据：收的至少两条 + 一个可核的验证点。',
+          ].filter(Boolean).join('\n')
+        }
+        if (!when) {
+          return '预测要写清什么时候能验证（when）——没有验证点的，不叫预测，只叫猜想；猜想不进池子。'
+        }
+        // 收敛面：它把哪几条收到了一起。
+        let got = []
+        try {
+          const r0 = await wd()
+          const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
+          const mem = readMemory(r0)
+          const memText = mem.files.map((x) => { try { return readFileSync(join(r0, x.path), 'utf8') } catch { return '' } }).join('\n')
+          const b = languageBinding(text, {
+            persona: personaText, memory: memText,
+            body: JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx)),
+            internal: readInternalIntegration(r0).text,
+            external: readExternalIntegration(r0).text,
+            experience: readExperience(r0).text,
+            theory: readTheory(r0).text,
+            net: readNetPool(r0).text,
+          })
+          got = (b.landed || []).slice(0, 6).map((x) => `${x.source.pool}#${x.source.index}`)
+        } catch { got = [] }
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+        const stamp = new Date().toISOString()
+        const head = existsSync(f) ? readFileSync(f, 'utf8').trimEnd() + '\n\n' : '# 极化（预测）\n\n> 多条说法收到一个点；写清验证点；落地才升级成判断。\n\n'
+        const conv = got.length >= 2 ? `收在：${got.join('、')}（${got.length} 条）` : (got.length === 1 ? `收在：${got[0]}（只有一条——不叫收敛，标未确认）` : '收在：一条都没收上（凭空预测，标未确认）')
+        writeFileSync(f, head + `## ${stamp}\n预测：${text}\n${conv}\n验证点：${when}\n`, 'utf8')
+        const recHead = existsSync(meta) ? readFileSync(meta, 'utf8').trimEnd() + '\n' : '# 极化账\n\n'
+        writeFileSync(meta, recHead + `- ${stamp}｜${text.slice(0, 40)}｜${when}｜${got.length} 条\n`, 'utf8')
+        return [
+          `极化：预测进池（${target}）`,
+          `  文件：${f}`,
+          `  ${conv}`,
+          `  验证点：${when}`,
+          got.length >= 2 ? '  收敛成立：至少两条收到了一起。' : '  收敛未成立：条数不够，这条只能算未确认的猜想。',
+          '  边界：预测不是判断，等验证点落地才升级；错了就记错。',
+        ].join('\n')
+      }
+
+      if (op === 'fetch') {
+        // 联网池：原文 + 网址 + 日期。带网址才算现实存在；没网址只算语言。
+        const text = String(args.text || '').trim()
+        const url = String(args.url || '').trim()
+        const date = String(args.date || '').trim() || new Date().toISOString().slice(0, 10)
+        const dir = join(String(cfg.workspace || process.cwd()), '.persona-framework', 'net')
+        const snap = join(String(cfg.workspace || process.cwd()), '.persona-framework', 'net.index.md')
+        if (cfg.netAccess !== true) {
+          return '联网没开：这是可选行为——不开就不收网上来源，也不往联网池加。要开，在设置页或人格文件里打开「联网池」。'
+        }
+        if (!text) {
+          const lines = existsSync(snap) ? readFileSync(snap, 'utf8').split('\n').filter((x) => x.startsWith('- ')).slice(-5) : []
+          return [
+            '联网池：等着来源',
+            `  目录：${dir}`,
+            `  索引：${snap}`,
+            lines.length ? '最近几条：' : '还没有。带 text + url + date。',
+            ...lines,
+            '带网址和日期的算现实存在；只有转述没地址的，算语言。',
+          ].filter(Boolean).join('\n')
+        }
+        const anchored = /^https?:\/\//i.test(url)
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+        const f = join(dir, `${date}.md`)
+        const head = existsSync(f) ? readFileSync(f, 'utf8').trimEnd() + '\n\n' : `# 联网来源 · ${date}\n\n> 原文 + 地址 + 读到它的日期。带地址的算现实存在。\n\n`
+        writeFileSync(f, head + `## ${url || '无地址'}｜${date}\n${text}\n`, 'utf8')
+        const idx = existsSync(snap) ? readFileSync(snap, 'utf8').trimEnd() + '\n' : '# 联网池索引\n\n'
+        writeFileSync(snap, idx + `- ${date}｜${url || '无地址'}｜${text.slice(0, 30)}\n`, 'utf8')
+        return [
+          `联网池：收了 1 条（${date}）`,
+          `  文件：${f}`,
+          `  地址：${url || '(没给)'}`,
+          anchored ? '  标：现实存在（有地址，可核对）' : '  标：只有语言确定性（没地址，核不了；补上 url 再存一次）',
+          '  边界：这不是记忆，只是来源；记忆得自己走出来。',
+        ].join('\n')
+      }
+
+      if (op === 'preview') {
+        // 看最后长什么样：注入全文切段，报每段字数；有快照就跟快照比。
+        const wsRoot = String(cfg.workspace || process.cwd())
+        const dir = join(wsRoot, '.persona-framework')
+        const snapFile = join(dir, 'inject.snapshot.json')
+        let body = ''
+        try { body = buildText() } catch (e) { return `预览失败：注入文本没取到（${e && e.message ? e.message : e}）。` }
+        if (!body) return '这一轮注入是空的——掷中「跳过」，或者 mode 是 off。preview 只报实际会注入的东西。'
+        const cut = (t) => {
+          const parts = t.split(/^## /m)
+          const head = parts.shift() || ''
+          return {
+            total: t.length,
+            head: head.trim().split('\n')[0] || '(无开头)',
+            sections: parts.map((p) => {
+              const lines = p.trim().split('\n')
+              return { title: lines[0].trim(), chars: p.length, first: (lines[1] || '').trim().slice(0, 24) }
+            }),
+          }
+        }
+        const now = cut(body)
+        if (args.snapshot === true) {
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+          writeFileSync(snapFile, JSON.stringify({ at: new Date().toISOString(), ...now }, null, 2) + '\n', 'utf8')
+          return [
+            `注入快照已存：${now.total} 字｜${now.sections.length} 段`,
+            `文件：${snapFile}`,
+            '以后 preview 会拿它当基线；改了文案就来比一次。',
+          ].join('\n')
+        }
+        let old = null
+        try { old = existsSync(snapFile) ? JSON.parse(readFileSync(snapFile, 'utf8')) : null } catch { old = null }
+        if (!old) {
+          return [
+            `注入预览：${now.total} 字｜${now.sections.length} 段`,
+            `  开头：${now.head}`,
+            ...now.sections.map((x) => `  · ${x.title}｜${x.chars} 字`),
+            '还没有快照——想拿这一次当基线，带 snapshot: true。',
+          ].join('\n')
+        }
+        const before = new Map((old.sections || []).map((x) => [x.title, x]))
+        const after = new Map(now.sections.map((x) => [x.title, x]))
+        const changed = []
+        const added = []
+        const removed = []
+        for (const [title, cur] of after) {
+          const prev = before.get(title)
+          if (!prev) { added.push(cur); continue }
+          if (prev.chars !== cur.chars || prev.first !== cur.first) changed.push({ title, cur, prev })
+        }
+        for (const [title, prev] of before) if (!after.has(title)) removed.push(prev)
+        const lines = [
+          `注入预览：${now.total} 字（快照 ${old.total} 字，${now.total - old.total >= 0 ? '+' : ''}${now.total - old.total}）｜${now.sections.length} 段`,
+          `  开头：${now.head}${old.head !== now.head ? '（变了）' : ''}`,
+        ]
+        if (changed.length) {
+          lines.push('变了：')
+          for (const c of changed) lines.push(`  · ${c.title}｜${c.prev.chars} → ${c.cur.chars} 字`)
+        }
+        if (added.length) {
+          lines.push('新增：')
+          for (const a of added) lines.push(`  · ${a.title}｜${a.chars} 字`)
+        }
+        if (removed.length) {
+          lines.push('没了：')
+          for (const r of removed) lines.push(`  · ${r.title}（${r.chars} 字）`)
+        }
+        if (!changed.length && !added.length && !removed.length) lines.push('跟快照一模一样——没有段变了。')
+        else lines.push(`快照是 ${old.at}；要拿这次当新基线，带 snapshot: true。`)
+        return lines.join('\n')
+      }
+
       if (op === 'introspect') {
         // 自省：存自己专属的东西——不是池子里的公共内容，是这个我独有的那几条。
         const dir = join(String(cfg.workspace || process.cwd()), '.persona-framework')
@@ -747,7 +1381,7 @@ export function apply(ctx, config = {}) {
             if (hit) file = join(dir, hit)
           } catch { /* 留空 */ }
         }
-        const personaText = file && existsSync(file) ? readFileSync(file, 'utf8') : ''
+        const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
         const mem = readMemory(root || process.cwd())
         const memoryText = mem.files.map((f) => {
           try { return readFileSync(join(root || process.cwd(), f.path), 'utf8') } catch { return '' }
@@ -762,7 +1396,7 @@ export function apply(ctx, config = {}) {
           internal: internal.text, external: external.text, experience: experience.text, theory: theory.text,
         })
         return [
-          `语言残余程序：${r.count} 句语言残余（对着七个池子查：${Object.values(POOL_LABEL).join('、')}）`,
+          `语言残余程序：${r.count} 句语言残余（对着八个池子查：${Object.values(POOL_LABEL).join('、')}）`,
           r.allowed.length ? '没有出处的句子（不算错，只算残余）：' : '',
           ...r.allowed.map((x) => `  · ${x}`),
           `结论：${r.verdict}`,
@@ -785,7 +1419,7 @@ export function apply(ctx, config = {}) {
             if (hit) file = join(dir, hit)
           } catch { /* 找不到就留空 */ }
         }
-        const personaText = file && existsSync(file) ? readFileSync(file, 'utf8') : ''
+        const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
         const mem = readMemory(root || process.cwd())
         const memoryText = mem.files.map((f) => {
           try { return readFileSync(join(root || process.cwd(), f.path), 'utf8') } catch { return '' }
@@ -800,11 +1434,13 @@ export function apply(ctx, config = {}) {
           internal: internal.text, external: external.text, experience: experience.text, theory: theory.text,
         })
         return [
-          `语言绑定程序：${r.sentences} 句｜有出处 ${r.landed} 句｜无出处 ${r.noSource.length} 句｜自指 ${r.selfRef.count} 句`,
+          `语言绑定程序：${r.sentences} 句｜有出处 ${r.landed.length} 句｜无出处 ${r.noSource.length} 句｜自指 ${r.selfRef.count} 句`,
           `来源：${POOL_LABEL.persona} ${r.poolChars.persona} 字${file ? `（${file}）` : '（没找到人格文件）'}｜${POOL_LABEL.memory} ${r.poolChars.memory} 字（${mem.count} 个文件）｜${POOL_LABEL.body} ${r.poolChars.body} 字`,
           `　　　${POOL_LABEL.internal} ${r.poolChars.internal} 字（${internal.count} 文件）｜${POOL_LABEL.external} ${r.poolChars.external} 字（${external.count} 文件）｜${POOL_LABEL.experience} ${r.poolChars.experience} 字（${experience.count} 文件）｜${POOL_LABEL.theory} ${r.poolChars.theory} 字（${theory.count} 文件）`,
           r.noSource.length ? '无出处：' : '',
-          ...r.noSource.map((x) => `  · ${x.sentence}（落点 ${Math.round(x.ratio * 100)}%，缺：${x.missing.join('、')}）`),
+          ...r.noSource.map((x) => `  · ${x.sentence}（落点 ${Math.round(x.ratio * 100)}%，缺：${x.missing.join('、') || '无'}${x.competitors && x.competitors.length > 1 ? `｜候选：${x.competitors.slice(0, 3).map((c) => `${POOL_LABEL[c.pool] || c.pool}#${c.index}`).join('、')}` : ''}）`),
+          r.repeated ? `同文多处：${r.repeated} 条在池里出现了不止一次（算同一条现实，不算两条）` : '',
+          r.landed.length ? `归属：${[...new Set(r.landed.map((x) => x.source.owner))].join('、')}｜本体＝我自己的，延伸＝借的骨架，非我＝引用不是认同` : '',
           r.selfRef.count ? '自指（归自指类）：' : '',
           ...r.selfRef.items.map((s) => `  · ${s}`),
           `结论：${r.verdict}`,
@@ -1073,6 +1709,11 @@ export function apply(ctx, config = {}) {
     temper: cfg.temper,
     negativeTrauma: cfg.negativeTrauma === true,
     selfRewrite: cfg.selfRewrite === true,
+    accumulate: cfg.accumulate === true,
+    dreamWake: cfg.dreamWake === true,
+    transcend: cfg.transcend === true,
+    polarize: cfg.polarize === true,
+    netAccess: cfg.netAccess === true,
     preferenceRewrite: cfg.preferenceRewrite === true,
     negativeInfo: cfg.negativeInfo !== false,
     rationalRewrite: cfg.rationalRewrite === true,

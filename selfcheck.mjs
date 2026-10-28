@@ -181,7 +181,7 @@ const seven = languageBetrayal('这句话是假的。海水是咸的因为盐进
   persona: '电台', memory: '节目', body: '工作区',
   internal: '体验 认知 现实 理想', external: '网页', experience: '会话', theory: '世界理解',
 })
-ok('语言背叛：七个池都报字数', Object.keys(seven.poolChars).length === 7, Object.keys(seven.poolChars).join(','))
+ok('语言背叛：八个池都报字数', Object.keys(seven.poolChars).length === 8, Object.keys(seven.poolChars).join(','))
 ok('语言背叛：池子非空时不报「没有来源」', seven.empty === false)
 
 const fwVer = (() => {

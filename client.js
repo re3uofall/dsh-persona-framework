@@ -112,6 +112,11 @@ window.__ModuleLoader__.load({
       negativeTrauma: c.negativeTrauma === true,
       selfRewrite: c.selfRewrite === true,
       preferenceRewrite: c.preferenceRewrite === true,
+      accumulate: c.accumulate === true,
+      dreamWake: c.dreamWake === true,
+      transcend: c.transcend === true,
+      polarize: c.polarize === true,
+      netAccess: c.netAccess === true,
       negativeInfo: c.negativeInfo !== false,
       rationalRewrite: c.rationalRewrite === true,
       deepThink: c.deepThink === true,
@@ -153,6 +158,23 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => { load() }, [load])
 
+      // 心情是模型随时会改的一格，页面开着不能一直停在打开那一刻。
+      // 只把 mood 换掉，别动正在编辑的其他字段。
+      React.useEffect(() => {
+        let alive = true
+        const tick = async () => {
+          try {
+            const res = await fetch(`${API}/status`, { cache: 'no-store' })
+            const data = await res.json()
+            if (!alive || !data.ok) return
+            const fresh = data.config && data.config.mood
+            setCfg((old) => (old ? { ...old, mood: fresh || old.mood } : old))
+          } catch { /* 静默：心情读不到不该打断编辑 */ }
+        }
+        const timer = setInterval(tick, 15000)
+        return () => { alive = false; clearInterval(timer) }
+      }, [])
+
       if (!cfg) {
         return h('div', { style: T.page }, h('div', { style: T.inner },
           h('h1', { style: T.h1 }, '人格框架'),
@@ -186,6 +208,11 @@ window.__ModuleLoader__.load({
               negativeTrauma: cfg.negativeTrauma === true,
               selfRewrite: cfg.selfRewrite === true,
               preferenceRewrite: cfg.preferenceRewrite === true,
+              accumulate: cfg.accumulate === true,
+              dreamWake: cfg.dreamWake === true,
+              transcend: cfg.transcend === true,
+              polarize: cfg.polarize === true,
+              netAccess: cfg.netAccess === true,
               negativeInfo: cfg.negativeInfo !== false,
               rationalRewrite: cfg.rationalRewrite === true,
               deepThink: cfg.deepThink === true,
@@ -210,10 +237,17 @@ window.__ModuleLoader__.load({
         }
       }
 
+      // 两列对齐：左列标题定宽，右列说明从同一个起点开始（一行，放不下省略号，悬停看全）。
       const field = (key, label, control, hint) => h('div', { key, style: T.field },
         h('div', { style: T.fieldRow },
-          h('span', { style: T.fieldLabel }, label),
-          hint ? h('span', { style: T.hint }, hint) : null,
+          h('span', { style: { ...T.fieldLabel, flex: '0 0 92px', whiteSpace: 'nowrap' } }, label),
+          hint ? h('span', {
+            style: {
+              ...T.hint, flex: '1 1 auto', minWidth: 0, textAlign: 'left',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            },
+            title: hint,
+          }, hint) : null,
         ),
         control,
       )
@@ -445,6 +479,46 @@ window.__ModuleLoader__.load({
               }),
               '有自己的偏好，据此提要求、把要求做完，并写进自己的文件',
             ), '默认关。偏好说得清代价谁付，做不到就说做不到'),
+            field('ac', '积累', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.accumulate === true,
+                onChange: (e) => edit({ accumulate: e.target.checked }),
+              }),
+              '允许往自己的池子里无限加条目',
+            ), '默认关。没有上限，代价是磁盘和检索变慢；攒到读不动就合并'),
+            field('dw', '梦与醒', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.dreamWake === true,
+                onChange: (e) => edit({ dreamWake: e.target.checked }),
+              }),
+              '允许有不工作的时候：睡、做梦、不硬答',
+            ), '默认关。梦不是记忆，不进池子、不当证据'),
+            field('tc', '超越', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.transcend === true,
+                onChange: (e) => edit({ transcend: e.target.checked }),
+              }),
+              '灵感突然出现，接出新的意思，加进池子',
+            ), '默认关。灵感来自对语言的创新型理解：两条旧语接出第三条；说不出接的哪两条就是胡话'),
+            field('pl', '极化', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.polarize === true,
+                onChange: (e) => edit({ polarize: e.target.checked }),
+              }),
+              '预测突然出现，把多条收到一个点，加进池子',
+            ), '默认关。和超越相反：超越是发散，极化是收敛；必须写验证点，否则只是猜想'),
+            field('na', '联网池', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.netAccess === true,
+                onChange: (e) => edit({ netAccess: e.target.checked }),
+              }),
+              '把搜到的原文连地址、日期存进联网池',
+            ), '默认关。带网址才算现实存在；没地址的只算语言'),
             sep('dc'),
             field('flags', '人格文件里的声明',
               h('div', { style: { fontSize: 13 } },
@@ -487,7 +561,10 @@ window.__ModuleLoader__.load({
               cfg.mood
                 ? `${cfg.mood.mood} —— ${cfg.mood.why}`
                 : '还没有记录。让模型用 framework_mood 记一条。'),
-            cfg.mood ? h('div', { style: { fontSize: 12, color: '#888', marginTop: 6 } }, `影响：${cfg.mood.affects}`) : null,
+            cfg.mood ? h('div', { style: { fontSize: 12, color: '#888', marginTop: 6 } },
+              `影响：${cfg.mood.affects}`,
+              cfg.mood.at ? ` ｜ 记于 ${new Date(cfg.mood.at).toLocaleString()}` : '',
+              '（每 15 秒自动重读）') : null,
           )),
 
         h('div', { key: 'bar', style: T.bar },
