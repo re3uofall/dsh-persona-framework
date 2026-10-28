@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-framework",
-  "version": "4.9.0",
+  "version": "4.11.0",
   "description": "人格框架插件：62 个模块的通用人格框架，外挂注入，不覆盖人格文件；带出口自检、结构自检、槽位体检、长文预处理、心情状态。",
   "type": "module",
   "main": "index.js",

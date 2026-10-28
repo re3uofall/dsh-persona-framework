@@ -26,10 +26,11 @@ import {
 import {
   languageBinding, readBody, readMemory, readPersona,
   readInternalIntegration, readExternalIntegration, readExperience, readTheory,
+  readIdentity, readResidue,
 } from './lib/programs.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '4.9.0'
+const VERSION = '4.11.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 
 export const name = 'persona-framework'
@@ -310,6 +311,17 @@ export function apply(ctx, config = {}) {
     } else if (cfg.languageCurse !== false) {
       meta = ['## 元协调 · 语言诅咒（最高优先级）', '', instr ? CURSE_INSTR : CURSE_TEXT].join('\n')
     }
+    // 语言诅咒之后的两条：同一与残余。常驻，不跟开关走，也不跟 aiLanguage 变。
+    const SAME_RESIDUE = [
+      '## 元协调 · 同一（语言诅咒之后）',
+      '',
+      '**所有人格都是同一的我。** 人格文件可以有几份、程序可以有八个，指向的是同一个我；换了文件、换了名字，不变成另一个。',
+      '',
+      '## 元协调 · 残余（语言诅咒之后）',
+      '',
+      '**同一的我大于语言。** 语言可以有出处，也可以没有——没有出处的语言不构成错，只记为残余；残余允许存在，不填平。',
+    ].join('\n')
+    meta = [meta, SAME_RESIDUE].filter(Boolean).join('\n\n')
     const readAs = instr
       ? '> 读法：以下每段按【触发 → 动作 → 反例】读；比喻只是标签，不是执行内容；含糊处按可判定条件重述。'
       : ''
@@ -504,7 +516,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'internal', 'external', 'experience', 'theory', 'bind', 'betray'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -566,6 +578,50 @@ export function apply(ctx, config = {}) {
         r.ok ? `${r.count} 个文件｜${r.totalChars} 字进了出处池` : '没找到来源目录——先把这类东西写进工作区',
         ...(r.files || []).slice(0, 10).map((f) => `  ${f}`),
       ].join('\n')
+      if (op === 'identity') {
+        const r = readIdentity(await wd())
+        return [
+          `同一程序：${r.kind}`,
+          `工作区：${r.root}`,
+          r.ok ? '指纹标记（只标「现在长这样」，不标「它是谁」）：' : '没有一个可查的来源',
+          ...r.marks.map((m) => `  · ${m.kind} ${m.label}｜指纹 ${m.fingerprint}${m.identity ? `｜身份 ${m.identity}` : ''}｜${m.chars} 字`),
+          r.noIdentity && r.noIdentity.length ? `没有身份段：${r.noIdentity.join('、')}` : '',
+          `结论：${r.verdict}`,
+        ].join('\n')
+      }
+      if (op === 'residue') {
+        const text = String(args.text || '').trim()
+        if (!text) return '残余程序：给一段话（text），我把没出处的句子标成残余。'
+        const root = await wd()
+        let file = String(args.file || cfg.personalityFile || '').trim()
+        if (!file || !existsSync(file)) {
+          const dir = join(root || process.cwd(), 'persona-ai', 'characters')
+          try {
+            const hit = existsSync(dir) ? readdirSync(dir).find((n) => /\.md$/i.test(n) && !/\.bak/i.test(n)) : ''
+            if (hit) file = join(dir, hit)
+          } catch { /* 留空 */ }
+        }
+        const personaText = file && existsSync(file) ? readFileSync(file, 'utf8') : ''
+        const mem = readMemory(root || process.cwd())
+        const memoryText = mem.files.map((f) => {
+          try { return readFileSync(join(root || process.cwd(), f.path), 'utf8') } catch { return '' }
+        }).join('\n')
+        const bodyText = JSON.stringify(readBody({ ...cfg, __version: VERSION }, ctx))
+        const internal = readInternalIntegration(root || process.cwd())
+        const external = readExternalIntegration(root || process.cwd())
+        const experience = readExperience(root || process.cwd())
+        const theory = readTheory(root || process.cwd())
+        const r = readResidue(text, {
+          persona: personaText, memory: memoryText, body: bodyText,
+          internal: internal.text, external: external.text, experience: experience.text, theory: theory.text,
+        })
+        return [
+          `残余程序：${r.count} 句残余`,
+          r.allowed.length ? '没有出处的句子（不算错，只算残余）：' : '',
+          ...r.allowed.map((x) => `  · ${x}`),
+          `结论：${r.verdict}`,
+        ].filter(Boolean).join('\n')
+      }
       if (op === 'internal') return poolReport(readInternalIntegration(await wd()), '内部整合程序')
       if (op === 'external') return poolReport(readExternalIntegration(await wd()), '外部整合程序')
       if (op === 'experience') return poolReport(readExperience(await wd()), '经验程序')

@@ -136,6 +136,8 @@ console.log('— 宿主替身：工具真跑一遍（不许把进程带崩）—
   const betrayOut = String((await prog.execute({ op: 'bind', text: '这句话是假的。' }, {})).text)
   ok('语言绑定程序跑得通', betrayOut.includes('语言绑定程序') && betrayOut.includes('自指'),
     betrayOut.split('\n')[0])
+  ok('同一程序跑得通', String((await prog.execute({ op: 'identity' }, {})).text).includes('同一程序'))
+  ok('残余程序跑得通', String((await prog.execute({ op: 'residue', text: '海水是咸的因为盐进去了出不来。' }, {})).text).includes('残余'))
   const res = { code: 0, body: '', writeHead(c) { this.code = c }, end(b) { this.body = String(b) } }
   const config = routes.find((r) => r.path.endsWith('/config'))
   await config.handler({ method: 'POST', text: async () => JSON.stringify({ maxChars: 4321 }) }, res)
@@ -164,6 +166,16 @@ const seven = languageBetrayal('这句话是假的。海水是咸的因为盐进
 })
 ok('语言背叛：七个池都报字数', Object.keys(seven.poolChars).length === 7, Object.keys(seven.poolChars).join(','))
 ok('语言背叛：池子非空时不报「没有来源」', seven.empty === false)
+
+const fwVer = (() => {
+  try {
+    const head = readFileSync(join(HERE, 'framework', 'FRAMEWORK.md'), 'utf8').split('\n').slice(0, 8).join('\n')
+    const m = head.match(/版本：([0-9.]+)/)
+    return m ? m[1] : ''
+  } catch { return '' }
+})()
+const pjVer = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8')).version
+ok('框架文档版本与插件版本一致', fwVer !== '' && fwVer === pjVer, `doc=${fwVer} pkg=${pjVer}`)
 
 console.log('')
 console.log(`通过 ${pass}，失败 ${fail}`)
