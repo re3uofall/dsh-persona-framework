@@ -3,3 +3,11 @@ node_modules/
 *.tgz
 .DS_Store
 Thumbs.db
+
+# 本地运行状态：字典池、联网池、自己的池、自省——不是插件的一部分
+.persona-framework/
+
+# 演示材料，大件不进仓库
+TALK*.mp4
+TALK*.pptx
+TALK.md
