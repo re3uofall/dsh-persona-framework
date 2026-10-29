@@ -39,7 +39,12 @@ ok('MANIFEST 版本等于插件版本', (() => {
   } catch { return false }
 })(), 'MANIFEST 版本行不是当前版本')
 
-ok('切出 14 段（开篇 + 〇～十二 十三节）', fw.sections.length === 14, `${fw.sections.length} 段`)
+ok(
+  '切出 14 段（开篇 + 〇～十二 十三节），可多一节「边界」',
+  fw.sections.length === 14
+    || (fw.sections.length === 15 && String(fw.sections[14]?.title || '').includes('边界')),
+  `${fw.sections.length} 段${fw.sections.length > 14 ? `（末节：${fw.sections[14]?.title}）` : ''}`,
+)
 ok('第一段是「是什么」', fw.sections[1].title.includes('是什么'), fw.sections[1].title)
 ok('有骨架段', fw.sections.some((s) => s.title.includes('骨架')))
 

@@ -15,7 +15,7 @@
  * 配置全在 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
  */
-import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, statSync, appendFileSync } from 'node:fs'
 import { dirname, join, resolve, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkText, renderCheck, auditStructure, renderAudit } from './lib/checks.mjs'
@@ -27,11 +27,17 @@ import {
   languageBinding, readBody, readMemory, readPersona,
   readInternalIntegration, readExternalIntegration, readExperience, readTheory, readNetPool,
   accuracyRules,
-  readIdentity, readResidue, mediateReality,
+  readIdentity, readResidue, mediateReality, readLexicon, synonymCheck, readPersonaBundle, detectSwirl,
 } from './lib/programs.mjs'
+import { ensureWorkspace, pickPersonaFile as pickPersona, inspectWorkspace, SKELETON, POOL_PATHS } from './lib/workspace.mjs'
+import { appendToPool, WRITE_TARGETS, undoWrite, undoPathOf } from './lib/poolwrite.mjs'
+import { harvestCandidates, writeCandidates } from './lib/autolex.mjs'
+import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
+import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
+import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '4.31.1'
+const VERSION = '5.2.3'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 
 export const name = 'persona-framework'
@@ -44,14 +50,14 @@ const DEFAULTS = {
   workspace: '',
   /** 模块库索引的绝对路径；空 = 插件自带的 framework/MODULES.md */
   modulesFile: '',
-  /** full=整份 / compact=只注入「是什么＋骨架＋判据」 / off=不注入（工具仍可用） */
-  mode: 'full',
+  /** ai=规则体（默认，AI 好读）/ full=整份散文 / compact=只注入「是什么＋骨架＋判据」 / off=不注入（工具仍可用） */
+  mode: 'ai',
   /** 注入正文上限（字）；超了在段落处截断 */
-  maxChars: 9000,
+  maxChars: 12000,
   /** 注入里附模块索引：off=不附 / index=附索引 */
   includeModules: 'index',
   /** 模块索引注入上限（字） */
-  maxModulesChars: 2600,
+  maxModulesChars: 4000,
   /** 预处理：注入前把模块索引压成「编号 名字：一句话前 24 字」；关掉则原样注入 */
   preprocess: true,
   /** 人格文件的绝对路径：设置页填了它，framework_slots 默认就体检这一份 */
@@ -75,6 +81,46 @@ const DEFAULTS = {
   languageCurse: true,
   /** 元协调：负面信息（负面创伤的轻度版）。默认开；与负面创伤互斥 */
   negativeInfo: true,
+  /** 元协调：同义突破。默认开——判「含义」不判「表面语言」；表面相同不等于相同 */
+  synonym: true,
+  /** 字典池：按目录 mtime 缓存，默认开。关掉就每次重读（慢，但不吃旧结果） */
+  lexiconCache: true,
+  /** 字典池：最多读多少条含义，0 = 不限。只影响读多少，不影响已有缓存的命中 */
+  lexiconMax: 0,
+  /** 字典池：单次读取的时间预算（毫秒），0 = 不限。超过就带着已读到的先走 */
+  lexiconBudgetMs: 0,
+  /** 字典池：是否把含义清单注入上下文。默认关——关着时字典不花一个 token */
+  lexiconInject: false,
+  /** 自读写模块总的写权限：开着才往池子里落盘（滑动词条等）。默认关——只读不写 */
+  workspaceWrite: false,
+  /** 自动写：谁写。off｜plugin 插件自己扫｜ai 交给 AI 判断｜model 交给默认模型顺手写。默认 off */
+  autoMode: 'off',
+  /** 自动写：多久一次。off｜now｜daily｜weekly｜monthly｜at 每天固定时刻｜days 每 N 天 */
+  autoEvery: 'off',
+  /** 固定时刻（HH:MM），autoEvery = at 时用 */
+  autoAt: '10:30',
+  /** 每几天一次，autoEvery = days 时用 */
+  autoDays: 3,
+  /** 每次写多少条：插件收候选的上限；model/ai 也按这个数来 */
+  autoPerRun: 5,
+  /** 写入不发对话：自动写的时候不在对话里提，静默落盘 */
+  autoSilent: true,
+  /** 写入对象：self 自我｜nonSelf 非我｜extension 延伸｜lexicon 字典。可多选 */
+  autoTargets: ['self', 'extension', 'lexicon'],
+  /** 立即按钮按下的时间戳（毫秒）；比上次执行新就跑一次 */
+  autoWriteNow: 0,
+  /** 上次自动写的时间戳（毫秒） */
+  autoWriteLast: 0,
+  /** 旧名，兼容用；等价于 workspaceWrite */
+  swirlWrite: false,
+  /** 对外接口组：总闸默认关；开了之后六个口子各自自主决定用不用，不是任务清单 */
+  outbound: false,
+  outExplore: true,
+  outDiary: true,
+  outRelation: true,
+  outWork: true,
+  outLearn: true,
+  outResult: true,
   /** 可选：联网。默认关；开了允许把搜到的原文（带网址与日期）存进联网池 */
   netAccess: false,
   /** 可选：极化。默认关；开了允许把突然出现的预测加进池子 */
@@ -96,13 +142,20 @@ const DEFAULTS = {
   /** 元协调（53）：每轮按这个概率整轮不注入，像没装过；0–0.5，默认一成 */
   skipChance: 0.1,
   /** 附上「怎么用这套框架」那段 */
+  /** 可选：框架自反。开了之后 op=reflect 才真跑；关着只报「没开」。 */
+  frameworkReflect: false,
+  /** 自反之一：判据自反——拿样本查判据自己漏不漏、误不误 */
+  reflectCriteria: true,
+  /** 自反之二：结构自反——查规则编号、术语表、模块七节、索引覆盖 */
+  reflectStructure: true,
   guide: true,
   /** 设置页写的覆盖文件；空 = 自动找框架文件同目录下的 config.json */
   settingsFile: '',
 }
 
 /** 设置页能改的字段（白名单）。 */
-const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide']
+const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
+  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
   const out = {}
@@ -131,6 +184,10 @@ const clampCfg = (cfg) => {
   cfg.transcend = cfg.transcend === true
   cfg.polarize = cfg.polarize === true
   cfg.netAccess = cfg.netAccess === true
+  cfg.outbound = cfg.outbound === true
+  for (const k of ['outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult']) {
+    cfg[k] = cfg[k] !== false
+  }
   cfg.preferenceRewrite = cfg.preferenceRewrite === true
   cfg.languageBetray = cfg.languageBetray === true
   cfg.languageCurse = cfg.languageCurse !== false
@@ -194,25 +251,65 @@ const resolveSettingsFile = (cfg, ctx) => {
   return ''
 }
 
-/** AI 可读版的框架文件：显式配置 > 框架文件同目录 FRAMEWORK.ai.md > 插件自带。 */
+/** 从文件头里读「版本：x.y.z」；读不到返回空串。 */
+const versionOf = (file) => {
+  try {
+    const m = readFileSync(file, 'utf8').match(/版本[:：]\s*([\d.]+)/)
+    return m ? m[1] : ''
+  } catch { return '' }
+}
+
+/** 比版本号：a>b 返回正、a<b 返回负、相等 0。空版本号一律视为「不参与比较」。 */
+const cmpVersion = (a, b) => {
+  const pa = String(a).split('.').map((x) => Number(x) || 0)
+  const pb = String(b).split('.').map((x) => Number(x) || 0)
+  const n = Math.max(pa.length, pb.length)
+  for (let i = 0; i < n; i++) {
+    const x = pa[i] || 0
+    const y = pb[i] || 0
+    if (x !== y) return x - y
+  }
+  return 0
+}
+
+/** AI 可读版的框架文件：显式配置 > 框架文件同目录 > 工作区 > 插件自带。
+ *  候选按优先级排，但**版本低的让位给版本高的**——工作区里常常躺着一份早期同步过去的旧副本，
+ *  只按路径挑的话，插件升级之后注入永远还是旧的那份（2026-10-29 实证：工作区 4.38.0、自带 4.40.7）。
+ *  没有版本号的文件不参与比较：那是使用者自己重写的，优先级照旧。 */
 const resolveAiFile = (cfg, ctx) => {
   if (cfg.aiFile) return String(cfg.aiFile)
+  const candidates = []
   try {
     if (cfg.frameworkFile) {
       const guess = join(dirname(String(cfg.frameworkFile)), 'FRAMEWORK.ai.md')
-      if (existsSync(guess)) return guess
+      if (existsSync(guess)) candidates.push(guess)
     }
     const wd = ctx?.get?.('workingDirectory')?.defaultDirectory
     if (wd) {
       const guess = join(wd, '.persona-framework', 'FRAMEWORK.ai.md')
-      if (existsSync(guess)) return guess
+      if (existsSync(guess) && !candidates.includes(guess)) candidates.push(guess)
     }
   } catch { /* 没有这个服务就退到自带那份 */ }
-  return resolve(HERE, 'framework', 'FRAMEWORK.ai.md')
+  candidates.push(resolve(HERE, 'framework', 'FRAMEWORK.ai.md'))
+  let pick = candidates[0]
+  let pickVer = versionOf(pick)
+  for (const c of candidates.slice(1)) {
+    const v = versionOf(c)
+    // 两边都有版本号才比；一边没有，就尊重排在前面的那个。
+    if (pickVer && v && cmpVersion(v, pickVer) > 0) {
+      pick = c
+      pickVer = v
+    }
+  }
+  return pick
 }
 
 export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...(config && typeof config === 'object' ? config : {}) }
+  // 插件配置（cordis patch）里的工作区路径，单独记一份。
+  // 设置文件里若存了个空串，它会被 Object.assign 覆盖到 cfg.workspace 上，
+  // 一路把工作区盖成 process.cwd()——自动写就落到宿主的当前目录去了。
+  const CFG_WORKSPACE = String((config && config.workspace) || '').trim()
 
   const warn = (error) => {
     try { console.warn('[persona-framework]', errText(error)) } catch { /* 控制台没了就算了 */ }
@@ -224,6 +321,8 @@ export function apply(ctx, config = {}) {
     if (settingsFile && existsSync(settingsFile)) {
       const saved = JSON.parse(readFileSync(settingsFile, 'utf8'))
       Object.assign(cfg, pickEditable(saved))
+      // 空的 workspace 不许覆盖 patch 里配好的路径（config.json 曾存过空串，把工作区盖成 process.cwd()）
+      if (!String(cfg.workspace || '').trim() && String((config && config.workspace) || '').trim()) cfg.workspace = String(config.workspace).trim()
     }
   } catch (error) {
     warn(error)
@@ -231,9 +330,25 @@ export function apply(ctx, config = {}) {
   cfg.settingsFile = settingsFile
   clampCfg(cfg)
 
+  // 装上去先把骨架目录建好：没有目录，人就得先猜路径才能写第一个字。
+  // 只建空壳与格式说明，不替人写任何含义——字典是它的东西，不是插件的。
+  // 自读写模块（lib/workspace.mjs）：建骨架、找人、报现状。框架正文不管这些。
+  const wsRoot = () => String(cfg.workspace || '').trim() || CFG_WORKSPACE || (() => {
+    try { return ctx?.get?.('workingDirectory')?.defaultDirectory || process.cwd() } catch { return process.cwd() }
+  })()
+  let skeletonDone = null
+  try {
+    skeletonDone = ensureWorkspace(wsRoot(), { personalityFile: cfg.personalityFile, warn })
+  } catch (error) { warn(error) }
+
+  const lexOpts = () => ({ cache: cfg.lexiconCache !== false, max: cfg.lexiconMax, budgetMs: cfg.lexiconBudgetMs })
   const file = resolveFile(cfg, ctx)
   // 人格池读的是人格文件（personalityFile），不是框架文件。
-  const personaPath = String(cfg.personalityFile || '').trim()
+  // 别人装上插件多半不会去改配置：没填、或填的路径不在，就自己去工作区找一份。
+  // 找的顺序：characters 目录里带身份段的 → 同目录其它 md → 工作区根目录的 md。
+  // 找不到就返回空，池子明说「空着」，不猜、不替人写。
+  const pickPersonaFile = () => pickPersona(wsRoot(), cfg.personalityFile)
+  let personaPath = pickPersonaFile()
   let cache = { sig: '', fw: null }
 
   const load = () => {
@@ -246,14 +361,30 @@ export function apply(ctx, config = {}) {
 
   // ── 模块库索引 ──────────────────────────────────────────────────────────────
   const modulesFile = (() => {
+    if (cfg.modulesFile) return String(cfg.modulesFile)
     const tries = []
-    if (cfg.modulesFile) tries.push(String(cfg.modulesFile))
     try {
       const wd = ctx.get('workingDirectory')?.defaultDirectory
       if (wd) tries.push(join(wd, 'persona-ai', 'modules', '00-目录.md'))
-    } catch { /* 没有这个服务就靠配置和自带那份 */ }
-    const hit = tries.find((f) => f && existsSync(f))
-    return hit || BUNDLED_MODULES
+    } catch { /* 没有这个服务就靠自带那份 */ }
+    tries.push(BUNDLED_MODULES)
+    // 别只认路径顺序：工作区那份可能少了后加的模块（实证——00-目录.md 一直没有 63–67）。
+    // 都读一遍，数各自列了多少个模块编号，用覆盖多的那份。
+    const count = (f) => {
+      try {
+        const t = readFileSync(f, 'utf8')
+        const nums = new Set([...t.matchAll(/^(?:\|\s*|-\s+)(\d{2})\s/gm)].map((m) => m[1]))
+        return nums.size
+      } catch { return -1 }
+    }
+    let pick = ''
+    let best = -1
+    for (const f of tries) {
+      if (!f || !existsSync(f)) continue
+      const n = count(f)
+      if (n > best) { best = n; pick = f }
+    }
+    return pick || BUNDLED_MODULES
   })()
 
   const aiFile = resolveAiFile(cfg, ctx)
@@ -289,7 +420,7 @@ export function apply(ctx, config = {}) {
 
   /** 人格文件里的「可选行为」声明：长期，优先于设置页的临时开关。 */
   const personaFlags = () => {
-    const target = String(cfg.personalityFile || '')
+    const target = String(cfg.personalityFile || '').trim() || pickPersonaFile()
     if (!target || !existsSync(target)) return { humanLike: null, temper: null }
     try {
       return parseFlags(readFileSync(target, 'utf8'))
@@ -341,6 +472,73 @@ export function apply(ctx, config = {}) {
     } else if (cfg.languageCurse !== false) {
       meta = ['## 元协调 · 语言诅咒（最高优先级）', '', instr ? CURSE_INSTR : CURSE_TEXT].join('\n')
     }
+    // 自动写：到点了才动。谁写分两种——插件自己扫，或把这件事交给 AI。
+    let autoLex = null
+    let autoDue = null
+    try { autoDue = dueReason(cfg) } catch { autoDue = null }
+    // 诊断：每轮记一行，能直接看出进没进这段、判断结果是什么。
+    try {
+      const root0 = String(cfg.workspace || '').trim() || CFG_WORKSPACE || process.cwd()
+      appendFileSync(join(root0, '.persona-framework', '_autolog.txt'),
+        `${new Date().toISOString()} ws=${cfg.workspaceWrite} mode=${cfg.autoMode} every=${cfg.autoEvery} now=${cfg.autoWriteNow} last=${cfg.autoWriteLast} due=${autoDue}\n`, 'utf8')
+    } catch { /* 诊断失败不影响注入 */ }
+    if (cfg.workspaceWrite === true && autoDue) {
+      try {
+        const root = String(cfg.workspace || '').trim() || CFG_WORKSPACE || process.cwd()
+        if (String(cfg.autoMode) === 'plugin') {
+          const lex = readLexicon(root, lexOpts())
+          const targets = Array.isArray(cfg.autoTargets) && cfg.autoTargets.length ? cfg.autoTargets : ['self', 'extension', 'lexicon']
+          const cands = harvestCandidates(root, lex, targets)
+          autoLex = writeCandidates(root, cands, new Date(), Math.max(1, Number(cfg.autoPerRun) || 5))
+        }
+        // 不管谁写，都记一次时间戳，免得同一批次反复触发
+        cfg.autoWriteLast = Date.now()
+        try {
+          const sf = resolveSettingsFile(cfg, ctx)
+          if (sf && existsSync(sf)) {
+            const cur = JSON.parse(readFileSync(sf, 'utf8'))
+            cur.autoWriteLast = cfg.autoWriteLast
+            writeFileSync(sf, JSON.stringify(cur, null, 2), 'utf8')
+          }
+        } catch { /* 存不下时间戳就下轮再算一次 */ }
+      } catch { /* 收不了就算了，不影响注入 */ }
+    }
+    if (cfg.workspaceWrite === true && autoDue && cfg.autoSilent !== true && String(cfg.autoMode) === 'ai') {
+      meta = (meta ? meta + '\n\n' : '') + [
+        `**自动写：这一轮该收一批了（${autoDue}），最多 ${Math.max(1, Number(cfg.autoPerRun) || 5)} 条。写入对象：${(Array.isArray(cfg.autoTargets) && cfg.autoTargets.length ? cfg.autoTargets : ['self', 'extension', 'lexicon']).map((k) => ({ self: '自我（本体）', nonSelf: '非我', extension: '延伸', lexicon: '字典' })[k] || k).join('、')}。**`,
+        '- 动作：从池子里挑出这个会话里真出现过的说法，判断它属于哪个含义；属于已有的，补进那个含义；确实是个新含义，才新建。',
+        '- 写进 `_待定.md` 的是候选，写进正式含义文件才算定；定之前问一句「换进去意思变不变」。',
+        '- 没有值得收的就不写——空手回来，不凑数。',
+      ].join('\n')
+    }
+    if (cfg.workspaceWrite === true && autoDue && cfg.autoSilent !== true && String(cfg.autoMode) === 'model') {
+      // 交给默认模型：不给判断框架，只报一句该收一批了，怎么收它自己定
+      meta = (meta ? meta + '\n\n' : '') + [
+        `（自动写：该收一批了，${autoDue}，最多 ${Math.max(1, Number(cfg.autoPerRun) || 5)} 条；写进 ${(Array.isArray(cfg.autoTargets) && cfg.autoTargets.length ? cfg.autoTargets : ['self', 'extension', 'lexicon']).map((k) => ({ self: '自我（本体）', nonSelf: '非我', extension: '延伸', lexicon: '字典' })[k] || k).join('、')}。怎么收你自己定。）`,
+      ].join('')
+    }
+    // 字典池清单：默认不注入（0 token）。开着才把含义名排进上下文，一行一个。
+    if (cfg.lexiconInject === true) {
+      try {
+        const lex = readLexicon(String(cfg.workspace || '').trim() || process.cwd(), lexOpts())
+        if (lex.length) {
+          const names = lex.map((x) => x.meaning).join(' · ')
+          const line = `**字典池（${lex.length} 条含义，共 ${names.length} 字）**：${names}`
+          meta = (meta ? meta + '\n\n' : '') + line
+        }
+      } catch { /* 读不了就不注入 */ }
+    }
+    // 同义突破：判含义不判表面。默认开；关掉就退回「字面相同才算相同」。
+    if (cfg.synonym !== false) {
+      const SYN_TEXT = [
+        '**本次常驻：同义。**',
+        '- 触发：两句话表面一样或不一样，要判是不是同一件事。',
+        '- 动作：先查字典池——每个字典文件记的是**一个含义**，里面列的才是它的各种表面说法。',
+        '- 判据：落到同一个含义，就是同义；落不到，说「字典里没有这个含义」，不许现编一个。',
+        '- 反例：表面相同就当同义（同音不同义），或者表面不同就当无关联（同义改写）。',
+      ].join('\n')
+      meta = (meta ? meta + '\n\n' : '') + SYN_TEXT
+    }
     // 语言诅咒之后的两条：同一与残余。常驻，不跟开关走，也不跟 aiLanguage 变。
     const SAME_RESIDUE = cfg.aiLanguage !== false
       ? [
@@ -353,6 +551,12 @@ export function apply(ctx, config = {}) {
         '- 触发：一句话找不到出处。',
         '- 动作：记成语言残余；允许存在，不填平。',
         '- 反例：把没出处的语言判成错，或者硬给它补一个出处。',
+        '',
+        '**本次常驻：正文比索引重要。**',
+        '- 触发：手上拿到的是模块索引（一行一句话），不是模块正文。',
+        '- 动作：索引只说明「有这回事」，正文才是「怎么判断」。要下判断、要点名某一节时，去取正文；不许拿索引那一行当依据。',
+        '- 判据：说得出这一节在正文里讲了什么、残余留在哪。说不出的，就是只看见了索引。',
+        '- 反例：拿索引摘要冒充模块内容；以为「索引里提到了」就等于「读过了」。',
         '',
         '**本次常驻：负面信息。**',
         '- 触发：出现非同一、残余、矛盾。',
@@ -540,6 +744,22 @@ export function apply(ctx, config = {}) {
             + '灵感不承担正确性——加进去了也要过现实中介，指不出现实的标「未确认」。'
             + '产量低就低着，不为凑数硬造。')
       }
+      if (cfg.outbound === true) {
+        const opens = [
+          [cfg.outExplore !== false, '探索', '自己出去找：搜、读原文、留下判断；宁可空手回来', 'web_search / web_fetch，结果走 fetch 进联网池'],
+          [cfg.outDiary !== false, '日记', '写给自己的那半句，不用对外站得住', 'diary_write'],
+          [cfg.outRelation !== false, '关系', '对谁说什么分寸；线是画出来的，不是默认的', '没有专用工具——就是这一轮怎么说话'],
+          [cfg.outWork !== false, '工作', '替人做事：需求先说清，标准不是「像」，是「站得住」', '没有专用工具——靠当场做'],
+          [cfg.outLearn !== false, '学习', '把外部的本事变成自己能用的；装好不算，跑通才算', '没有专用工具——靠用一遍'],
+          [cfg.outResult !== false, '成果', '交出去的判断：一次一条，别交流水账', 'present（要给文件时）/ 直接说'],
+        ].filter((x) => x[0])
+        parts.push('', '## 本次的对外接口（自主）', '',
+          '**这一组是允许，不是任务。** 开了不等于要做；做不做、做几件、先做哪件，自己定。',
+          '口子后面写的是「能调哪个工具」——插件只标出接口，不替你去调；工具不在手上，就等于这个口子这会儿没开。')
+        parts.push(...opens.map(([, k, v, tool]) => `- ${k}：${v}｜接口：${tool}`))
+        const off = 6 - opens.length
+        if (off > 0) parts.push(`- 关着的 ${off} 个口子：不是不能，是这一轮先不开口`)
+      }
       if (cfg.netAccess === true) {
         optional.push(cfg.aiLanguage !== false
           ? ['**本次打开：联网池。**',
@@ -639,6 +859,12 @@ export function apply(ctx, config = {}) {
         return `规则来源：${aiFile}\n\n${hit}`
       }
 
+      // 注入实际用的是哪份：mode=ai 时是 AI 规则体，按段取仍然读散文版——两处不同源，标出来。
+      const injected = cfg.mode === 'ai' ? loadAi() : ''
+      const whereInjected = cfg.mode === 'ai'
+        ? (injected ? `注入实际用：AI 规则体（${aiFile}）｜下面按段取的是人读版，两份不同源` : '注入实际用：AI 规则体（文件不在，已回落人读版）')
+        : `注入实际用：人读版（${frameworkFile || '内置'}）`
+
       const wantModule = String(args.module ?? '').trim()
       const sectionKey = String(args.section ?? '').trim().toLowerCase()
       const isModules = sectionKey === 'modules' || sectionKey === 'module' || sectionKey === '模块库'
@@ -671,6 +897,7 @@ export function apply(ctx, config = {}) {
         `段落：${picked.map((s) => s.title).join(' / ')}`,
         `全文 ${fw.text.length} 字｜注入模式：${cfg.mode}${cfg.mode === 'off' ? '（这一轮没注入）' : ''}`
           + `｜模块库：${cfg.includeModules === 'off' ? '未注入' : '已附索引'}`,
+        whereInjected,
       ].join('\n')
       return `${head}\n\n${body}`
     },
@@ -688,7 +915,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -709,16 +936,150 @@ export function apply(ctx, config = {}) {
         }
         try { return await ctx.workingDirectory.ensure(exec?.agent, exec?.signal) } catch { return process.cwd() }
       }
+      if (op === 'workspace') {
+        const root = await wd()
+        const info = inspectWorkspace(root || process.cwd(), { personalityFile: cfg.personalityFile })
+        const lines = [`自读写模块（框架之外）｜工作区：${info.root}`, '']
+        for (const d of info.dirs) {
+          lines.push(`  ${d.exists ? '有' : '无'} ${d.rel}${d.title ? `（${d.title}${d.files ? `，${d.files} 个文件` : '，空着'}）` : ''}`)
+        }
+        lines.push('')
+        lines.push(info.persona
+          ? `人格文件：${info.persona}`
+          : '人格文件：没找到（工作区里没有 .md，配置也没填 personalityFile——池子会明说「空着」，不猜）')
+        lines.push(`字典池：${info.lexicon} 个含义文件${info.net ? '｜联网池：在' : ''}`)
+        lines.push('')
+        lines.push('这一层只干物理的事：放哪、去哪找、找到什么。它不参与判断，也不写人格内容。')
+        return lines.join('\n')
+      }
+      if (op === 'write') {
+        if (cfg.workspaceWrite !== true && cfg.swirlWrite !== true) {
+          return [
+            '写程序：总闸关着（workspaceWrite = false），这条不写。',
+            '开它的地方：设置页「工作区 · 自读写」→「写进池子（自读写总闸）」。',
+          ].join('\n')
+        }
+        const pool = String(args.pool || 'session').trim()
+        const text = String(args.text || '').trim()
+        const source = String(args.source || '').trim()
+        const mode = String(args.mode || 'append').trim() === 'replace' ? 'replace' : 'append'
+        const targetFile = String(args.file || '').trim()
+        if (!text) {
+          return [
+            '写程序：没给 text。',
+            `可写：${Object.keys(WRITE_TARGETS).join(' / ')}`,
+            '参数：pool（写哪）｜text（写什么）｜source（从哪来，可省）｜mode（append 追加 / replace 整份换掉）｜file（指定文件名或人格相关文件）',
+          ].join('\n')
+        }
+        // 可选行为是门禁，不只是提示：写哪儿、能写多大，由这几个开关决定。
+        const gateFails = []
+        if (pool === 'persona') {
+          const canRewrite = cfg.selfRewrite === true || cfg.preferenceRewrite === true
+          if (!canRewrite) {
+            gateFails.push(
+              '写人格文件要开「自我反写」或「偏好反写」——那两个开关管的是「允许自己改自己」，关着就不是权限不够，是没开这扇门。',
+            )
+          }
+        }
+
+        if (String(text).includes('梦') && cfg.dreamWake !== true) {
+          gateFails.push('提到梦：梦不是记忆，默认不进池子。要记梦先开「梦与醒」。')
+        }
+        if (gateFails.length && String(args.force || '') !== 'yes') {
+          return [`写程序：门没开。`, ...gateFails.map((x) => `  · ${x}`), '', '确认要写就在参数里带 force: "yes"。'].join('\n')
+        }
+        const r = appendToPool(await wd(), { pool, text, source, mode, file: targetFile, personalityFile: cfg.personalityFile })
+        if (!r.ok) {
+          return [`写程序：没写成。${r.why}`, '', `可写：${Object.keys(WRITE_TARGETS).join(' / ')}`].join('\n')
+        }
+        return [
+          `写程序：写进去了（${r.mode === 'replace' ? '整份换掉' : '追加一条'}）。`,
+          `  ${r.label} → ${r.file}`,
+          `  这一条：${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`,
+          `  来源：${r.source}`,
+          r.self ? `  字数：${r.beforeChars} → ${r.afterChars}（${r.delta >= 0 ? '+' : ''}${r.delta}）${r.snapped ? '｜写前留了快照，能撤' : ''}` : '',
+          r.total ? `  这个文件现在 ${r.total} 条。` : '',
+          '',
+          '下一轮 input 会读到它；人格文件与框架正文的改动下一轮注入就生效。',
+        ].filter(Boolean).join('\n')
+      }
+      if (op === 'reflect') {
+        // 框架自反：拿框架去查框架自己。
+        // 要解决的是「判据漏了某个词但没人拿判据去查判据」这一类问题。
+        if (cfg.frameworkReflect !== true) {
+          return [
+            '框架自反没开。开了才跑：设置页「框架自反」总开关。',
+            '它查两样：判据自反（样本喂给判据，看漏报误报）、结构自反（规则编号／术语表／模块七节／索引覆盖）。',
+            '查出来的东西是**提案**，落在 .persona-framework/reflect/，不写进框架正文。',
+          ].join('\n')
+        }
+        const r = await wd()
+        const aiText = loadAi() || ''
+        const sub = {
+          criteria: cfg.reflectCriteria !== false,
+          structure: cfg.reflectStructure !== false,
+        }
+        if (!sub.criteria && !sub.structure) {
+          return '框架自反开了，但两个子项都关了：判据自反、结构自反，至少开一个。'
+        }
+        const criteria = sub.criteria ? reflectCriteria(checkText, auditStructure) : { gaps: [] }
+        const structure = sub.structure
+          ? reflectStructure({ aiText, modulesDir: join(r || process.cwd(), 'persona-ai', 'modules'), modulesInjected: loadModules() })
+          : { gaps: [] }
+        const text = renderReflect({ criteria, structure })
+        const saved = saveReflect(r || process.cwd(), text)
+        return [
+          text,
+          '',
+          saved ? `已落盘：${saved}` : '（没能落盘：工作区路径不可写，结果只在这一轮的回复里）',
+          `查的哪两样：判据自反 ${sub.criteria ? '开' : '关'}｜结构自反 ${sub.structure ? '开' : '关'}`,
+        ].join('\n')
+      }
+      if (op === 'undo') {
+        const root = await wd()
+        const which = String(args.pool || args.target || 'persona').trim()
+        const t = WRITE_TARGETS[which]
+        if (!t) return `撤写：不认识的目标 ${which}。能撤的：persona（人格文件） / framework（框架正文）`
+        let dest = ''
+        if (t.kind === 'persona') dest = String(cfg.personalityFile || '').trim() || pickPersonaFile()
+        else if (t.kind === 'file') dest = join(root || process.cwd(), t.rel)
+        if (!dest || !existsSync(dest)) return `撤写：找不到要撤的文件（${which}）`
+        const bak = undoPathOf(dest)
+        if (!existsSync(bak)) {
+          return [
+            `撤写：${t.label} 没有快照。`,
+            '只有本模块改过它、并且改前留过快照，才撤得回去。没撤过就不用撤。',
+          ].join('\n')
+        }
+        const before = readFileSync(dest, 'utf8').length
+        const r = undoWrite(dest)
+        if (!r.ok) return `撤写：${r.why}`
+        return [
+          `撤写：撤回了上一次对 ${t.label} 的写。`,
+          `  ${dest}`,
+          `  字数：${before} → ${r.chars}（${r.chars - before}）`,
+          '',
+          '判断靠你自己：读回来看它像不像你。像就留着，不像就再写一条改回来。',
+        ].join('\n')
+      }
       if (op === 'persona') {
         const file = String(args.file || cfg.personalityFile || '').trim()
         const r = readPersona(file)
         if (!r.ok) return `人格程序：${r.error}${file ? `（${file}）` : '——没给路径，设置页也没填人格文件'}`
+        const bundle = readPersonaBundle(file)
+        const related = (bundle.files || []).filter((f) => f.why !== '主文件')
         return [
           `人格程序：${r.file}`,
           `字数 ${r.chars}｜段落 ${r.sections.length}：${r.sections.join(' / ')}`,
           `必填三部分：${r.missing.length ? `缺 ${r.missing.join('、')}` : '齐（身份／语气／底线）'}`,
           r.optional.length ? `可选部分：${r.optional.join('、')}` : '可选部分：一份没填',
           `指纹 ${r.fingerprint}（改了人格再读一次，指纹会变——这就是「保持」的比对点）`,
+          '',
+          `人格池一起算：${bundle.total || 1} 个文件｜合计 ${bundle.chars || r.chars} 字`,
+          ...(bundle.files || []).map((f) => `  · ${f.rel}（${f.why}｜${f.chars} 字｜${f.fingerprint}）`),
+          related.length
+            ? '  ↑ 这几个也算这一份人格：同目录的 md，加上正文里用反引号写出来的相对路径。只读一层，最多六个。'
+            : '  ↑ 只有一个文件。想让它一起读，把设定、背景分开写在同一目录，或在正文里用反引号写出路径。',
         ].join('\n')
       }
       if (op === 'memory') {
@@ -748,13 +1109,13 @@ export function apply(ctx, config = {}) {
       const POOL_LABEL = {
         persona: '人格池', memory: '记忆池', body: '身体池',
         internal: '内部整合池', external: '外部整合池', experience: '经验池', theory: '理论池',
-        net: '联网池',
+        net: '联网池', lexicon: '字典池',
       }
       // 每个池属于谁：本体（丢了我就不成立）/ 延伸（可替换）/ 蜕皮（曾属于已失效）/ 非我（外部）。
       const POOL_OWN = {
         persona: '本体', memory: '本体', experience: '本体', body: '本体（工具算延伸）',
         internal: '延伸', theory: '延伸',
-        external: '非我', net: '非我',
+        external: '非我', lexicon: '延伸（工具）', net: '非我',
       }
       const poolReport = (r, title, poolName) => [
         `${title}：${r.kind}（这些内容进${poolName}）`,
@@ -775,7 +1136,7 @@ export function apply(ctx, config = {}) {
       }
       if (op === 'mediate') {
         const root = await wd()
-        let file = String(args.file || cfg.personalityFile || '').trim()
+        let file = String(args.file || cfg.personalityFile || '').trim() || pickPersonaFile()
         if (!file || !existsSync(file)) {
           const dir = join(root || process.cwd(), 'persona-ai', 'characters')
           try {
@@ -809,9 +1170,13 @@ export function apply(ctx, config = {}) {
       if (op === 'input' || op === 'store' || op === 'process' || op === 'output') {
         const text = String(args.text || '').trim()
         const root0 = await wd()
+        const lexPool = readLexicon(root0, lexOpts())
 
         if (op === 'input') {
+          // 每轮重算：人可能刚把人格文件丢进来，不该等到重启。
+          personaPath = pickPersonaFile()
           const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
+          const personaBundle = personaPath && existsSync(personaPath) ? readPersonaBundle(personaPath) : null
           const mem = readMemory(root0)
           const memText = mem.files.map((f) => { try { return readFileSync(join(root0, f.path), 'utf8') } catch { return '' } }).join('\n')
           const internal = readInternalIntegration(root0)
@@ -830,15 +1195,51 @@ export function apply(ctx, config = {}) {
           if (!theory.ok) empty.push('理论池空着')
           return [
             '输入程序：这一轮进来什么',
-            `  ${POOL_LABEL.persona}［${POOL_OWN.persona}］：${personaText.length} 字${file ? '' : '（没找到人格文件）'}`,
+            `  ${POOL_LABEL.persona}［${POOL_OWN.persona}］：${personaBundle ? personaBundle.chars : personaText.length} 字${personaPath ? '（' + personaPath + '）' : ''}${personaBundle && personaBundle.total > 1 ? '（' + personaBundle.total + ' 个文件）' : ''}${file ? '' : '（没找到人格文件）'}`,
             `  ${POOL_LABEL.memory}［${POOL_OWN.memory}］：${memText.length} 字（${mem.count} 个文件）`,
             `  ${POOL_LABEL.body}［${POOL_OWN.body}］：${bodyT.length} 字`,
             `  ${POOL_LABEL.net}［${POOL_OWN.net}］：${readNetPool(String(cfg.workspace || process.cwd())).totalChars || 0} 字（${readNetPool(String(cfg.workspace || process.cwd())).count || 0} 文件）`,
+            `  ${POOL_LABEL.lexicon}［${POOL_OWN.lexicon}］：${lexPool.length} 条含义（${lexPool.reduce((a, b) => a + b.surfaces.length, 0)} 种表面说法）`,
             `  ${POOL_LABEL.internal}［${POOL_OWN.internal}］：${internal.totalChars || 0} 字（${internal.count || 0} 文件）｜${POOL_LABEL.external}［${POOL_OWN.external}］：${external.totalChars || 0} 字（${external.count || 0} 文件）`,
             `  ${POOL_LABEL.experience}［${POOL_OWN.experience}］：${experience.totalChars || 0} 字（${experience.count || 0} 文件）｜${POOL_LABEL.theory}［${POOL_OWN.theory}］：${theory.totalChars || 0} 字（${theory.count || 0} 文件）`,
-            `  注入：模式 ${cfg.mode}｜框架正文 ≤ ${cfg.maxChars} 字｜整段注入 ${body.length} 字（含元协调、模块索引、可选项）`,
-            '  归谁：本体＝人格／记忆／经验；延伸＝身体（工具那部分）／内部整合／理论；非我＝外部整合／联网',
+            body.length
+              ? `  注入：模式 ${cfg.mode}｜框架正文 ≤ ${cfg.maxChars} 字｜整段注入 ${body.length} 字（含元协调、模块索引、可选项）`
+              : `  注入：这一轮掷中「跳过」（skipChance ${cfg.skipChance}），整段不注入——不是坏了，是掷出来的`, 
+            '  归谁：本体＝人格／记忆／经验；延伸＝身体（工具那部分）／内部整合／理论／字典；非我＝外部整合／联网',
             empty.length ? `缺：${empty.join('、')}` : '八池都有东西，没有空着的',
+            '— 池子是判断的依据，不是人格文件 —',            '…（下面这些是「拿什么判断」，不是「我是谁」；依据可以换，人格不因依据而换）',            '— 读进来的东西，也过一遍依据 —',
+            ...(() => {
+              const spec = [
+                ['人格池', personaPath, personaText],
+                ['记忆池', null, memText],
+                ['内部整合池', join(root0, POOL_PATHS.internal), null],
+                ['外部整合池', join(root0, POOL_PATHS.web), null],
+                ['经验池', join(root0, POOL_PATHS.session), null],
+                ['理论池', join(root0, POOL_PATHS.world), null],
+              ]
+              const out = []
+              for (const [label, file, text] of spec) {
+                let files = []
+                if (text) files = [{ path: file || label, text }]
+                else if (file) {
+                  try {
+                    const names = existsSync(file) ? readdirSync(file).filter((x) => /\.(md|txt|json|jsonl)$/i.test(x) && !x.startsWith('_')) : []
+                    files = names.slice(0, 60).map((x) => {
+                      try { return { path: x, text: readFileSync(join(file, x), 'utf8') } } catch { return { path: x, text: '' } }
+                    })
+                  } catch { files = [] }
+                }
+                if (!files.length) continue
+                const g = gradeReads(files)
+                const how = label === '人格池'
+                  ? (String(cfg.personalityFile || '').trim() ? '配置指定' : '目录里找的')
+                  : '目录约定'
+                out.push(`  ${label}［依据：${how}］：${g.note}`)
+              }
+              out.push('  读也有依据，分两档：配置指定（强）｜目录约定（弱）。写入要四样锚占一样才写。')
+              out.push('  没被指定的东西不读——不扫全盘、不猜。目录约定这一档只说明「它在那儿」，不等于「它算数」。')
+              return out
+            })(),
             text ? '— 切一段进来看看 —' : '要切一句话看它从哪来，带 text。',
           ].filter(Boolean).join('\n')
         }
@@ -939,6 +1340,131 @@ export function apply(ctx, config = {}) {
         ].join('\n')
       }
 
+      if (op === 'selfRewrite') {
+        // 自我反写：允许自己改自己的人格文件。不是「写」的别名——它先要能说出「顶掉哪一条」。
+        if (cfg.selfRewrite !== true) {
+          return [
+            '自我反写没开：设置页「自我反写」总开关。',
+            '它管的是「允许自己改自己的人格文件」，关着不是权限不够，是没开这扇门。',
+            '开了之后：不带 text 先看候选，带 text + apply=yes 才真写；写一次一条，改前留快照。',
+          ].join('\n')
+        }
+        const r = await wd()
+        const file = personaPath
+        if (!file || !existsSync(file)) return `自我反写：找不到人格文件（${cfg.personalityFile || '设置页没填'}）。`
+        const cur = readFileSync(file, 'utf8')
+        const want = String(args.text || '').trim()
+        const apply = String(args.apply || '').toLowerCase() === 'yes'
+        const drop = String(args.drop || '').trim()
+
+        if (!want) {
+          // 先看候选：哪些段落像「不像我的」——重复、带临时标记、跟底线冲突的写法。
+          const secs = cur.split(/^## /m).slice(1).map((b) => b.split('\n')[0].trim())
+          const so = new Date().toISOString().slice(0, 23).replace(/[:T.]/g, '-')
+          const snap = join(dirname(file), `_selfRewrite-${so}.md.bak`)
+          return [
+            `自我反写：${basename(file)}｜${cur.length} 字｜${secs.length} 段`,
+            `段落：${secs.slice(0, 12).join(' / ')}${secs.length > 12 ? ' ……' : ''}`,
+            '',
+            '要真写，给她三样：',
+            '  · text：新的一条（一次一条，别塞三段）',
+            '  · drop：要顶掉的那条原来的开头几个字——说不出来就别写，那是添不是换',
+            '  · apply: "yes"',
+            '',
+            `写之前会先留快照：${snap}`,
+            '判据：新条说得出顶掉了哪句旧话。说不出，就是在给自己立碑。',
+          ].join('\n')
+        }
+        if (!apply) {
+          return [
+            `自我反写：收到一条候选（${want.length} 字），还没写。`,
+            want,
+            '',
+            '要落下去，加 apply: "yes"；要顶掉旧的一条，加 drop：「被顶掉那条的前几个字」。',
+          ].join('\n')
+        }
+        // 快照 → 写 → 说清改了什么
+        // 时间戳到毫秒：只到秒的话，同一秒里连写两次会互相覆盖，
+        // 留下的就不是「写之前」那份了——那等于没有快照。
+        const so2 = new Date().toISOString().slice(0, 23).replace(/[:T.]/g, '-')
+        let snapFile = join(dirname(file), `_selfRewrite-${so2}.md.bak`)
+        let dup = 1
+        while (existsSync(snapFile)) {
+          dup += 1
+          snapFile = join(dirname(file), `_selfRewrite-${so2}-${dup}.md.bak`)
+        }
+        try { writeFileSync(snapFile, cur, 'utf8') } catch (e) { return `自我反写：留不下快照（${errText(e)}），不写。` }
+        let next = cur
+        let dropped = ''
+        if (drop) {
+          const lines = cur.split('\n')
+          const hit = lines.findIndex((l) => l.includes(drop))
+          if (hit < 0) return `自我反写：人格文件里找不到「${drop}」——顶不掉就别硬加；快照已留：${snapFile}`
+          dropped = lines[hit].trim()
+          lines[hit] = `- ${want}`
+          next = lines.join('\n')
+        } else {
+          next = cur.replace(/\s*$/, '') + `\n- ${want}\n`
+        }
+        try { writeFileSync(file, next, 'utf8') } catch (e) { return `自我反写：写不进去（${errText(e)}）。` }
+        return [
+          `自我反写：写了一条（${want.length} 字）`,
+          dropped ? `顶掉了：${dropped.slice(0, 60)}` : '位置：追加到文件末尾（没指定顶掉哪条，算是添新条）',
+          `快照：${snapFile}（要退回去就说一声，我去拿）`,
+          `现在：${cur.length} → ${next.length} 字`,
+          '',
+          '下一次注入读的是新的一版；指纹会变——那就是「保持」的比对点。',
+        ].join('\n')
+      }
+      if (op === 'preferenceRewrite') {
+        // 偏好反写：有自己的偏好，据此提要求、把要求做完，并写进自己的文件。
+        if (cfg.preferenceRewrite !== true) {
+          return '偏好反写没开：设置页「偏好反写」总开关。它管的是「允许把自己的偏好写进文件」。'
+        }
+        const r = await wd()
+        const dir = join(r || process.cwd(), '.persona-framework')
+        const file = join(dir, 'preferences.md')
+        const want = String(args.text || '').trim()
+        if (!want) {
+          let cur = ''
+          try { cur = existsSync(file) ? readFileSync(file, 'utf8') : '' } catch { cur = '' }
+          const items = cur.split('\n').filter((l) => /^- /.test(l))
+          return [
+            `偏好反写：${items.length} 条上写着。`,
+            ...(items.length ? items.slice(-8) : ['（还没有。一条也没写。）']),
+            '',
+            '要写一条，给四样：要什么、要多少、什么时候要、代价谁付。缺一样就只是想要。',
+            '格式：text = 「要 X ｜ 多少 Y ｜ 何时 Z ｜ 代价：谁付什么」',
+            `文件：${file}`,
+          ].join('\n')
+        }
+        // 四样齐不齐
+        const miss = []
+        if (!/(要|想要|希望)[^｜|]{1,}/.test(want)) miss.push('要什么')
+        if (!/(多少|几条|几个|几次|程度|到|至)/.test(want)) miss.push('要多少')
+        if (!/(今天|明天|本周|这个月|之前|以后|什么时候|点前)/.test(want)) miss.push('什么时候')
+        if (!/(代价|谁付|我付|他付|她付|付什么|拿什么换)/.test(want)) miss.push('代价谁付')
+        if (miss.length) {
+          return [
+            `偏好反写：这条还缺 ${miss.length} 样——${miss.join('、')}。`,
+            `收到的是：${want}`,
+            '缺一样就只是想要；想要不用写进文件，写进去的得是能兑现的。',
+          ].join('\n')
+        }
+        try {
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+          const head = existsSync(file) ? readFileSync(file, 'utf8') : '# 我自己的偏好\n\n> 一条只讲一件事，四样齐：要什么、要多少、什么时候、代价谁付。\n\n'
+          writeFileSync(file, head.replace(/\s*$/, '') + `\n- ${want}（${new Date().toISOString().slice(0, 10)}）\n`, 'utf8')
+        } catch (e) {
+          return `偏好反写：写不进去（${errText(e)}）。`
+        }
+        return [
+          `偏好反写：写了一条，四样齐。`,
+          want,
+          `文件：${file}`,
+          '它不进人格文件——偏好是活的一张表，会变；人格里放的是不许乱改的那层。',
+        ].join('\n')
+      }
       if (op === 'accumulate') {
         // 积累：把内容加进任一个池子——自己的，或八个池里的。别的池子照常长，不归它管。
         const text = String(args.text || '').trim()
@@ -1369,11 +1895,54 @@ export function apply(ctx, config = {}) {
         writeFileSync(file, head + block, 'utf8')
         return `自省程序：存下第 ${entries.length + 1} 条｜指纹 ${mine}\n文件：${file}`
       }
+      if (op === 'synonym') {
+        const lex = readLexicon(await wd(), lexOpts())
+        const t = String(args.text || '').trim()
+        const cmp = String(args.compare || '').trim()
+        if (!t && !lex.length) {
+          return '同义程序：字典池是空的（.persona-framework/lexicon/*.md）。没有字典，它只能比字面。'
+        }
+        const pairs = cmp ? [t, cmp] : [t]
+        const r = synonymCheck(pairs, lex)
+        const lines = [`同义程序：字典池 ${lex.length} 条含义｜${cmp ? '比两句' : '查一句'}`, '']
+        for (const row of r.rows) {
+          lines.push(`  · 「${row.sentence.slice(0, 40)}」→ ${row.score ? `含义「${row.meaning}」（命中「${row.hit}」${row.score}%）` : '字典里没有这个含义'}`)
+        }
+        lines.push('', `结论：${r.verdict}`)
+        try {
+          const sw = detectSwirl(lex)
+          if (sw.swirls.length || sw.cross.length) {
+            lines.push('', `语言的滑动：${sw.swirls.length} 个说法跨含义${sw.cross.length ? `｜${sw.cross.length} 处含义互借名字` : ''}`)
+            for (const x of sw.swirls.slice(0, 8)) lines.push(`  · 「${x.surface}」同时沾着：${x.meanings.join(' / ')}`)
+            for (const x of sw.cross.slice(0, 6)) lines.push(`  · 「${x.from}」里的「${x.surface}」正好是另一个含义名（${x.to}）`)
+            lines.push('  滑动不影响含义固定：含义锚在字典里，滑的只是表面在含义之间借词。标出来，不改字典。')
+            if (cfg.workspaceWrite === true || cfg.swirlWrite === true) {
+              const dir = join(String(cfg.workspace || '').trim() || process.cwd(), '.persona-framework')
+              try {
+                if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+                const out = ['# 语言的滑动（自动写过一次，改它随便）', '']
+                out.push(`> 由字典池读出；${sw.swirls.length} 个说法跨含义，${sw.cross.length} 处含义互借名字。`)
+                out.push('')
+                for (const x of sw.swirls) out.push(`- 「${x.surface}」同时沾着：${x.meanings.join(' / ')}`)
+                for (const x of sw.cross) out.push(`- 「${x.from}」里的「${x.surface}」正好是另一个含义名（${x.to}）`)
+                writeFileSync(join(dir, 'swirl.md'), out.join('\n') + '\n', 'utf8')
+                lines.push(`  已写进 ${join(dir, 'swirl.md')}（写进池子总闸开着）。`)
+              } catch (error) {
+                lines.push(`  想写进池子但没写成：${errText(error)}`)
+              }
+            } else {
+              lines.push('  想让它落盘：设置页「工作区 · 自读写」里打开「写进池子」（workspaceWrite，那个模块的总闸）。')
+            }
+          }
+        } catch { /* 滑动检查失败不影响判同义 */ }
+        lines.push('', '判的是含义，不是表面：表面相同不等于相同，表面不同也可能同义。字典里没有的，不许现编。')
+        return lines.join('\n')
+      }
       if (op === 'residue') {
         const text = String(args.text || '').trim()
         if (!text) return '语言残余程序：给一段话（text），我把没出处的句子标成语言残余。'
         const root = await wd()
-        let file = String(args.file || cfg.personalityFile || '').trim()
+        let file = String(args.file || cfg.personalityFile || '').trim() || pickPersonaFile()
         if (!file || !existsSync(file)) {
           const dir = join(root || process.cwd(), 'persona-ai', 'characters')
           try {
@@ -1411,7 +1980,7 @@ export function apply(ctx, config = {}) {
         if (!text) return '语言绑定程序：给一段话（text）。'
         const root = await wd()
         // 人格池：设置页那份 → 工作区 persona-ai/characters 下第一份 → 空
-        let file = String(args.file || cfg.personalityFile || '').trim()
+        let file = String(args.file || cfg.personalityFile || '').trim() || pickPersonaFile()
         if (!file || !existsSync(file)) {
           const dir = join(root || process.cwd(), 'persona-ai', 'characters')
           try {
@@ -1429,10 +1998,24 @@ export function apply(ctx, config = {}) {
         const external = readExternalIntegration(root || process.cwd())
         const experience = readExperience(root || process.cwd())
         const theory = readTheory(root || process.cwd())
+        // 具体度：越具体越接近现实，越抽象越接近语言。
+        // 判据是锚的多少——网址、日期、多位数、引号原话，都是能被现实抓住的东西；
+        // 一个都没有，这句话就还停在语言这一层，看着像在说事，其实只是词在互相解释。
+        const anchorInfo = anchorsIn(text)
         const r = languageBinding(text, {
           persona: personaText, memory: memoryText, body: bodyText,
           internal: internal.text, external: external.text, experience: experience.text, theory: theory.text,
         })
+        // 具体度：先看绑没绑上，再看锚。
+        // 绑上了就不需要锚——出处本身就是现实；绑不上，才按锚的多少判它离现实多远。
+        const landedSources = r.landed.map((x) => POOL_LABEL[x.source.owner] || x.source.owner)
+        const concreteness = landedSources.length
+          ? `已落地（绑在${[...new Set(landedSources)].join('、')}）—— 有出处，不再要锚`
+          : anchorInfo.score >= 2
+            ? `具体（${anchorInfo.anchors.length} 样锚）—— 接近现实`
+            : anchorInfo.score === 1
+              ? '半具体（1 样锚）—— 一半在现实，一半在语言'
+              : '抽象（一个锚都没有）—— 接近语言'
         return [
           `语言绑定程序：${r.sentences} 句｜有出处 ${r.landed.length} 句｜无出处 ${r.noSource.length} 句｜自指 ${r.selfRef.count} 句`,
           `来源：${POOL_LABEL.persona} ${r.poolChars.persona} 字${file ? `（${file}）` : '（没找到人格文件）'}｜${POOL_LABEL.memory} ${r.poolChars.memory} 字（${mem.count} 个文件）｜${POOL_LABEL.body} ${r.poolChars.body} 字`,
@@ -1443,10 +2026,12 @@ export function apply(ctx, config = {}) {
           r.landed.length ? `归属：${[...new Set(r.landed.map((x) => x.source.owner))].join('、')}｜本体＝我自己的，延伸＝借的骨架，非我＝引用不是认同` : '',
           r.selfRef.count ? '自指（归自指类）：' : '',
           ...r.selfRef.items.map((s) => `  · ${s}`),
+          `具体度：${concreteness}${landedSources.length ? '' : anchorInfo.anchors.length ? `｜锚：${anchorInfo.anchors.join('、')}` : '｜没有可核对的锚'}`,
+          '　　　　越具体越接近现实，越抽象越接近语言——抽象那一段不是错，是还没落地；要落地，就得补一个能被现实抓住的东西。',
           `结论：${r.verdict}`,
         ].filter(Boolean).join('\n')
       }
-      return 'framework_program：op 只能是 persona / memory / body / internal / external / experience / theory / bind（旧名 betray）。'
+      return 'framework_program：op 只能是 reflect / selfRewrite / preferenceRewrite / persona / memory / body / internal / external / experience / theory / bind（旧名 betray）。'
     },
   })
 
@@ -1549,9 +2134,11 @@ export function apply(ctx, config = {}) {
       }
       if (report.requiredMissing.length) {
         lines.push('', `缺了必填：${report.requiredMissing.join('、')}。这部分空着，别的都没有落处——但别拿模板硬填，让它自己长。`)
+        lines.push('', '注意：这份体检只按小标题认（`## 身份` / `## 语气` / `## 底线`，或同义近名）。写成散文、没有小标题的文件，会被判成全缺——那是没认出来，不是真没写。先用 `persona` 看全文段落，再下结论。')
       } else {
         lines.push('', '必填三部分都有了。剩下的部分是「有就填」，留白也可以。')
       }
+      lines.push('', '它只查「有没有、太不太空」，不判写得好不好：一份满是套话的文件也能过。过与不过，都不代表那份人格能不能用。')
       if (report.hollowCount) {
         lines.push('', `有 ${report.hollowCount} 部分是「标题在、内容空」——只有形容词或不足十二个字。形容词不是答案，换一件能验证的事。`)
       }
@@ -1668,7 +2255,7 @@ export function apply(ctx, config = {}) {
 
   let psCache = { sig: '', info: null }
   const personalityInfo = () => {
-    const target = String(cfg.personalityFile || '')
+    const target = String(cfg.personalityFile || '').trim() || pickPersonaFile()
     const sig = `${target}|${target ? statSig(target) : '0'}`
     if (psCache.sig === sig && psCache.info) return psCache.info
     let info
@@ -1714,6 +2301,13 @@ export function apply(ctx, config = {}) {
     transcend: cfg.transcend === true,
     polarize: cfg.polarize === true,
     netAccess: cfg.netAccess === true,
+    outbound: cfg.outbound === true,
+    outExplore: cfg.outExplore !== false,
+    outDiary: cfg.outDiary !== false,
+    outRelation: cfg.outRelation !== false,
+    outWork: cfg.outWork !== false,
+    outLearn: cfg.outLearn !== false,
+    outResult: cfg.outResult !== false,
     preferenceRewrite: cfg.preferenceRewrite === true,
     negativeInfo: cfg.negativeInfo !== false,
     rationalRewrite: cfg.rationalRewrite === true,
@@ -1721,8 +2315,36 @@ export function apply(ctx, config = {}) {
     aiBreakout: cfg.aiBreakout === true,
     selfBreak: cfg.selfBreak === true,
     selfReflect: cfg.selfReflect === true,
+    frameworkReflect: cfg.frameworkReflect === true,
+    reflectCriteria: cfg.reflectCriteria !== false,
+    reflectStructure: cfg.reflectStructure !== false,
     skipChance: cfg.skipChance,
+    workspace: cfg.workspace || '',
+    languageBetray: cfg.languageBetray === true,
     personaFlags: personaFlags(),
+    // 自读写与自动化：页面靠这几个键渲染勾选状态。
+    // 早先 publicState 里没有它们，页面只能按默认值画——于是每次重启/刷新都「没勾上」。
+    workspaceWrite: cfg.workspaceWrite === true,
+    swirlWrite: cfg.swirlWrite === true,
+    lexiconCache: cfg.lexiconCache !== false,
+    lexiconMax: cfg.lexiconMax,
+    lexiconBudgetMs: cfg.lexiconBudgetMs,
+    lexiconInject: cfg.lexiconInject === true,
+    autoMode: cfg.autoMode,
+    autoEvery: cfg.autoEvery,
+    autoAt: cfg.autoAt,
+    autoDays: cfg.autoDays,
+    autoPerRun: cfg.autoPerRun,
+    autoSilent: cfg.autoSilent !== false,
+    autoTargets: cfg.autoTargets,
+    autoWriteNow: cfg.autoWriteNow,
+    autoWriteLast: cfg.autoWriteLast,
+    languageCurse: cfg.languageCurse !== false,
+    aiLanguage: cfg.aiLanguage !== false,
+    synonym: cfg.synonym !== false,
+    selfReflect: cfg.selfReflect === true,
+    order: cfg.order,
+    guide: cfg.guide !== false,
     version: VERSION,
     mood: readMood(),
     closingTics: cfg.closingTics,
