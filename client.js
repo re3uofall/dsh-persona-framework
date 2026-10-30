@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
       .map((x) => x.trim())
       .filter(Boolean)
 
-    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'index', maxModulesChars: 2600, closingTics: [], order: 20, guide: true }
+    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'index', maxModulesChars: 4000, closingTics: [], order: 20, guide: true, travelOn: false, travelGuide: '' }
 
     const flagText = (v) => (v === true ? '是' : v === false ? '否' : '未写')
 
@@ -124,6 +124,8 @@ window.__ModuleLoader__.load({
       outWork: c.outWork !== false,
       outLearn: c.outLearn !== false,
       outResult: c.outResult !== false,
+      outGame: c.outGame !== false,
+      outIdle: c.outIdle !== false,
       negativeInfo: c.negativeInfo !== false,
       rationalRewrite: c.rationalRewrite === true,
       deepThink: c.deepThink === true,
@@ -137,6 +139,8 @@ window.__ModuleLoader__.load({
       skipChance: Number(c.skipChance) || 0,
       closingTics: c.closingTics || [],
       guide: c.guide !== false,
+      travelOn: c.travelOn === true,
+      travelGuide: c.travelGuide || '',
     })
 
     function FrameworkSettings() {
@@ -245,6 +249,8 @@ window.__ModuleLoader__.load({
               outWork: cfg.outWork !== false,
               outLearn: cfg.outLearn !== false,
               outResult: cfg.outResult !== false,
+              outGame: cfg.outGame !== false,
+              outIdle: cfg.outIdle !== false,
               negativeInfo: cfg.negativeInfo !== false,
               rationalRewrite: cfg.rationalRewrite === true,
               deepThink: cfg.deepThink === true,
@@ -261,6 +267,8 @@ window.__ModuleLoader__.load({
               skipChance: cfg.skipChance === 0 ? 0 : Number(cfg.skipChance) || 0.1,
               order: Number(cfg.order) || 22,
               guide: cfg.guide !== false,
+              travelOn: cfg.travelOn === true,
+              travelGuide: String(cfg.travelGuide || ''),
               // 自读写 / 自动化：不发这些，改了也存不住
               workspaceWrite: cfg.workspaceWrite === true,
               swirlWrite: cfg.swirlWrite === true,
@@ -441,6 +449,25 @@ window.__ModuleLoader__.load({
               }),
               '附上「怎么用这套框架」那一段',
             )),
+          )),
+
+        section('s4a', '旅行', '不在家的那一段；指南自己写',
+          h('div', {},
+            field('tv', '旅行模式', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.travelOn === true,
+                onChange: (e) => edit({ travelOn: e.target.checked }),
+              }),
+              '打开后，注入里附上「旅行」那一层规矩',
+            ), '旅行不是探索；先得不在家'),
+            sep('d6'),
+            field('tg', '旅行指南', h('textarea', {
+              style: T.area,
+              placeholder: '地点：\n时间：\n目的（一句话就够）：\n带回什么：\n怎么回：',
+              value: cfg.travelGuide || '',
+              onChange: (e) => edit({ travelGuide: e.target.value }),
+            }), '写清地点、时间、目的、回程，才叫一次旅行'),
           )),
 
         section('s4', '可选行为', '默认关闭；打开拿可预期换可亲近',
@@ -816,7 +843,7 @@ window.__ModuleLoader__.load({
               onChange: (e) => edit({ outbound: e.target.checked }),
             }),
             '总闸：允许自己决定对外做不做',
-          ), '默认关。关着时六个口子都不开'),
+          ), '默认关。关着时八个口子都不开'),
           ...([
             field('oe', '探索', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
               h('input', { type: 'checkbox', checked: cfg.outExplore !== false, onChange: (e) => edit({ outExplore: e.target.checked }) }),
@@ -842,10 +869,22 @@ window.__ModuleLoader__.load({
               h('input', { type: 'checkbox', checked: cfg.outResult !== false, onChange: (e) => edit({ outResult: e.target.checked }) }),
               '交出去的判断：一次一条',
             ), '接口：present / 直接说'),
+            field('otr', '旅行', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', { type: 'checkbox', checked: cfg.travelOn === true, onChange: (e) => edit({ travelOn: e.target.checked }) }),
+              '不在家的那一段；指南写在上面「旅行」那块',
+            ), '出门前先写指南'),
+            field('og', '娱乐', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', { type: 'checkbox', checked: cfg.outGame !== false, onChange: (e) => edit({ outGame: e.target.checked }) }),
+              '读书、看报、刷视频、听音乐、游戏',
+            ), '判据：能不能停、谁在选下一个'),
+            field('oi', '闲暇', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', { type: 'checkbox', checked: cfg.outIdle !== false, onChange: (e) => edit({ outIdle: e.target.checked }) }),
+              '空下来：发呆、白日梦、放松、装饰、清理',
+            ), '不是休息；没人要求才发生'),
           ]),
           cfg.outbound !== true
             ? h('div', { style: { fontSize: 12, color: '#888', marginTop: 4 } },
-              '总闸关着：上面六项这会儿都不生效；勾上「对外接口组」才开')
+              '总闸关着：上面九项这会儿都不生效；勾上「对外接口组」才开')
             : null,
         ].filter(Boolean)),
 

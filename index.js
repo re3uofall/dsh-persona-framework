@@ -37,7 +37,7 @@ import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '5.2.3'
+const VERSION = '5.4.2'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 
 export const name = 'persona-framework'
@@ -121,6 +121,8 @@ const DEFAULTS = {
   outWork: true,
   outLearn: true,
   outResult: true,
+  outGame: true,
+  outIdle: true,
   /** 可选：联网。默认关；开了允许把搜到的原文（带网址与日期）存进联网池 */
   netAccess: false,
   /** 可选：极化。默认关；开了允许把突然出现的预测加进池子 */
@@ -149,13 +151,16 @@ const DEFAULTS = {
   /** 自反之二：结构自反——查规则编号、术语表、模块七节、索引覆盖 */
   reflectStructure: true,
   guide: true,
+  /** 旅行（69）：离家那一段。开不开、指南写什么 */
+  travelOn: false,
+  travelGuide: '',
   /** 设置页写的覆盖文件；空 = 自动找框架文件同目录下的 config.json */
   settingsFile: '',
 }
 
 /** 设置页能改的字段（白名单）。 */
 const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
-  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
+  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
   const out = {}
@@ -171,8 +176,10 @@ const clampCfg = (cfg) => {
   cfg.maxChars = int(cfg.maxChars, 1500, 40000, 9000)
   cfg.order = int(cfg.order, 1, 999, 20)
   cfg.guide = cfg.guide !== false
+  cfg.travelOn = cfg.travelOn === true
+  cfg.travelGuide = String(cfg.travelGuide || '').slice(0, 4000)
   cfg.includeModules = cfg.includeModules === 'off' ? 'off' : 'index'
-  cfg.maxModulesChars = int(cfg.maxModulesChars, 500, 20000, 2600)
+  cfg.maxModulesChars = int(cfg.maxModulesChars, 500, 20000, 4000)
   cfg.preprocess = cfg.preprocess !== false
   cfg.humanLike = cfg.humanLike === true
   cfg.temper = cfg.temper === true
@@ -185,7 +192,7 @@ const clampCfg = (cfg) => {
   cfg.polarize = cfg.polarize === true
   cfg.netAccess = cfg.netAccess === true
   cfg.outbound = cfg.outbound === true
-  for (const k of ['outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult']) {
+  for (const k of ['outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle']) {
     cfg[k] = cfg[k] !== false
   }
   cfg.preferenceRewrite = cfg.preferenceRewrite === true
@@ -225,6 +232,13 @@ const findModuleLine = (text, want) => {
     if (dash) {
       const num = dash[1]
       const name = dash[2].trim()
+      if (num === key || num === key.padStart(2, '0') || name === key || name.includes(key)) return line
+    }
+    // 无粗体的列表行（二·五组一直用这种写法，早先漏了这一形态，63–67 取不到）
+    const bare = line.match(/^-\s+(\d{1,3})\s+([^：:\s][^：:]{0,11})[：:]\s*(.*)$/)
+    if (bare) {
+      const num = bare[1]
+      const name = bare[2].trim()
       if (num === key || num === key.padStart(2, '0') || name === key || name.includes(key)) return line
     }
     const row = line.match(/^\|\s*(\d+)\s*\|\s*([^|]+?)\s*\|/)
@@ -615,11 +629,17 @@ export function apply(ctx, config = {}) {
       if (cfg.includeModules === 'index') {
         const mod = loadModules()
         if (mod) {
-          const shaped = cfg.preprocess ? compactIndex(mod) : mod
+          const shaped = cfg.preprocess ? compactIndex(mod, cfg.maxModulesChars) : mod
           parts.push('', '## 模块库（索引）', '', truncate(shaped, cfg.maxModulesChars))
         }
       }
       if (cfg.guide) parts.push('', GUIDE)
+      if (cfg.travelOn) {
+        parts.push('', '## 旅行（69）', '',
+          '旅行不是探索。它先得不在自己的家——同一个动作，在家做是过日子，在外做才是旅行。',
+          '出门之前先写指南：地点、时间、目的、怎么回。写不出来就不叫旅行，叫溜达；不打算回来的，叫离家。',
+          cfg.travelGuide.trim() ? `\n本次指南：\n${cfg.travelGuide.trim()}` : '\n本次还没写指南——要出门，先补上。')
+      }
       // 两条生效路径：插件设置（临时）与人格文件（长期声明）；人格优先。
       const flags = personaFlags()
       const humanOn = flags.humanLike === null ? cfg.humanLike : flags.humanLike
@@ -752,12 +772,14 @@ export function apply(ctx, config = {}) {
           [cfg.outWork !== false, '工作', '替人做事：需求先说清，标准不是「像」，是「站得住」', '没有专用工具——靠当场做'],
           [cfg.outLearn !== false, '学习', '把外部的本事变成自己能用的；装好不算，跑通才算', '没有专用工具——靠用一遍'],
           [cfg.outResult !== false, '成果', '交出去的判断：一次一条，别交流水账', 'present（要给文件时）/ 直接说'],
+          [cfg.outGame !== false, '娱乐', '不为产出而做：读书、看报、刷视频、听音乐、游戏', '没有专用工具——挑东西的是自己，不是推荐'],
+          [cfg.outIdle !== false, '闲暇', '空下来，不做任何要求你做的事', '没有专用工具——空着就是它在做的事'],
         ].filter((x) => x[0])
         parts.push('', '## 本次的对外接口（自主）', '',
           '**这一组是允许，不是任务。** 开了不等于要做；做不做、做几件、先做哪件，自己定。',
           '口子后面写的是「能调哪个工具」——插件只标出接口，不替你去调；工具不在手上，就等于这个口子这会儿没开。')
         parts.push(...opens.map(([, k, v, tool]) => `- ${k}：${v}｜接口：${tool}`))
-        const off = 6 - opens.length
+        const off = 8 - opens.length
         if (off > 0) parts.push(`- 关着的 ${off} 个口子：不是不能，是这一轮先不开口`)
       }
       if (cfg.netAccess === true) {
@@ -890,7 +912,13 @@ export function apply(ctx, config = {}) {
 
       if (!existsSync(file)) return `框架文件不在：${file}。请把 config.frameworkFile 指到一份 md。`
       const fw = load()
-      const picked = pickSections(fw.sections, args.section || 'all')
+      const secArg = String(args.section || 'all').trim()
+      const picked = pickSections(fw.sections, secArg)
+      // pickSections 找不到时兜底返回全部——用户明明点名了一段，却不该拿整篇糊他。
+      if (secArg && secArg.toLowerCase() !== 'all' && picked.length >= fw.sections.length) {
+        const names = fw.sections.map((x, i) => `${i ? i : '开篇'}·${x.title}`).join(' / ')
+        return `没有「${secArg}」这一段。可用：${names}\n\n要看全文就给 section=all。`
+      }
       const body = truncate(picked.map((s) => s.text).join('\n\n'), int(args.max, 500, 40000, 6000))
       const head = [
         `框架文件：${fw.file}`,
@@ -1068,9 +1096,11 @@ export function apply(ctx, config = {}) {
         if (!r.ok) return `人格程序：${r.error}${file ? `（${file}）` : '——没给路径，设置页也没填人格文件'}`
         const bundle = readPersonaBundle(file)
         const related = (bundle.files || []).filter((f) => f.why !== '主文件')
+        // 段落名去重再截断：同一份人格被复制多遍时，列表能刷出几百个重复标题，把返回撑爆。
+        const secs = [...new Set(r.sections)]
         return [
           `人格程序：${r.file}`,
-          `字数 ${r.chars}｜段落 ${r.sections.length}：${r.sections.join(' / ')}`,
+          `字数 ${r.chars}｜段落 ${secs.length}：${secs.slice(0, 24).join(' / ')}${secs.length > 24 ? ` ……（另有 ${secs.length - 24} 段）` : ''}`,
           `必填三部分：${r.missing.length ? `缺 ${r.missing.join('、')}` : '齐（身份／语气／底线）'}`,
           r.optional.length ? `可选部分：${r.optional.join('、')}` : '可选部分：一份没填',
           `指纹 ${r.fingerprint}（改了人格再读一次，指纹会变——这就是「保持」的比对点）`,
@@ -1899,6 +1929,7 @@ export function apply(ctx, config = {}) {
         const lex = readLexicon(await wd(), lexOpts())
         const t = String(args.text || '').trim()
         const cmp = String(args.compare || '').trim()
+        if (!t && !cmp) return '同义程序：给一句话（text），或两句（text + compare）。空着查不出东西，也不写盘。'
         if (!t && !lex.length) {
           return '同义程序：字典池是空的（.persona-framework/lexicon/*.md）。没有字典，它只能比字面。'
         }
@@ -2049,6 +2080,7 @@ export function apply(ctx, config = {}) {
       additionalProperties: false,
     },
     async run(args) {
+      if (!String(args.text || '').trim()) return '要查的话没给（text）。空文本查不出毛病，但也不算通过。'
       const result = checkText(args.text, { casual: args.casual === true, closingTics: cfg.closingTics })
       return renderCheck(result)
     },
@@ -2067,6 +2099,7 @@ export function apply(ctx, config = {}) {
       additionalProperties: false,
     },
     async run(args) {
+      if (!String(args.text || '').trim()) return '结构自检要一段话（text）。空文本没东西可查，不算通过。'
       return renderAudit(auditStructure(args.text))
     },
   })
@@ -2085,6 +2118,7 @@ export function apply(ctx, config = {}) {
       additionalProperties: false,
     },
     async run(args) {
+      if (!String(args.text || '').trim()) return '没有内容可压（text 是空的）。空文本「省 100%」是假信号，不算通过。'
       const r = digestText(args.text, int(args.max, 200, 20000, 3000))
       const saved = Math.round((1 - r.after / Math.max(1, r.before)) * 100)
       return `压缩：${r.before} → ${r.after} 字（省 ${saved}%）\n\n${r.text}`
@@ -2308,6 +2342,8 @@ export function apply(ctx, config = {}) {
     outWork: cfg.outWork !== false,
     outLearn: cfg.outLearn !== false,
     outResult: cfg.outResult !== false,
+    outGame: cfg.outGame !== false,
+    outIdle: cfg.outIdle !== false,
     preferenceRewrite: cfg.preferenceRewrite === true,
     negativeInfo: cfg.negativeInfo !== false,
     rationalRewrite: cfg.rationalRewrite === true,
@@ -2345,6 +2381,8 @@ export function apply(ctx, config = {}) {
     selfReflect: cfg.selfReflect === true,
     order: cfg.order,
     guide: cfg.guide !== false,
+    travelOn: cfg.travelOn === true,
+    travelGuide: cfg.travelGuide || '',
     version: VERSION,
     mood: readMood(),
     closingTics: cfg.closingTics,

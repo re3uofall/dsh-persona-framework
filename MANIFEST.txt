@@ -1,29 +1,57 @@
 # 发布指纹清单
-# 版本：5.2.3
-# 生成时间：2026-10-29 00:17:15
+# 版本：5.4.2
+# 生成时间：2026-10-30 16:18:00
 # 用法：下载后逐文件算 sha256，前 16 位应与下表一致；不一致的说明文件被改过。
 
 sha256[:16]             字数  文件
-555afc5da7c60fe3     15566  CHANGELOG.md
-192aa8c4d09d9043      1112  LICENSE
-94c9667000804e72     10993  README.md
-564f14cd7a21611a      3541  RELEASE.md
-94a41c750b52a93f     21478  client.js
-d1f8d38e8031c34c      1764  cordis.patch.yml
-48b0f62c166c7224      7980  framework/FRAMEWORK.ai.md
-70244e13b5d53e1a      7694  framework/FRAMEWORK.md
-7104c4517390f5cd      6221  framework/MODULES.md
-edbe9999a9b92a14      1102  icon.svg
-731734f1fedc174b     39931  index.js
-51794c8db0b7cab5       976  index.json
-180c1fe270f4856f      6870  lib/checks.mjs
-7425a690b944bc27      1378  lib/digest.mjs
-f760fb0eae86c5db      7073  lib/framework.mjs
-7aaf46b58bcaf0ae     12928  lib/programs.mjs
-b01fdb23313e4045       302  locale/en.json
-4e5a283ad1b6d2c6       126  locale/zh.json
-8a439110dd714862      9062  selfcheck.mjs
-
-# 合计 156097 字
-release-check.mjs
-UPDATE-GUIDE.md
+9ae23fa8246b6e96      146  .gitignore
+81795973ea3fa87b      173  .persona-framework/lexicon/_说明.md
+8e74a84a6389f6be       97  .persona-framework/net.index.md
+0acac08f31be819b       71  .persona-framework/net/_说明.md
+8d60b0392190d6cf      147  .persona-framework/net/2026-10-29.md
+4b3eeba0a21ba195      464  .persona-framework/self.md
+5db3314c24410893       73  .persona-framework/swirl.md
+0976edee3caacb94      227  .persona-framework/unconscious.md
+f6f7fc0310e654c9    32246  assets/menu.png
+4c8f5095bd4e9efa   100650  assets/s1-persona.png
+36ee0178e94819f7    69669  assets/s2-inject.png
+333f5ad2b48b0f73   149717  assets/s4-optional.png
+a65bbbc1037b6435    73669  assets/s5-meta.png
+8b7c8691c161c7af   115359  assets/s7-outbound.png
+635a1b847a6a196e    35082  CHANGELOG.md
+d331bd89c3fe2277    43677  client.js
+d1f8d38e8031c34c     1764  cordis.patch.yml
+abeadfb1a1255f9e     2220  FILES.md
+4c8312c0404e3f3c     9472  framework/FRAMEWORK.ai.md
+3b09751d4c01afef     8842  framework/FRAMEWORK.md
+f887bad45bf98e4e     6376  framework/MODULES.md
+edbe9999a9b92a14     1102  icon.svg
+55fa89dc34157831   109429  index.js
+5a2c70dae78c1d80      967  index.json
+b4217a274e4e318a       67  knowledge/_说明.md
+4e101352eca7be6b     3331  lib/anchor.mjs
+927e86a945a8ee11     4176  lib/autolex.mjs
+10947de4be7a613d     2117  lib/autosched.mjs
+f68c37526f52ce8b     7572  lib/checks.mjs
+6909fbea7c7c1e7a     3418  lib/digest.mjs
+78d45978b092f43a     7226  lib/framework.mjs
+abafd618cb306799     4892  lib/poolwrite.mjs
+36fbd7c7aab86b30    27083  lib/programs.mjs
+89db3a8d495049bf     9417  lib/reflect.mjs
+c4a19f026c76e724     5173  lib/workspace.mjs
+192aa8c4d09d9043     1112  LICENSE
+b01fdb23313e4045      302  locale/en.json
+4e5a283ad1b6d2c6      126  locale/zh.json
+7ba3677d0b1c686b     2005  make-manifest.mjs
+1f79f71abc867d8f     1355  package.json
+7cc87aa1b95c1f7b      158  persona-ai/characters/人格.md
+6fc5224842489448       77  persona-ai/knowledge/session/_说明.md
+ca5f4573b80237d9       70  persona-ai/knowledge/web/_说明.md
+8ac80b95410b0da9       70  persona-ai/knowledge/world/_说明.md
+91af74fb43457f8d       68  persona-ai/modules/_说明.md
+7275cda7eed46e8b    16413  README.md
+ef7e6ea61f32cea2    12187  release-check.mjs
+acc42966a01fcfe0     3544  RELEASE.md
+fe13ab7a8dcb82fa     9885  selfcheck.mjs
+5e712f23bb9d1801     2749  TALK.md
+2c07890b80dfeef8     4003  UPDATE-GUIDE.md

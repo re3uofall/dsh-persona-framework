@@ -211,10 +211,11 @@ const onlyB = [...b].filter((n) => !a.has(n))
 if (!onlyA.length && !onlyB.length) ok('两份索引覆盖同一批模块', `${a.size} 个`)
 else bad('两份索引不一致', `${onlyA.length ? 'MODULES 多：' + onlyA.join('、') : ''}${onlyB.length ? ' 00-目录 多：' + onlyB.join('、') : ''}`)
 
-const squeezed = compactIndex(modulesMd)
 const maxMod = Number((idx.match(/maxModulesChars: (\d+)/) || [])[1] || 4000)
-if (squeezed.length <= maxMod) ok('索引压缩后装得下', `${squeezed.length} / ${maxMod} 字`)
-else bad('索引压缩后超上限', `${squeezed.length} > ${maxMod}`)
+const natural = compactIndex(modulesMd)
+const squeezed = compactIndex(modulesMd, maxMod)
+if (squeezed.length <= maxMod) ok('索引按预算压后装得下', `${squeezed.length} / ${maxMod} 字（未自适应时 ${natural.length}）`)
+else bad('索引按预算压后仍超上限', `${squeezed.length} > ${maxMod}`)
 
 // ── 七、测试
 say('')
