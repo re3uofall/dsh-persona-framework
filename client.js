@@ -912,7 +912,7 @@ window.__ModuleLoader__.load({
             : null,
         ].filter(Boolean)),
 
-        section('s8', '附加插件', '随框架一起装的那几个；装不装你说了算',
+        section('s8', '附加插件', '随框架一起装的那几个；装不装你说了算。已装的会变灰——那是「已经装好了」，不是坏了；要卸得去插件管理器',
           h('div', {},
             optErr ? h('div', { style: T.note }, `读不到附加插件状态：${optErr}`) : null,
             !opt ? h('div', { style: T.note }, '正在读…')
@@ -932,16 +932,21 @@ window.__ModuleLoader__.load({
                   }),
                   h('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
                     h('span', { style: { fontSize: 13 } },
-                      `${row.label} · ${row.installed ? '已装' : '未装'}`),
+                      // ★ 只写「已装」不够：灰着、点不动，看着像坏了。要说出「灰 = 装好了」，
+                      //   再给一条出路（去插件管理器卸），不然人只会一直点。
+                      row.installed
+                        ? `${row.label} · 已装好（灰着是对，不用再点；要卸去插件管理器）`
+                        : `${row.label} · 未装（勾上再保存）`),
                     h('span', { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } },
                       row.what),
                   ),
                 )),
                 (() => {
                   const left = (opt.rows || []).filter((r) => !r.installed)
+                  const total = (opt.rows || []).length
                   if (!left.length) {
                     return h('div', { style: { padding: '12px 16px', borderTop: '1px solid var(--dsw-alias-border-l1)', fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } },
-                      '五个都装上了。')
+                      `${total} 个都装上了，所以这一栏全是灰的——那是满，不是坏。要卸装去插件管理器。`)
                   }
                   const chosen = left.filter((r) => picks[r.key])
                   return h('div', { style: { padding: '12px 16px', borderTop: '1px solid var(--dsw-alias-border-l1)' } },
