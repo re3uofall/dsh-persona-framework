@@ -111,7 +111,7 @@ node release-check.mjs
 再跑一遍**运行时**那道（`release-check` 只看静态文本，不看它真跑起来）：
 
 ```bash
-node selfcheck.mjs        # 46 条断言，含 28 个 op / 9 个工具 / 三条路由
+node selfcheck.mjs        # 46 条断言，含 31 个 op / 9 个工具 / 三条路由
 node lib/../.tools/…      # 手上有的话：全量工具、边界坏参数、渲染
 ```
 
