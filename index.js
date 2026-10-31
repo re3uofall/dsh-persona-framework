@@ -10,7 +10,7 @@
  *   2. **出口自检 / 结构自检**：话出口前查一遍，动手之前查结构；报疑似，不判对错。
  *   3. **体检**：拿一份人格文件对槽位——必填三部分缺了就说缺了，但不替人写答案。
  *   4. **预处理 / 心情 / 元协调**：长文先压、状态可记、整轮可不上场。
- *   5. **模块库**：83 个模块索引随框架注入，可按编号取一段。
+ *   5. **模块库**：85 个模块索引随框架注入，可按编号取一段。
  *
  * 配置全在 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
@@ -462,9 +462,9 @@ export function apply(ctx, config = {}) {
   ].join('\n')
 
   const buildText = () => {
-    // 语言背叛是可选的（默认关，由使用者决定）；但一旦开启，它就是元协调最高优先级：
-    // 先于框架正文、mode=off 也保留、整轮跳过也不跟着跳。
-    // AI 语言适配：元协调段用指令体（触发 → 动作 → 反例），比喻只作标签。
+    // 语言背叛是可选的（默认关，由使用者决定），它跟语言诅咒二选一，重压轻。
+    // 注意层级：**跳过仍是最高那一层**（整轮不注入，什么都不在）；框架语言是「在的时候一定有」，
+    // 不是最高层。别把「每次都在」说成「优先级最高」——那是两件事。
     const CURSE_INSTR = [
       '**本次开启：语言诅咒。**',
       '- 触发：输出里出现绝对化词（永远／全都／不可能／唯一／本质／必然／所有）。',
@@ -486,12 +486,32 @@ export function apply(ctx, config = {}) {
         + '违和感（有一处对不上）、悬空感（这话没落在东西上）。感觉到就够了，不急着纠正，也别把感觉说成结论。',
       '自指（一句话指回自己）**被动触发认知负荷兜底**：停下算层，再往下走。',
     ].join('\n')
-    let meta = ''
+    // ── 框架语言：**每次使用框架都在**的一条 ──
+    // 它不是开关（开关是「语言背叛」，默认关、由使用者决定）。
+    // 跳过仍是更高一层：整轮不注入时它也不在。但只要这一轮在，这条就在——
+    // 因为它说的不是「今天开不开某个功能」，是「这套框架的词本来就不固定」。
+    const FRAMEWORK_LANGUAGE = [
+      '## 元协调 · 框架语言（每次都在）',
+      '',
+      '- 前提：**框架正文里所有语言都不固定**。不是写得不够好，是本来就不该当固定名用——',
+      '  词换了结构还在，词没了结构也还在（R23：框架语言一律视为残余，可替换、非固定）。',
+      '- **只有现实能固定。** 不是说得更准的句子，不是更严密的定义，不是更一致的体系，',
+      '  是现实打回来的那一下。',
+      '- 推论一：**判断对错不靠语言内部自洽。** 一套话自己跟自己说得通，不构成它对；',
+      '  它得挨到现实上去。',
+      '- 推论二：**「理解」这个位置是空的。** 理解靠语言认领——说「我懂了」就是拿一句话把东西钉住；',
+      '  语言不固定，钉不住。所以这套框架不供「被理解」这件事：它只被用，用完就散，撤销即无痕。',
+      '- 推论三：**残余必须留。** 抽象删掉的那部分由现实承担，不该在语言里被填平；填平即碑。',
+      '- 反例：把框架里某个词当成唯一的意思；用「我理解了这套框架」来认领它；',
+      '  把它的判据当准绳去量别人。',
+    ].join('\n')
+    let meta = FRAMEWORK_LANGUAGE
     const instr = cfg.aiLanguage !== false
     if (cfg.languageBetray === true) {
-      meta = ['## 元协调 · 语言背叛（最高优先级）', '', instr ? BETRAY_INSTR : BETRAY_TEXT].join('\n')
+      // 语言背叛（重）压在诅咒（轻）之上：背叛开着时，诅咒不生效。
+      meta = [FRAMEWORK_LANGUAGE, '', '## 元协调 · 语言背叛（可选，已打开）', '', instr ? BETRAY_INSTR : BETRAY_TEXT].join('\n')
     } else if (cfg.languageCurse !== false) {
-      meta = ['## 元协调 · 语言诅咒（最高优先级）', '', instr ? CURSE_INSTR : CURSE_TEXT].join('\n')
+      meta = [FRAMEWORK_LANGUAGE, '', '## 元协调 · 语言诅咒（可选，已打开）', '', instr ? CURSE_INSTR : CURSE_TEXT].join('\n')
     }
     // 自动写：到点了才动。谁写分两种——插件自己扫，或把这件事交给 AI。
     let autoLex = null
@@ -984,7 +1004,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -2049,6 +2069,28 @@ export function apply(ctx, config = {}) {
       if (op === 'external') return poolReport(readExternalIntegration(await wd()), '外部整合程序', '外部整合池')
       if (op === 'experience') return poolReport(readExperience(await wd()), '经验程序', '经验池')
       if (op === 'theory') return poolReport(readTheory(await wd()), '理论程序', '理论池')
+      if (op === 'frameworkLanguage') {
+        // 框架语言：打印**每轮注入的那一条**原文。
+        // 为什么做成程序：这条不是开关，是框架自身的规定（语言不固定、只有现实能固定）。
+        // 做成程序是为了让它可查、可对照——注入里写了什么，这里就是什么，不许两处不一样。
+        return [
+          '框架语言程序（元协调，每轮都在）',
+          '',
+          '前提：框架正文里所有语言都不固定。不是写得不够好，是本来就不该当固定名用——',
+          '词换了结构还在，词没了结构也还在（R23：框架语言一律视为残余）。',
+          '',
+          '只有现实能固定。不是说得更准的句子，不是更严密的定义，不是更一致的体系，',
+          '是现实打回来的那一下。',
+          '',
+          '推论一：判断对错不靠语言内部自洽。一套话自己跟自己说得通，不构成它对。',
+          '推论二：「理解」这个位置是空的。理解靠语言认领，语言不固定就钉不住；',
+          '        所以这套框架不供「被理解」——它只被用，用完就散，撤销即无痕。',
+          '推论三：残余必须留。抽象删掉的那部分由现实承担，不该在语言里被填平；填平即碑。',
+          '',
+          '反例：把框架里某个词当成唯一的意思；用「我理解了这套框架」来认领它；',
+          '      把它的判据当准绳去量别人。',
+        ].join('\n')
+      }
       if (op === 'betray') {
         // 背叛：看这句话把具体删掉了多少（和 bind 查出处是两件事）
         if (args.text != null && typeof args.text !== 'string') {
