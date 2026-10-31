@@ -42,6 +42,10 @@ import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from '.
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VERSION = '5.16.2'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
+// 插件自带的模块**正文**（85 个）。
+// 原来只有 BUNDLED_MODULES（索引），别人装了插件只能看见目录、取不到内容——
+// 索引是地图，正文才是要判断的东西。工作区里有就用工作区的，没有退回这份。
+const BUNDLED_MODULE_DIR = resolve(HERE, 'framework', 'modules')
 
 export const name = 'persona-framework'
 export const inject = ['tools', 'systemPrompt', 'webServer']
@@ -907,13 +911,43 @@ export function apply(ctx, config = {}) {
         }
         const line = findModuleLine(text, wantModule)
         if (!line) return `模块库里没有「${wantModule}」。看全部就用 section=modules。`
+
+        // ★ 取正文，不只给索引那一行。
+        // 索引是「有这回事」，正文才是「怎么判断」——只给一行等于把地图当成了路。
+        // 顺序：工作区（用户自己改过的那份）→ 插件自带的那份。
+        const num = (/^(\d{2})/.exec(wantModule) || /^(\d{2})/.exec(line) || [])[1] || ''
+        const cands = []
+        if (num) {
+          const tryDirs = []
+          try {
+            const wd = ctx.get('workingDirectory')?.defaultDirectory
+            if (wd) tryDirs.push(join(wd, 'persona-ai', 'modules'))
+          } catch { /* 没有工作区服务 */ }
+          tryDirs.push(BUNDLED_MODULE_DIR)
+          for (const d of tryDirs) {
+            if (!existsSync(d)) continue
+            for (const f of readdirSync(d)) {
+              if (f.startsWith(`${num}-`) && f.endsWith('.md')) cands.push(join(d, f))
+            }
+          }
+        }
+        const body = cands.length ? readFileSync(cands[0], 'utf8') : ''
+        if (!body) {
+          return [
+            `模块库：${modulesFile}`,
+            `命中：${wantModule}`,
+            '',
+            line,
+            '',
+            `（正文没找到：按编号 ${num || '?'} 在 persona-ai/modules/ 和插件自带的 framework/modules/ 里都没匹配到文件。只给索引这一行。）`,
+          ].join('\n')
+        }
+        const cut = truncate(body, int(args.max, 500, 40000, 12000))
         return [
-          `模块库：${modulesFile}`,
+          `模块：${cands[0]}`,
           `命中：${wantModule}`,
           '',
-          line,
-          '',
-          '完整文档（七节：是什么／结构／怎么动／判据／边界／接口／自查）在宿主工作区的 `persona-ai/modules/` 下，文件名以编号开头。',
+          cut,
         ].join('\n')
       }
 
