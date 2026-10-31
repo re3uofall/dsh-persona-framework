@@ -181,6 +181,8 @@ node lib/../.tools/…      # 手上有的话：全量工具、边界坏参数�
 
 ---
 
+---
+
 ## 五、大版本（主版本位）额外的三件事
 
 改动骨架的那一版，除了上面七步，还要：
@@ -188,3 +190,81 @@ node lib/../.tools/…      # 手上有的话：全量工具、边界坏参数�
 - **写迁移说明**：从上一版升上来，哪些行为会变、哪些配置会失效。
 - **标出不可逆的地方**：比如「字典池的含义文件格式变了，旧文件要手工转」。
 - **留一份旧版**：`framework/FRAMEWORK.md.old-x.y.z`，出问题能对照。
+
+---
+
+## 六、GitHub 更新（about / release / tag）
+
+**发版本只在本地做完，不算发出去。** 外面挂着的那份 about 和 release，是要单独更新的。
+
+### 1. about（仓库简介）
+
+网页上仓库右上角那个「About」，编辑后是 `description` + `topics`。
+
+改它的时候只有一个判据：**里面的数字跟代码对得上吗**。
+
+- 写着「72 个模块、R1–R27」——那时对，后来模块加到 83、规则加到 R28，它就变成谎话了。
+- **过期的 about 比没有 about 更坏**：来看的人会信它，然后发现文档跟它对不上，就谁也不信了。
+
+改法（API，`description` 和 `topics` 是两个端点）：
+
+```bash
+curl -X PATCH -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json"   -d '{"description":"…","homepage":"…"}'   https://api.github.com/repos/<owner>/<repo>
+
+curl -X PUT -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json"   -d '{"names":["dsh","dsh-plugin",…]}'   https://api.github.com/repos/<owner>/<repo>/topics
+```
+
+写 about 的口径跟 README 第一行一致：**是什么、几个模块、几条规则、有什么工具、边界一句**。不写形容词。
+
+### 2. tag 与 release
+
+- tag 名：`v<版本>`（跟 `index.js` 的 `VERSION` 一模一样，别写 `5.16.2` 不写 `v`）。
+- release 标题：`<tag> · <一句话说这版修了什么>`，不写「若干改进」。
+- release 正文：抄 CHANGELOG 当前那一版，按 **修 / 改 / 记住 / 测试** 分块。测试结果要具体到数（`46/46`），不写「测试通过」。
+
+```bash
+# tag（第一次；已存在就跳过）
+curl -X POST -H "Authorization: token $TOKEN" -d "{\"ref\":\"refs/tags/v5.16.2\",\"sha\":\"<commit>\"}"   https://api.github.com/repos/<owner>/<repo>/git/refs
+
+# release
+curl -X POST -H "Authorization: token $TOKEN"   -d @release.json   https://api.github.com/repos/<owner>/<repo>/releases
+```
+
+**先推 commit，再打 tag。** tag 指的分支上没那个 commit，release 就挂在空处。
+
+### 3. 推上去 — 两条路
+
+**路一：`git push`（正常情况）**
+
+```bash
+git push origin main
+```
+
+**路二：GitHub Git Data API（`github.com:443` 连不上的时候）**
+
+实测过一次：`api.github.com` 秒回、`github.com` 21 秒后失败——同一条网，两个域名两种命运。这时 `git push` 走不通，但 API 通。
+
+`.tools/_gh/push_api.mjs` 就是这条路的脚本：blob → tree → commit → 更新 ref，全程只碰 `api.github.com`。
+
+```bash
+GH_TOKEN=… node .tools/_gh/push_api.mjs "提交说明"
+```
+
+它会先读远端 ref，再逐个文件算 blob（40 个文件约 40 次请求），比对后建树、建 commit、更新 ref。树是**整棵重给**（不带 `base_tree`），所以别拿它推「只改一个文件」的活——它会把整棵树重写一次。
+
+**两条路的后果不一样，别混：**
+
+- 走过路二之后，**本地 git 的历史和远端不是同一条线**（API 建的 commit 本地没有）。下次 `git push` 会报 diverge。
+- 所以：要么一直用 `git push`，要么走一次 API 之后 `git fetch origin && git reset --hard origin/main` 把本地对齐，别两边各走各的。
+
+### 4. token
+
+- 用完就撤销，重发。**它一进对话记录、进命令历史，就算漏了。**
+- **绝不写进任何文件**：不写 `.git/config`、不写脚本、不写 CHANGELOG。
+- 调用时给环境变量（`GH_TOKEN=… node …`），命令结束就没了。
+
+### 5. 发版清单（本地 + 远端）
+
+1. 改代码 → 2. 跑三道闸（`release-check` / `selfcheck` / `doctor`）→ 3. 写 CHANGELOG → 4. 七处版本号 → 5. 本地 commit → 6. 推上去 → 7. 打 tag → 8. 建 release → 9. 改 about
+
+**九步里后三步最容易被忘。** 因为它们在网页上，不在终端里——终端全绿了，人就走开了。
