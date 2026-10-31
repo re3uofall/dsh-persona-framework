@@ -1,0 +1,34 @@
+# ============================================================================
+# dsh-persona-memory —— 插件自己带的挂载声明
+# ============================================================================
+# 装上之后 profile 只要把本包列进 `dsh.profile.bundles` 即生效。
+# 下面这些 config 都能改；改完重启 DSH 生效。
+# ============================================================================
+
+- insert:
+    - id: persona-memory
+      name: dsh-persona-memory
+      config:
+        # 记忆根（工作区根）。留空则用会话工作区；
+        # 这个工作区里会话工作区解析不到，由 profile 自己的 patch 覆盖，别写在这里——
+        # 写在这里会把我的路径随包发给别人。
+        root: ''
+
+        # 判断层 / 流水层指哪儿。默认值中立：别人装到自己的布局里，改这两行即可。
+        judgmentDir: 'knowledge'
+        journalDir: 'persona-ai/knowledge/session'
+
+        # 一次 memory_recall 的默认预算（字）
+        budget: 2000
+
+        # 流水早于几天算过期（memory_archive 用）
+        archiveAfterDays: 7
+
+        # 流水层最多占检索预算的比例（0.15 = 最多 15%）
+        journalShare: 0.15
+
+        # condense / archive 默认只干跑，不写文件
+        dryRunDefault: true
+
+        # 往系统提示里加一段「记忆池怎么用」
+        hint: true

@@ -1,0 +1,25 @@
+# ============================================================================
+# dsh-persona-diary —— 插件自己带的挂载声明
+# ============================================================================
+# 装上之后 profile 把本包列进 `dsh.profile.bundles` 即生效（install_bundle 会做）。
+# 下面的 config 都能改；改完重启 DSH 生效。
+# ============================================================================
+
+- insert:
+    - id: persona-diary
+      name: dsh-persona-diary
+      config:
+        # 人格根目录（`persona-ai` 那一层）。留空则从会话工作区推 `persona-ai`。
+        personaDir: 'C:\爱思考的大肥鱼思思\persona-ai'
+
+        # 日记目录，相对人格根目录；和 growth.py 的睡前自审写在同一本里
+        diaryDir: 'growth/日记'
+
+        # 面板最多显示多少条（新的在前）
+        maxEntries: 300
+
+        # 单条正文上限（字），超了截断
+        maxBodyChars: 4000
+
+        # 每轮附上「什么时候该记一笔」的说明；嫌费 token 就关
+        injectPrompt: true

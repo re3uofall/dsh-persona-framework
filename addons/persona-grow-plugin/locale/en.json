@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Persona Growth",
+    "description": "Injects a persona file each turn and grows new entries from your corrections; patch-only edits, versioned and reversible."
+  }
+}

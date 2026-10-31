@@ -1,0 +1,33 @@
+# ============================================================================
+# dsh-persona-explore —— 插件自己带的挂载声明
+# ============================================================================
+# 装进 profile 后，本插件的 config 都在这里改；改完重启 DSH 生效。
+# ============================================================================
+
+- insert:
+    - id: persona-explore
+      name: dsh-persona-explore
+      config:
+        # 人格根目录（`persona-ai` 那一层）。留空则从会话工作区推 `persona-ai`。
+        personaDir: 'C:\爱思考的大肥鱼思思\persona-ai'
+
+        # 知识目录（相对 personaDir）。新条目落在 knowledge/web/YYYY-MM-DD.md
+        knowledgeDir: 'knowledge'
+
+        # 探索自己的账本、队列、状态放哪儿（相对 personaDir）
+        homeDir: 'explore'
+
+        # 第一次用 explore 就把「每天自己出门」的闹钟挂上
+        autoArm: true
+
+        # 每天几点自己出门（HH:MM，24 小时制）
+        dailyAt: '10:30'
+
+        # 时区；留空用本机时区
+        timeZone: 'Asia/Shanghai'
+
+        # 单条知识正文上限（字）。超了 keep 会拒绝，逼它压短
+        maxBodyChars: 600
+
+        # read 默认读多少字（范围 1000–12000）
+        readChars: 4000

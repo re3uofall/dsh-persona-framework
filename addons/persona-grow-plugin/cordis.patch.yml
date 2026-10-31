@@ -1,0 +1,38 @@
+# ============================================================================
+# dsh-persona-grow —— 插件自己带的挂载声明
+# ============================================================================
+# 装上之后 profile 只要把本包列进 `dsh.profile.bundles` 即生效（install_bundle 会做）。
+# 下面这些 config 都能改；改完重启 DSH 生效。
+# ============================================================================
+
+- insert:
+    - id: persona-grow
+      name: dsh-persona-grow
+      config:
+        # 人格根目录（`persona-ai` 那一层）。留空则从会话工作区推 `persona-ai`。
+        personaDir: 'C:\爱思考的大肥鱼思思\persona-ai'
+
+        # 基础人格（只读，插件绝不改它）
+        baseFile: 'characters/大肥鱼思思_人格文件.md'
+
+        # 叠加层：学到的东西全部写这里，v3.1 原稿一个字不动
+        patchFile: 'growth/人格补丁.md'
+
+        # full=整份人格 / compact=只注入开头一小段 / off=不注入（工具仍可用）
+        mode: full
+
+        # 注入的人格正文上限（字）；超了在段落处截断
+        maxChars: 12000
+
+        # 后台从你的原话里自己学（「以后你……」「别……」「记住……」）
+        autoLearn: true
+
+        # 同一句被要求 promoteAfter 次就自己长进「已采纳」
+        autoAdopt: true
+        promoteAfter: 2
+
+        # 「已采纳」上限，满了就不再自动收（留给 persona_forget 腾位置）
+        maxTraits: 40
+
+        # 附上「怎么学」那段说明
+        guide: true

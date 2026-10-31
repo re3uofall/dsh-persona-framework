@@ -188,6 +188,12 @@ else for (const c of chan) bad(c)
 say('')
 say('== 五、模块 ==')
 const MODDIR = join(WS, 'persona-ai/modules')
+// ★ 模块库是**工作区数据**，不是插件的一部分——分发包里没有它，别人的环境多半也没有。
+//   原来直接 readdirSync，目录不在就整条崩（ENOENT）。这里改成：不在就跳过这一节并说清，
+//   不算失败——别人只装了插件、还没建工作区，是正常状态，不是他的错。
+if (!existsSync(MODDIR)) {
+  warn('模块库不在，跳过这一节', `找过 ${MODDIR}——那是工作区数据，不随插件分发`)
+} else {
 const modFiles = (await import('node:fs')).readdirSync(MODDIR).filter((n) => /^\d{2}-.*\.md$/.test(n) && !n.startsWith('00'))
 const CANON = ['它是什么', '结构', '怎么动', '判据', '边界', '接口', '自查']
 let modBad = 0
@@ -200,13 +206,15 @@ for (const f of modFiles) {
   if (missing.length || !logOk || !one) { modBad++; if (modBad <= 5) bad(`模块 ${f}`, [missing.length ? `缺 ${missing.join('/')}` : '', !logOk ? '更新记录不在最后' : '', !one ? '缺一句话' : ''].filter(Boolean).join('，')) }
 }
 if (!modBad) ok('全部模块七节齐、更新记录在最后、有一句话', `${modFiles.length} 个`)
+}
 
 // ── 六、索引
 say('')
 say('== 六、索引 ==')
 const { compactIndex } = await import(pathToFileURL(join(PKG, 'lib/digest.mjs')).href)
 const modulesMd = read(join(PKG, 'framework/MODULES.md'))
-const dirMd = read(join(MODDIR, '00-目录.md'))
+// 00-目录.md 也在工作区里。不在就只认插件自带那份，不跟空文件比——那不叫不一致，叫还没建。
+const dirMd = existsSync(join(MODDIR, '00-目录.md')) ? read(join(MODDIR, '00-目录.md')) : modulesMd
 const nums = (t) => new Set([...t.matchAll(/^(?:\|\s*|-\s+)(\d{2})\s/gm)].map((m) => m[1]))
 const a = nums(modulesMd)
 const b = nums(dirMd)

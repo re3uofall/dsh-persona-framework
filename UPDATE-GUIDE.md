@@ -257,14 +257,59 @@ GH_TOKEN=… node .tools/_gh/push_api.mjs "提交说明"
 - 走过路二之后，**本地 git 的历史和远端不是同一条线**（API 建的 commit 本地没有）。下次 `git push` 会报 diverge。
 - 所以：要么一直用 `git push`，要么走一次 API 之后 `git fetch origin && git reset --hard origin/main` 把本地对齐，别两边各走各的。
 
-### 4. token
+
+### 4. 附加插件跟着一起推
+
+框架仓库里有一个 `addons/` 目录，装着五个附加插件的源码：
+
+```
+addons/
+├── persona-grow-plugin/     人格自学
+├── persona-diary-plugin/    日记
+├── persona-results-plugin/  成果
+├── persona-explore-plugin/  碗外探索
+└── dsh-persona-memory/      记忆分层
+```
+
+**为什么放这儿**：那五个目录原本各自躺在我机器的工作区里，都不是 git 仓库——框架推上去了，它们还只在我这儿活着。别人下载框架，拿不到它们。
+
+现在 `addons/` 是**唯一源**：改插件 → 改 `addons/` 里那份 → 跟框架一起 commit/push。
+
+**改完记得同步回去**：
+
+```bash
+# 从 addons/ 同步到工作区（工作区那份才是运行中的）
+cp -r addons/persona-diary-plugin/. ../persona-diary-plugin/
+```
+
+两边都要，因为跑的是工作区那份（`link:` 指过去），仓库那份是给别人下的。
+
+**注意 `.gitignore` 的两个坑**（都踩过）：
+
+- `knowledge/` 和 `persona-ai/` 是**任意层级**匹配，会顺手挡掉 `addons/*/knowledge/`。现在插件里没有这两个目录，将来加了要补 `!addons/**/knowledge/`。
+- `TALK*` 系列（演示稿、视频、pptx）也在忽略里，别把别人的人格材料放进 `addons/`。
+
+**打五件包**（给用户下载用的那个 zip）：
+
+从 `addons/` 打，**把 `addons/` 这一层剥掉**——解压后要直接是五个目录，因为设置页扫的是工作区根：
+
+```
+解压后：           不是：
+工作区/             工作区/
+├── persona-diary-plugin/   └── addons/
+└── …                            └── persona-diary-plugin/
+```
+
+包里再塞一份 `解压后看这里.txt`，说明解压到哪、怎么勾。
+
+### 5. token
 
 - 用完就撤销，重发。**它一进对话记录、进命令历史，就算漏了。**
 - **绝不写进任何文件**：不写 `.git/config`、不写脚本、不写 CHANGELOG。
 - 调用时给环境变量（`GH_TOKEN=… node …`），命令结束就没了。
 
-### 5. 发版清单（本地 + 远端）
+### 6. 发版清单（本地 + 远端）
 
-1. 改代码 → 2. 跑三道闸（`release-check` / `selfcheck` / `doctor`）→ 3. 写 CHANGELOG → 4. 七处版本号 → 5. 本地 commit → 6. 推上去 → 7. 打 tag → 8. 建 release → 9. 改 about
+1. 改代码 → 2. **改了的插件同步进 `addons/`** → 3. 跑三道闸（`release-check` / `selfcheck` / `doctor`）→ 4. 写 CHANGELOG → 5. 七处版本号 → 6. 本地 commit → 7. 推上去 → 8. 打 tag → 9. 建 release → 10. 改 about
 
-**九步里后三步最容易被忘。** 因为它们在网页上，不在终端里——终端全绿了，人就走开了。
+**十步里后三步最容易被忘。** 因为它们在网页上，不在终端里——终端全绿了，人就走开了。
