@@ -540,11 +540,15 @@ export function apply(ctx, config = {}) {
     ].join('\n')
     let meta = FRAMEWORK_LANGUAGE
     const instr = cfg.aiLanguage !== false
+    // ★ 语言背叛**不再受开关控制**：它是必过的那一条（用户定：必过的程序）。
+    //   开关只决定「重度版」还是「轻度版」——关着也照样在，只是不额外加压。
+    const betrayBody = instr ? BETRAY_INSTR : BETRAY_TEXT
+    meta = [FRAMEWORK_LANGUAGE, '', '## 元协调 · 框架语言背叛（必过）', '', betrayBody].join('\n')
+    if (cfg.languageCurse !== false) {
+      meta = [meta, '', '## 元协调 · 语言诅咒（可选，已打开）', '', instr ? CURSE_INSTR : CURSE_TEXT].join('\n')
+    }
     if (cfg.languageBetray === true) {
-      // 语言背叛（重）压在诅咒（轻）之上：背叛开着时，诅咒不生效。
-      meta = [FRAMEWORK_LANGUAGE, '', '## 元协调 · 语言背叛（可选，已打开）', '', instr ? BETRAY_INSTR : BETRAY_TEXT].join('\n')
-    } else if (cfg.languageCurse !== false) {
-      meta = [FRAMEWORK_LANGUAGE, '', '## 元协调 · 语言诅咒（可选，已打开）', '', instr ? CURSE_INSTR : CURSE_TEXT].join('\n')
+      meta = [meta, '', '（语言背叛已开重度：下面这条加在必过那条之上。）'].join('\n')
     }
     // 自动写：到点了才动。谁写分两种——插件自己扫，或把这件事交给 AI。
     let autoLex = null
@@ -1037,7 +1041,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function', 'betrayCheck'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -1431,7 +1435,12 @@ export function apply(ctx, config = {}) {
           ].join('\n')
         }
 
-        // output：出口四道，一次跑完
+        // output：出口几道，一次跑完
+        // ★ 第 0 道是**语言背叛必过**：它不通过，后面几道跑完也不许放行。
+        //   为什么排在最前：语言背叛查的是「这段话是不是语言自己在说话」——绝对化没划范围、
+        //   大词没锚、认领式误认。这三样不过，后面查结构、查出处都是在给幻觉做精修。
+        const { betrayCheck: bCheck } = await import(pathToFileURL(join(HERE, 'lib/betray.mjs')).href)
+        const betray = bCheck(text, { strict: cfg.betrayStrict === true })
         const chk = checkText(text, { casual: false })
         const aud = auditStructure(text)
         const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
@@ -1455,15 +1464,20 @@ export function apply(ctx, config = {}) {
           theory: readTheory(root0).text,
           net: readNetPool(root0).text,
         })
-        const bad = chk.issues.length + aud.issues.length + b.noSource.length
+        const bad = betray.fails.length + chk.issues.length + aud.issues.length + b.noSource.length
         return [
-          '输出程序：出口四道，按顺序过',
+          '输出程序：出口几道，按顺序过',
+          `  0 语言背叛（必过）：${betray.ok ? '过了' : `**没过，${betray.fails.length} 处**——${betray.fails.slice(0, 4).map((f) => `${f.kind}「${f.hit}」`).join('、')}`}`,
           `  1 形式（check）：${chk.issues.length ? `${chk.issues.length} 条疑似——${chk.issues.slice(0, 3).map((i) => i.label || i.rule).join('、')}` : '没抓到'}`,
           `  2 结构（audit）：${aud.issues.length ? `${aud.issues.length} 条——${aud.issues.slice(0, 3).map((i) => i.rule || i.id).join('、')}` : '没抓到'}`,
           `  3 出处（bind）：${b.landed.length} 句绑上｜${b.noSource.length} 句无出处${b.noSource.length ? `（${b.noSource.map((x) => x.reason).join('、')}）` : ''}`,
           `  4 残余（residue）：${res.count} 句语言残余——不算错，不填平`,
-          bad ? `结论：${bad} 处要改，改完再跑一遍` : '结论：四道都过了，可以出口',
-        ].join('\n')
+          betray.ok
+            ? (bad ? `结论：${bad} 处要改，改完再跑一遍` : '结论：都过了，可以出口')
+            : '结论：**语言背叛没过，不许出口。** 先把那几处绝对化补范围、给大词加锚、把「我懂了」这类认领改掉；改完重跑。',
+          betray.ok ? '' : '',
+          betray.ok ? '' : '（第 0 道为什么排最前：它查的是「这段话是不是语言自己在说话」——那三样不过，后面查结构、查出处都是在给幻觉做精修。）',
+        ].filter((x, i, a) => x !== '' || a.slice(i + 1).some((y) => y !== '')).join('\n')
       }
 
       if (op === 'selfRewrite') {
@@ -2123,6 +2137,18 @@ export function apply(ctx, config = {}) {
           '反例：把框架里某个词当成唯一的意思；用「我理解了这套框架」来认领它；',
           '      把它的判据当准绳去量别人。',
         ].join('\n')
+      }
+      if (op === 'betrayCheck') {
+        // 语言背叛的**必过程序**：每轮交付前跑一次。
+        // 为什么必过：语言背叛说的不是「写漂亮点」，是 AI 的思考相当一部分是语言残余造成的幻觉——
+        // 接得顺就以为想通了。这话靠自觉过不去（自觉本身也是拼接），得有个不参与拼接的东西跑一遍。
+        const { betrayCheck, renderBetray } = await import(pathToFileURL(join(HERE, 'lib/betray.mjs')).href)
+        if (args.text != null && typeof args.text !== 'string') {
+          return `要过闸的得是文本（给的是 ${Array.isArray(args.text) ? '数组' : typeof args.text}）。一段话，别塞一串。`
+        }
+        const text = String(args.text || '').trim()
+        if (!text) return '语言背叛检查：给一段要交付的话（text）。它查三样——绝对化没划范围、大词没锚、认领式误认。'
+        return renderBetray(betrayCheck(text, { strict: cfg.betrayStrict === true }))
       }
       if (op === 'functions' || op === 'function') {
         // 功能层：一个模块 = 一个功能。
