@@ -15,7 +15,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, isAbsolute } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 // ★ 从脚本自己的位置往上推，不写死盘符——换电脑、换工作区名都不用改。
@@ -236,7 +236,13 @@ if (squeezed.length > maxMod) {
 say('')
 say('== 七、测试 ==')
 const run = (label, file, args = []) => {
-  const r = spawnSync(NODE, [file, ...args], { cwd: PKG, encoding: 'utf8' })
+  // ★ .tools 在工作区根，不在插件目录里。原来只往插件目录找，五道测试**一直在跑不存在的文件**——
+  //   永远失败，而我又只看 tail，看不见。两处都找，找不到就说清楚「没这个脚本」，不装成测试通过。
+  // 调过来可能已经是绝对路径（比如 join(PKG, 'selfcheck.mjs')）——再 join 一次会拼成 PKG\C:\...。
+  const candidates = isAbsolute(file) ? [file] : [join(PKG, file), join(WS, file)]
+  const found = candidates.find((x) => existsSync(x))
+  if (!found) { warn(label, `没有这个脚本：${file}（插件目录和工作区都找过）`); return }
+  const r = spawnSync(NODE, [found, ...args], { cwd: dirname(found), encoding: 'utf8' })
   const out = (r.stdout || '') + (r.stderr || '')
   const lastLine = out.trim().split('\n').filter(Boolean).pop() || '(无输出)'
   if (r.status === 0) ok(label, lastLine.slice(0, 70))
