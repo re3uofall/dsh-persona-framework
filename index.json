@@ -20,7 +20,7 @@
       "homepage": "https://www.npmjs.com/package/dsh-persona-framework",
       "versions": [
         {
-          "version": "5.4.2",
+          "version": "5.16.2",
           "publishTimestamp": 1793151306,
           "source": {
             "type": "npm"
@@ -30,7 +30,7 @@
           }
         }
       ],
-      "version": "5.4.2"
+      "version": "5.16.2"
     }
   ]
 }

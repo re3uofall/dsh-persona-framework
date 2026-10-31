@@ -10,13 +10,14 @@
  *   2. **出口自检 / 结构自检**：话出口前查一遍，动手之前查结构；报疑似，不判对错。
  *   3. **体检**：拿一份人格文件对槽位——必填三部分缺了就说缺了，但不替人写答案。
  *   4. **预处理 / 心情 / 元协调**：长文先压、状态可记、整轮可不上场。
- *   5. **模块库**：69 个模块索引随框架注入，可按编号取一段。
+ *   5. **模块库**：83 个模块索引随框架注入，可按编号取一段。
  *
  * 配置全在 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
  */
 import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, statSync, appendFileSync } from 'node:fs'
 import { dirname, join, resolve, basename } from 'node:path'
+import { checkOptional, installCommands, renderOptional, dshRoot } from './lib/optional.mjs'
 import { fileURLToPath } from 'node:url'
 import { checkText, renderCheck, auditStructure, renderAudit } from './lib/checks.mjs'
 import { compactIndex, digestText } from './lib/digest.mjs'
@@ -28,8 +29,10 @@ import {
   readInternalIntegration, readExternalIntegration, readExperience, readTheory, readNetPool,
   accuracyRules,
   readIdentity, readResidue, mediateReality, readLexicon, synonymCheck, readPersonaBundle, detectSwirl,
+  betrayAbstraction,
 } from './lib/programs.mjs'
 import { ensureWorkspace, pickPersonaFile as pickPersona, inspectWorkspace, SKELETON, POOL_PATHS } from './lib/workspace.mjs'
+import { doctorCheck, renderDoctor } from './lib/doctor.mjs'
 import { appendToPool, WRITE_TARGETS, undoWrite, undoPathOf } from './lib/poolwrite.mjs'
 import { harvestCandidates, writeCandidates } from './lib/autolex.mjs'
 import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
@@ -37,7 +40,7 @@ import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '5.4.2'
+const VERSION = '5.16.2'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 
 export const name = 'persona-framework'
@@ -865,8 +868,8 @@ export function apply(ctx, config = {}) {
           description: '段名或序号：all（默认）／0 是什么／1 骨架／2 横尺／3 接线／4 流程／5 判据／6 自检／7 模块／8 边界；'
             + '给 modules 或 module 则取模块库索引',
         },
-        module: { type: 'string', description: '模块编号或名字（1–49，如「25」或「情感」）：直接取那一条' },
-        rule: { type: 'string', description: '规则号（1–25，如「25」）：从 AI 版框架里取那一条完整规则' },
+        module: { type: 'string', description: '模块编号或名字（如「25」或「情感」）：直接取那一条' },
+        rule: { type: 'string', description: '规则号（如「26」）：从 AI 版框架里取那一条完整规则' },
         max: { type: 'number', description: '正文上限（字），默认 6000' },
       },
       additionalProperties: false,
@@ -877,7 +880,11 @@ export function apply(ctx, config = {}) {
         const text = loadAi()
         if (!text) return `AI 版框架不在：${aiFile}。把 config.aiFile 指到一份 md，或用 section=all 取人读版。`
         const hit = findRule(text, wantRule)
-        if (!hit) return `没有 R${wantRule}。规则号从 1 到 25。`
+        if (!hit) {
+          // ★ 从文件里数，不写死——写死就会在加规则之后变成谎话（这里原先是 25，实际 28）
+          const n = (text.match(/^### R\d+/gm) || []).length
+          return `没有 R${wantRule}。规则号从 1 到 ${n || '?'}。`
+        }
         return `规则来源：${aiFile}\n\n${hit}`
       }
 
@@ -943,7 +950,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -1193,6 +1200,8 @@ export function apply(ctx, config = {}) {
         return [
           `成为现实中介程序：${m.verdict}`,
           Object.entries(byPool).map(([k, v]) => `  · ${POOL_LABEL[k] || k}：${v} 条标为现实存在`).join('\n'),
+          // ★ 过中介就是记账，记账时顺手记一下时间（R26）。时间不明不算错，所以只报数、不报警。
+          `  时刻：${m.counts.dated} 条带时间，${m.counts.undated} 条没记时间（不算错，只是别拿它推先后）`,
           m.skipped.length ? `没过的前 3 条：\n${m.skipped.slice(0, 3).map((x) => `  · ${x.pool}#${x.index} ${x.why}`).join('\n')}` : '',
         ].filter(Boolean).join('\n')
       }
@@ -1996,7 +2005,7 @@ export function apply(ctx, config = {}) {
           internal: internal.text, external: external.text, experience: experience.text, theory: theory.text,
         })
         return [
-          `语言残余程序：${r.count} 句语言残余（对着八个池子查：${Object.values(POOL_LABEL).join('、')}）`,
+          `语言残余程序：${r.count} 句语言残余（对着 ${Object.keys(POOL_LABEL).length} 个池子查：${Object.values(POOL_LABEL).join('、')}）`,
           r.allowed.length ? '没有出处的句子（不算错，只算残余）：' : '',
           ...r.allowed.map((x) => `  · ${x}`),
           `结论：${r.verdict}`,
@@ -2006,7 +2015,29 @@ export function apply(ctx, config = {}) {
       if (op === 'external') return poolReport(readExternalIntegration(await wd()), '外部整合程序', '外部整合池')
       if (op === 'experience') return poolReport(readExperience(await wd()), '经验程序', '经验池')
       if (op === 'theory') return poolReport(readTheory(await wd()), '理论程序', '理论池')
+      if (op === 'betray') {
+        // 背叛：看这句话把具体删掉了多少（和 bind 查出处是两件事）
+        if (args.text != null && typeof args.text !== 'string') {
+          return `要查的话得是文本（给的是 ${Array.isArray(args.text) ? '数组' : typeof args.text}）。一段话，别塞一串。`
+        }
+        const text = String(args.text || '').trim()
+        if (!text) return '语言背叛程序：给一段话（text），我看它删掉了什么。'
+        const b = betrayAbstraction(text)
+        const lines = [`语言背叛程序：${b.verdict}`, '']
+        for (const r of b.rows) {
+          if (r.ok) continue
+          lines.push(`· 「${r.sentence.slice(0, 60)}」`)
+          lines.push(`    ${r.deleted}`)
+        }
+        lines.push('', b.note)
+        return lines.join('\n')
+      }
       if (op === 'bind' || op === 'betray') {
+        // ★ 类型先看：数组/对象被 String() 静默转成字符串，会给出「0 句」这种看着像结论的假结果。
+        //   宁可报「给的不是文本」，也不要给一个说不清为什么空的答案。
+        if (args.text != null && typeof args.text !== 'string') {
+          return `要查的话得是文本（给的是 ${Array.isArray(args.text) ? '数组' : typeof args.text}）。一条一句，别塞进来一串。`
+        }
         const text = String(args.text || '').trim()
         if (!text) return '语言绑定程序：给一段话（text）。'
         const root = await wd()
@@ -2062,7 +2093,7 @@ export function apply(ctx, config = {}) {
           `结论：${r.verdict}`,
         ].filter(Boolean).join('\n')
       }
-      return 'framework_program：op 只能是 reflect / selfRewrite / preferenceRewrite / persona / memory / body / internal / external / experience / theory / bind（旧名 betray）。'
+      return 'framework_program：op 只能是 reflect / selfRewrite / preferenceRewrite / persona / memory / body / internal / external / experience / theory / bind／betray（一个查出处，一个查删掉了什么）。'
     },
   })
 
@@ -2122,6 +2153,122 @@ export function apply(ctx, config = {}) {
       const r = digestText(args.text, int(args.max, 200, 20000, 3000))
       const saved = Math.round((1 - r.after / Math.max(1, r.before)) * 100)
       return `压缩：${r.before} → ${r.after} 字（省 ${saved}%）\n\n${r.text}`
+    },
+  })
+
+  // ── 下一步只给一件 ─────────────────────────────────────────────────────
+  // 抄自 cyanwell/dsh-agent-soul 的 agent_soul_plan：**不给清单，只给一件。**
+  // 理由：一次给七条「你该做的」，等于什么都没说——人会挑最省事那条做，或者干脆不做。
+  // 所以它先看现状，挑**卡得最狠的那一处**，只报那一件，并说清为什么是这件。
+  // ── 体检：换电脑 / 换工作区 / 换 profile 之后，先跑这个 ──────────
+  // 「跑不起来」很少是代码错，是路断了：插件登记指空、设置里的路径搬走了、目录还没建。
+  register({
+    name: 'framework_doctor',
+    description:
+      '体检：一次查清这套东西在这台机器上能不能跑。查四样——插件本体的登记还在不在、'
+      + '工作区目录建了没有、设置里的绝对路径有没有指空、版本对不对得上。'
+      + '每条都说清在哪找的证据；断链会给能改成的路径。换电脑、换工作区之后先跑这个。',
+    parameters: {
+      type: 'object',
+      properties: {
+        workspace: { type: 'string', description: '要查的工作区（默认当前工作区）' },
+      },
+      additionalProperties: false,
+    },
+    async run(args) {
+      const ws = String(args.workspace || cfg.workspace || '').trim() || (await wd())
+      return renderDoctor(doctorCheck({ workspace: ws, dshRoot: dshRoot(), version: VERSION }))
+    },
+  })
+
+  register({
+    name: 'framework_next',
+    description: '下一步只做一件：看你现在这套搭到哪了，挑最该补的那一处，只报这一件，并说清为什么是这件。'
+      + '它不列清单——列七条等于没给。想知道全貌用 framework_slots 或 framework_audit。',
+    parameters: {
+      type: 'object',
+      properties: {
+        all: { type: 'boolean', description: 'true = 把候选都列出来（默认只给一件）' },
+      },
+      additionalProperties: false,
+    },
+    async run(args, exec) {
+      const items = []
+      // 1. 人格文件找得到没——最硬的一条，没它别的都白搭
+      // 用 pickPersonaFile()：它已经会「显式配置 > 工作区里探」，别再只看 cfg.personalityFile——
+      // 只看配置会误报「没指文件」，可实际上工作区里已经探到了。
+      const bundle = (() => {
+        try {
+          const f = pickPersonaFile()
+          return f && existsSync(f) ? f : null
+        } catch { return null }
+      })()
+      if (!bundle) {
+        items.push({
+          weight: 100,
+          title: '先指一份人格文件',
+          why: '框架只给骨架，不写「你是谁」。没有人格文件，这套东西跑起来是空的——它会把话说得很清楚，但不知道是谁在说。',
+          how: '设置页 →「人格文件」填绝对路径；或让它能自动探到。',
+        })
+      }
+      // 2. 注入开没开
+      if (bundle && String(cfg.mode || '') === 'off') {
+        items.push({
+          weight: 80,
+          title: '把注入打开（mode 从 off 改回 full 或 compact）',
+          why: '人格文件找到了，但注入关着——等于书买回来了没拆封。工具还能用，可每轮对话里没有它。',
+          how: '设置页 →「注入」→ 模式选 full（整份）或 compact（只留是什么＋骨架＋判据）。',
+        })
+      }
+      // 3. 模块索引读得到没
+      // 用真实存在的 loadModules()：它读 modulesFile 或插件自带那份
+      let mods = 0
+      try {
+        const md = loadModules()
+        mods = (String(md).match(/^\|\s*\d{1,3}\s*\|/gm) || []).length || (String(md).match(/^- \d{1,3} /gm) || []).length
+      } catch { mods = 0 }
+      if (bundle && !mods) {
+        items.push({
+          weight: 60,
+          title: '模块索引没读到——查一下 modulesFile',
+          why: '索引是「有这回事」的地图。读不到它，取模块正文时只能猜编号，`framework_view module=25` 会取空。',
+          how: '留空走插件自带那份；工作区里有 `persona-ai/modules/00-目录.md` 时会优先用那份。两处都没有就补一份。',
+        })
+      }
+      // 4. 出口判据那一段
+      if (bundle && String(cfg.mode || '') !== 'off' && cfg.guide === false) {
+        items.push({
+          weight: 40,
+          title: '把「怎么用这套框架」那段提示打开（guide）',
+          why: '不开它，模型手里有工具但不知道什么时候该调——工具全在那儿吃灰。',
+          how: '设置页 →「出口」→ 勾「附上「怎么用这套框架」那一段」。',
+        })
+      }
+      // 5. 长文预处理没配
+      if (bundle && !Number(cfg.maxChars)) {
+        items.push({
+          weight: 30,
+          title: '设一个注入上限（maxChars）',
+          why: '不设上限，人格一长就把每轮的预算吃掉——它先撑爆的是饭碗，不是判断。',
+          how: '设置页 →「注入」→ 上限填 8000～12000 之间。',
+        })
+      }
+
+      if (!items.length) {
+      return '这一套搭齐了：人格文件在、注入开着、索引读得到、出口那段也挂着。没有「下一步」要补。\n\n'
+        + '接下来该做的不是配置，是用起来——`framework_check` 过一遍你要说的话，`framework_audit` 过一遍结构。'
+      }
+      items.sort((a, b) => b.weight - a.weight)
+      if (args && args.all) {
+      return '候选按该做的先后排：\n\n'
+        + items.map((x, i) => `${i + 1}. **${x.title}**\n   ${x.why}\n   怎么改：${x.how}`).join('\n\n')
+      }
+      const one = items[0]
+      return `**下一步只做这一件：${one.title}**\n\n`
+        + `为什么是这件：${one.why}\n\n`
+        + `怎么改：${one.how}\n\n`
+        + (items.length > 1 ? `后面还排着 ${items.length - 1} 件，做完这一件再问一次。
+` : '')
     },
   })
 
@@ -2400,6 +2547,32 @@ export function apply(ctx, config = {}) {
     handler(req, res) {
       try {
         sendJson(res, 200, { ok: true, config: publicState() })
+      } catch (error) {
+        warn(error)
+        sendJson(res, 500, { ok: false, error: errText(error) })
+      }
+    },
+  }))
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/persona-framework/optional',
+    async handler(req, res) {
+      try {
+        let wsRoot = ''
+        try { wsRoot = await wd() } catch { /* 落空 */ }
+        const want = String((req.url || '').split('?')[1] || '')
+        const profile = (new URLSearchParams(want)).get('profile') || ''
+        const r = checkOptional({ profile, workspace: wsRoot })
+        sendJson(res, 200, {
+          ok: true,
+          ...r,
+          commands: installCommands(
+            r.rows.filter((x) => !x.installed).map((x) => x.key),
+            { workspace: wsRoot, profile },
+          ),
+          text: renderOptional(r),
+        })
       } catch (error) {
         warn(error)
         sendJson(res, 500, { ok: false, error: errText(error) })

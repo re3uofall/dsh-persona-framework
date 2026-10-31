@@ -149,8 +149,24 @@ console.log('— 宿主替身：工具真跑一遍（不许把进程带崩）—
     systemPrompt: { section: () => () => {} },
     webServer: { register: (s) => { routes.push(s); return () => {} } },
   }, { frameworkFile: BUNDLED, settingsFile: join(dir3, 'config.json') })
-  ok('挂载后注册 7 个工具', tools.length === 7, tools.map((t) => t.name).join(','))
-  ok('挂载后注册 2 个数据口', routes.length === 2, routes.map((r) => r.path).join(','))
+  // 同上：别数个数。加一个工具就红一次，那是把「有几个」当判据。
+  {
+    const names = tools.map((t) => t.name)
+    const need = [
+      'framework_view', 'framework_program', 'framework_check', 'framework_audit',
+      'framework_digest', 'framework_next',
+    'framework_doctor', 'framework_slots', 'framework_mood',
+    ]
+    const miss = need.filter((n) => !names.includes(n))
+    ok('该有的工具都在', miss.length === 0, miss.length ? `缺 ${miss.join(', ')}` : names.join(','))
+  }
+  // 别数个数：加一个数据口就红一次，那是把「有几个」当成判据。查的是「该在的都在」。
+  {
+    const paths = routes.map((r) => r.path)
+    const need = ['/api/persona-framework/status', '/api/persona-framework/config', '/api/persona-framework/optional']
+    const miss = need.filter((p) => !paths.includes(p))
+    ok('该有的数据口都在', miss.length === 0, miss.length ? `缺 ${miss.join(', ')}` : paths.join(','))
+  }
   const prog = tools.find((t) => t.name === 'framework_program')
   const bodyOut = String((await prog.execute({ op: 'body' }, {})).text)
   ok('身体程序跑得通（没串到 HTTP 取体）', bodyOut.includes('身体程序') && bodyOut.includes('工作区'),

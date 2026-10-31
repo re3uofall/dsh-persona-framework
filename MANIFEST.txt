@@ -1,6 +1,6 @@
 # 发布指纹清单
-# 版本：5.4.2
-# 生成时间：2026-10-30 16:18:00
+# 版本：5.16.2
+# 生成时间：2026-10-30 18:04:31
 # 用法：下载后逐文件算 sha256，前 16 位应与下表一致；不一致的说明文件被改过。
 
 sha256[:16]             字数  文件
@@ -18,16 +18,16 @@ f6f7fc0310e654c9    32246  assets/menu.png
 333f5ad2b48b0f73   149717  assets/s4-optional.png
 a65bbbc1037b6435    73669  assets/s5-meta.png
 8b7c8691c161c7af   115359  assets/s7-outbound.png
-635a1b847a6a196e    35082  CHANGELOG.md
+03c08155585b9b56    35879  CHANGELOG.md
 d331bd89c3fe2277    43677  client.js
 d1f8d38e8031c34c     1764  cordis.patch.yml
 abeadfb1a1255f9e     2220  FILES.md
-4c8312c0404e3f3c     9472  framework/FRAMEWORK.ai.md
-3b09751d4c01afef     8842  framework/FRAMEWORK.md
+9d8f24168368abe9    10038  framework/FRAMEWORK.ai.md
+3e1223e448d9024b     9070  framework/FRAMEWORK.md
 f887bad45bf98e4e     6376  framework/MODULES.md
 edbe9999a9b92a14     1102  icon.svg
-55fa89dc34157831   109429  index.js
-5a2c70dae78c1d80      967  index.json
+c79232676cdb9374   109429  index.js
+c41ebe88a0942a89      967  index.json
 b4217a274e4e318a       67  knowledge/_说明.md
 4e101352eca7be6b     3331  lib/anchor.mjs
 927e86a945a8ee11     4176  lib/autolex.mjs
@@ -43,13 +43,13 @@ c4a19f026c76e724     5173  lib/workspace.mjs
 b01fdb23313e4045      302  locale/en.json
 4e5a283ad1b6d2c6      126  locale/zh.json
 7ba3677d0b1c686b     2005  make-manifest.mjs
-1f79f71abc867d8f     1355  package.json
+9c4c190596a98057     1355  package.json
 7cc87aa1b95c1f7b      158  persona-ai/characters/人格.md
 6fc5224842489448       77  persona-ai/knowledge/session/_说明.md
 ca5f4573b80237d9       70  persona-ai/knowledge/web/_说明.md
 8ac80b95410b0da9       70  persona-ai/knowledge/world/_说明.md
 91af74fb43457f8d       68  persona-ai/modules/_说明.md
-7275cda7eed46e8b    16413  README.md
+eeb02db7deeacdee    16413  README.md
 ef7e6ea61f32cea2    12187  release-check.mjs
 acc42966a01fcfe0     3544  RELEASE.md
 fe13ab7a8dcb82fa     9885  selfcheck.mjs

@@ -150,6 +150,12 @@ window.__ModuleLoader__.load({
       const [error, setError] = React.useState('')
       const [saved, setSaved] = React.useState('')
       const [busy, setBusy] = React.useState(false)
+      const [opt, setOpt] = React.useState(null)
+      const [optErr, setOptErr] = React.useState('')
+      // 附加插件「勾了哪些」——没装的可勾，勾了只记在这里，等模型来真装。
+      // ★ 这一行漏过一次：s8 里用了 picks / setPicks，这里却没声明，
+      //   结果一渲染就 ReferenceError，界面上表现出来就是「勾不上」。用例要能查出这种。
+      const [picks, setPicks] = React.useState({})
 
       const applyState = (config) => {
         setCfg(config)
@@ -171,6 +177,24 @@ window.__ModuleLoader__.load({
       }, [])
 
       React.useEffect(() => { load() }, [load])
+
+      // 附加插件的状态：单独拉，拉不到不影响主页面
+      React.useEffect(() => {
+        let alive = true
+        const go = async () => {
+          try {
+            const r = await fetch(`${API}/optional`)
+            const d = await r.json()
+            if (!alive) return
+            if (d && d.ok) setOpt(d)
+            else setOptErr(d && d.error ? d.error : '读不到')
+          } catch (e) {
+            if (alive) setOptErr('连不上后端')
+          }
+        }
+        go()
+        return () => { alive = false }
+      }, [])
 
       // 心情是模型随时会改的一格，页面开着不能一直停在打开那一刻。
       // 只把 mood 换掉，别动正在编辑的其他字段。
@@ -346,7 +370,7 @@ window.__ModuleLoader__.load({
           : h('div', { key: 'none', style: { ...T.hint, lineHeight: 1.9 } },
             '还没填。填上之后，这一页会做体检，framework_slots 也默认按它来。'),
         h('div', { key: 'note', style: { ...T.hint, marginTop: 10, lineHeight: 1.8 } },
-          '注入人格的是 dsh-persona-grow；这一页只登记「用哪份」并体检，不写那个文件。'),
+          '注入人格的是旁边那个自学插件；这一页只登记「用哪份」并体检，不写那个文件。'),
         h('div', {
           key: 'req',
           style: { marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--dsw-alias-border-l1)' },
@@ -401,10 +425,10 @@ window.__ModuleLoader__.load({
               value: cfg.mode,
               onChange: (e) => edit({ mode: e.target.value }),
             },
-              h('option', { value: 'full' }, 'full — 整份注入'),
-              h('option', { value: 'ai' }, 'ai — 规则清单（AI 友好版）'),
-              h('option', { value: 'compact' }, 'compact — 只要骨架与判据'),
-              h('option', { value: 'off' }, 'off — 不注入，只留工具'),
+              h('option', { value: 'full' }, '整份注入'),
+              h('option', { value: 'ai' }, '规则清单（机器友好版）'),
+              h('option', { value: 'compact' }, '只要骨架与判据'),
+              h('option', { value: 'off' }, '不注入，只留工具'),
             )),
             sep('d3'),
             field('idx', '附模块索引', h('select', {
@@ -412,8 +436,8 @@ window.__ModuleLoader__.load({
               value: cfg.includeModules,
               onChange: (e) => edit({ includeModules: e.target.value }),
             },
-              h('option', { value: 'index' }, 'index — 附一句话索引'),
-              h('option', { value: 'off' }, 'off — 不附'),
+              h('option', { value: 'index' }, '附一句话索引'),
+              h('option', { value: 'off' }, '不附'),
             )),
             sep('d4'),
             field('cap', '字数上限', h('div', { style: { display: 'flex', gap: 12 } },
@@ -543,7 +567,7 @@ window.__ModuleLoader__.load({
                 onChange: (e) => edit({ languageBetray: e.target.checked }),
               }),
               '语言是对现实的抽象；删掉的那部分由现实承担，不拿语言补',
-            ), '默认关。最重的一条，off 也留；但「跳过」更高。与语言诅咒互斥'),
+            ), '默认关。最重的一条，整个关掉也留；但「跳过」更高。与语言诅咒互斥'),
             field('fr', '框架自反', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
               h('input', {
                 type: 'checkbox',
@@ -691,10 +715,10 @@ window.__ModuleLoader__.load({
             onChange: (e) => edit({ autoMode: e.target.value }),
           },
             h('option', { value: 'off' }, '不自动写（只有手动调 op=write 才写）'),
-            h('option', { value: 'plugin' }, '让插件自动写——它自己扫池子收候选，写进 lexicon/_待定.md'),
-            h('option', { value: 'ai' }, '让 AI 自动写——把「该收一批了」交给它判断，它决定收什么、定不定成含义'),
+            h('option', { value: 'plugin' }, '让插件自己收——它纯机械地扫池子收候选，落进待定'),
+            h('option', { value: 'ai' }, '让模型自己收——把「该收一批了」交给它判断，它决定收什么、定不定成含义'),
             h('option', { value: 'model' }, '让默认模型写——不给判断框架，就在正常轮次里顺手收几条'),
-          ), '默认不自动。plugin 纯机械、只收候选不定义；ai 会把这件事当成一轮的判断来做'),
+          ), '默认不自动。插件只管机械收候选、不定义；模型会把这件事当成一轮的判断来做'),
           field('ae', '多久写一次', h('select', {
             style: T.input,
             value: String(cfg.autoEvery || 'off'),
@@ -887,6 +911,54 @@ window.__ModuleLoader__.load({
               '总闸关着：上面九项这会儿都不生效；勾上「对外接口组」才开')
             : null,
         ].filter(Boolean)),
+
+        section('s8', '附加插件', '随框架一起装的那几个；装不装你说了算。已装的会变灰——那是「已经装好了」，不是坏了；要卸得去插件管理器',
+          h('div', {},
+            optErr ? h('div', { style: T.note }, `读不到附加插件状态：${optErr}`) : null,
+            !opt ? h('div', { style: T.note }, '正在读…')
+              : h('div', {},
+                h('div', { style: T.note }, `当前配置档：${(opt.profiles || []).filter((x) => x.active).map((x) => x.profile).join('、') || '还没认出来'}`),
+                ...(opt.rows || []).map((row) => h('label', {
+                  key: row.key,
+                  style: { display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 16px', borderTop: '1px solid var(--dsw-alias-border-l1)' },
+                },
+                  h('input', {
+                    type: 'checkbox',
+                    // 已装的勾上、不可取消（取消勾选不等于卸载，别给假的开关）
+                    checked: row.installed === true || picks[row.key] === true,
+                    disabled: row.installed === true,
+                    style: { marginTop: 2, cursor: row.installed ? 'default' : 'pointer' },
+                    onChange: (e) => setPicks((prev) => ({ ...prev, [row.key]: e.target.checked })),
+                  }),
+                  h('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+                    h('span', { style: { fontSize: 13 } },
+                      // ★ 只写「已装」不够：灰着、点不动，看着像坏了。要说出「灰 = 装好了」，
+                      //   再给一条出路（去插件管理器卸），不然人只会一直点。
+                      row.installed
+                        ? `${row.label} · 已装好（灰着是对，不用再点；要卸去插件管理器）`
+                        : `${row.label} · 未装（勾上再保存）`),
+                    h('span', { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } },
+                      row.what),
+                  ),
+                )),
+                (() => {
+                  const left = (opt.rows || []).filter((r) => !r.installed)
+                  const total = (opt.rows || []).length
+                  if (!left.length) {
+                    return h('div', { style: { padding: '12px 16px', borderTop: '1px solid var(--dsw-alias-border-l1)', fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } },
+                      `${total} 个都装上了，所以这一栏全是灰的——那是满，不是坏。要卸装去插件管理器。`)
+                  }
+                  const chosen = left.filter((r) => picks[r.key])
+                  return h('div', { style: { padding: '12px 16px', borderTop: '1px solid var(--dsw-alias-border-l1)' } },
+                    h('div', { style: { fontSize: 12, lineHeight: 1.8, color: 'var(--dsw-alias-label-secondary)' } },
+                      chosen.length
+                        ? `勾了：${chosen.map((r) => r.label).join('、')}。`
+                        : '勾上想装的那几个。',
+                      '勾完跟模型说一句「装一下附加插件」——插件自己装不了自己（dsh 是桌面应用，不在 PATH 里），这一步得它来。'),
+                  )
+                })(),
+              ),
+          )),
 
         section('s6', '心情', '状态栏：现在什么状态、从哪来、影响什么',
           h('div', {},

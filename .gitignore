@@ -11,3 +11,8 @@ Thumbs.db
 TALK*.mp4
 TALK*.pptx
 TALK.md
+
+# 工作区骨架：测试时 ensureWorkspace 会把它们建到这里，但它们是**用户数据的位置**，
+# 不是插件的一部分。模板在 lib/workspace.mjs 的 SKELETON 里，不依赖这些文件。
+knowledge/
+persona-ai/
