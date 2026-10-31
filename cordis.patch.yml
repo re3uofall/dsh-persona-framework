@@ -49,3 +49,8 @@
         selfBreak: false      # 自保突破：复杂不是判据，确定性才是
         selfReflect: false    # 自指突破：自指是逻辑操作，默认关
         languageBetray: false # 语言背叛：语言不代表唯一／边界／现实，只是抽象；自指归自指类
+
+        # ── 附加插件 ──
+        # 五个自建小插件（grow／diary／results／explore／memory）可以随框架一起装。
+        # 装不装在设置页「附加插件」那段看状态、拿命令——框架自己不动手装，
+        # 因为装插件会改 profile 的 package.json，跑错了要收拾。

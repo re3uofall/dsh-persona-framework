@@ -18,8 +18,12 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-const PKG = 'C:/爱思考的大肥鱼思思/dsh-persona-framework'
-const WS = 'C:/爱思考的大肥鱼思思'
+// ★ 从脚本自己的位置往上推，不写死盘符——换电脑、换工作区名都不用改。
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { dirname } from 'node:path'
+const HERE = dirname(fileURLToPath(import.meta.url))
+const PKG = HERE
+const WS = dirname(HERE)
 const NODE = process.execPath
 
 const problems = []
@@ -200,7 +204,7 @@ if (!modBad) ok('全部模块七节齐、更新记录在最后、有一句话', 
 // ── 六、索引
 say('')
 say('== 六、索引 ==')
-const { compactIndex } = await import('file:///C:/爱思考的大肥鱼思思/dsh-persona-framework/lib/digest.mjs')
+const { compactIndex } = await import(pathToFileURL(join(PKG, 'lib/digest.mjs')).href)
 const modulesMd = read(join(PKG, 'framework/MODULES.md'))
 const dirMd = read(join(MODDIR, '00-目录.md'))
 const nums = (t) => new Set([...t.matchAll(/^(?:\|\s*|-\s+)(\d{2})\s/gm)].map((m) => m[1]))
@@ -214,8 +218,19 @@ else bad('两份索引不一致', `${onlyA.length ? 'MODULES 多：' + onlyA.joi
 const maxMod = Number((idx.match(/maxModulesChars: (\d+)/) || [])[1] || 4000)
 const natural = compactIndex(modulesMd)
 const squeezed = compactIndex(modulesMd, maxMod)
-if (squeezed.length <= maxMod) ok('索引按预算压后装得下', `${squeezed.length} / ${maxMod} 字（未自适应时 ${natural.length}）`)
-else bad('索引按预算压后仍超上限', `${squeezed.length} > ${maxMod}`)
+// 注意：squeezed 是「按预算压完」的结果，它天然 ≤ maxMod——所以只比这一条永远绿，等于没查。
+// 真该查的是两样：压不进去（压缩算法坏了），和压得太狠（预算小到把内容挤没了）。
+const ratio = natural.length ? squeezed.length / natural.length : 1
+if (squeezed.length > maxMod) {
+  bad('索引按预算压后仍超上限', `${squeezed.length} > ${maxMod}`)
+} else if (natural.length > 200 && ratio < 0.5) {
+  bad(
+    '索引压得太狠，信息丢了',
+    `${natural.length} → ${squeezed.length}（预算 ${maxMod}），只剩 ${Math.round(ratio * 100)}%；预算太小，模块名会被截没`,
+  )
+} else {
+  ok('索引按预算压后装得下，也没压过火', `${squeezed.length} / ${maxMod} 字（原 ${natural.length}，${Math.round(ratio * 100)}%）`)
+}
 
 // ── 七、测试
 say('')
