@@ -130,6 +130,91 @@
 
 **这两个坑长一个样：写的时候以为写了，跑出来才知道那一层没接上。**
 
+## 三之三、翻译判据：一个动作的四步
+
+前两节是「翻出来的结果」。这一节是**「翻译」这个动作怎么做**——下次换一个功能，照这四步走。
+
+### 第一步：把判据一条一条抄下来
+
+**别一边读一边翻。** 先把那一节的判据抄成清单，一条一行，**不改字**。
+
+抄的时候顺手标一件事：**这一条是「读」「判」还是「写」？**
+标不出来的，说明还没读懂——**它可能根本不是判据，是解释**。
+
+（08 的五条抄下来是这样：场合判对了吗 / 每个断言带得出级别吗 / 事实和判断分开了吗 / 术语翻得成人话吗 / 被纠正时三步走完了吗。五条全是「判」。）
+
+### 第二步：分两头去找——一手在学科，一手在工程
+
+**判据是概念，概念在学科里有根，在代码里有形。两头都得走。**
+
+**学科这一头：去哪儿找？**
+
+| 判据在说什么 | 去哪儿找 | 搜什么 |
+| --- | --- | --- |
+| 记忆、来源、忘 | 认知心理学 | `source monitoring`、`reality monitoring`、`false memory` |
+| 注意、控制、忍住 | 认知心理学 | `executive function`、`inhibitory control`、`self-regulation` |
+| 「我」、自指、二阶 | 哲学·心灵哲学 | `self-consciousness`、`second-order desire`（Frankfurt）、`apperception`（Kant） |
+| 判断、成立、真 | 哲学·认识论 / 逻辑 | `assertion`、`justification`、`epistemic warrant` |
+| 场合、得体、分寸 | 语用学 / 社会学 | `register`、`face-threatening act`、`Goffman` |
+| 该不该做、代价 | 哲学·伦理学 | `practical wisdom`（phronesis）、`akrasia` |
+
+**找的规矩**：**先搜到一篇能读的再说**。搜到的第一屏多半是百科和营销号——**往下翻，找 `.edu`、`arxiv`、`pmc`、`plato.stanford.edu`**。
+
+**工程这一头：GitHub 搜什么？**
+
+搜**动作 + 对象**，不搜概念名。概念名（「自我」「元认知」）在 GitHub 上基本搜不到东西，搜到也是玩具。
+
+| 你要的东西 | 搜这个 |
+| --- | --- |
+| 一道闸，验断言够不够格 | `claim verification`、`evidence gate`、`grounding check` |
+| 防乱说 | `hallucination guardrail`、`factuality check` |
+| 卡住就停、交给人 | `human handoff`、`escalation policy` |
+| 一轮一轮转 | `agent loop`、`orchestrator`、`scheduler` |
+
+**看仓库先看三样，别看 star**：
+1. **README 头三行**——它自己说它是什么（`AgentClaimGuard` 那句 `claim-level evidence and policy gate` 就是全部）
+2. **它明确说「我不做什么」**——这一条比「我能做什么」有用，能省掉你误用
+3. **example 那一段**——输入输出长什么样，比看它架构图快十倍
+
+### 第三步：看两头各给了什么、各缺什么
+
+**这一步最容易被跳过，也是唯一能防「照搬」的一步。**
+
+拿 08 举例：工程那头给「断言 + 证据 + policy」的手法，学科那头给「来源有级别」的根据。
+**两头合起来仍然缺三样**——场合三档、术语翻人话、改口三步。
+
+为什么缺：**它们管的是「话有没有证据」，不管「这话该不该对这个场合说」。**
+
+**这一步要写下一个问题**：「这两头都不管的那部分，正文里有吗？有就补，没有就问作者。」
+
+### 第四步：翻成程序——翻译表长什么样
+
+**一张两列的表：左边正文原句，右边落在哪个函数的哪一行。** 中间不许有解释。
+
+| 正文原句 | 翻成什么 | 落在哪 |
+| --- | --- | --- |
+| 「三手不进论证」 | `SOURCES[三手].inArgue = false` | `gate.mjs` 的 `verifyOne` |
+| 「分不清时按严的走」 | `sceneOf()` 认不出就返回 `公开` | 同上 |
+
+**写不出右边那一格，就是还没翻。** 别写「大致是检查一下」——那不是翻译，那是愿望。
+
+### 抓原文的办法（省得再踩坑）
+
+GitHub 页面直接 fetch **只返回导航**，拿不到正文。**抓 raw**：
+
+```python
+import urllib.request
+req = urllib.request.Request(
+    "https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>",
+    headers={"User-Agent": "Mozilla/5.0"})
+data = urllib.request.urlopen(req, timeout=30).read()
+```
+
+`curl` 在沙箱里可能直接 0 字节；`web_fetch` 对 `.pdf` 会报 `unsupported content type`。
+**两条都走不通时，回去抓 GitHub 的 txt 视图，或用 raw。**
+
+---
+
 ## 四、85 个功能实现层（`lib/impl.mjs`）
 
 那是**另一条路**：每个功能一个 `IMPLS[id].run(ws, input)`，能单独调。
