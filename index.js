@@ -40,6 +40,7 @@ import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
 import { REFUSE_REASONS, runAutonomy } from './lib/autonomy.mjs'
+import { renderTick, tick } from './lib/tick.mjs'
 import { IMPLS } from './lib/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -761,15 +762,17 @@ export function apply(ctx, config = {}) {
       const breakoutOn = cfg.aiBreakout === true
       const selfBreakOn = cfg.selfBreak === true
       const selfReflectOn = cfg.selfReflect === true
-      // 自主（12）：**每轮真跑一遍五步**——起念、称重、决断、做、收口。
-      // 不是提醒该做什么；是它自己把这五步走完，并把痕迹落成能回读的字。
+      // 一个 tick：**每轮注入 = 主循环的一次**。
+      // 没有常驻线程，就挂在唯一一定会被调用的地方；system 表在 lib/tick.mjs。
       try {
         const wsRoot = String(cfg.workspace || process.cwd())
-        const run = runAutonomy(wsRoot)
-        const lines = [...run.lines]
-        if (run.did.length) lines.push('', '**做了**：' + run.did.join('、'))
-        if (run.cant.length) lines.push('**做不了**：' + run.cant.join('；'))
-        parts.push('', '## 自主（12）本轮真跑了一遍五步', '', lines.join('\n'))
+        const r = tick(wsRoot)
+        const lines = [renderTick(r)]
+        const did = r.results.flatMap((x) => x.did)
+        const cant = r.results.flatMap((x) => x.cant)
+        if (did.length) lines.push('', '**做了**：' + did.join('、'))
+        if (cant.length) lines.push('**做不了**：' + cant.join('；'))
+        parts.push('', '## 一个 tick（程序自己跑的）', '', lines.join('\n'))
       } catch { /* 跑不起来就不加，不编 */ }
       const optional = []
       if (humanOn) {
