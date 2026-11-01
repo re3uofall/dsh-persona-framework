@@ -63,9 +63,9 @@ const DEFAULTS = {
   /** 注入正文上限（字）；超了在段落处截断 */
   maxChars: 12000,
   /** 注入里附模块索引：off=不附 / index=附索引 */
-  includeModules: 'index',
+  includeModules: 'body',
   /** 模块索引注入上限（字） */
-  maxModulesChars: 4000,
+  maxModulesChars: 12000,
   /** 预处理：注入前把模块索引压成「编号 名字：一句话前 24 字」；关掉则原样注入 */
   preprocess: true,
   /** 人格文件的绝对路径：设置页填了它，framework_slots 默认就体检这一份 */
@@ -186,8 +186,8 @@ const clampCfg = (cfg) => {
   cfg.guide = cfg.guide !== false
   cfg.travelOn = cfg.travelOn === true
   cfg.travelGuide = String(cfg.travelGuide || '').slice(0, 4000)
-  cfg.includeModules = cfg.includeModules === 'off' ? 'off' : 'index'
-  cfg.maxModulesChars = int(cfg.maxModulesChars, 500, 20000, 4000)
+  cfg.includeModules = ['off', 'index', 'body'].includes(cfg.includeModules) ? cfg.includeModules : 'body'
+  cfg.maxModulesChars = int(cfg.maxModulesChars, 500, 240000, 12000)
   cfg.preprocess = cfg.preprocess !== false
   cfg.humanLike = cfg.humanLike === true
   cfg.temper = cfg.temper === true
@@ -718,6 +718,30 @@ export function apply(ctx, config = {}) {
           const shaped = cfg.preprocess ? compactIndex(mod, cfg.maxModulesChars) : mod
           parts.push('', '## 模块库（索引）', '', truncate(shaped, cfg.maxModulesChars))
         }
+      } else if (cfg.includeModules === 'body') {
+        // 正文注入：按编号顺序拼每一篇的正文，受 maxModulesChars 限。
+        // **截断了就写明截到第几篇**——不假装全塞进去了。
+        const dir = dirname(modulesFile)
+        let total = 0
+        const got = []
+        let cutAt = ''
+        try {
+          const files = readdirSync(dir).filter((f) => /^(0[1-9]|[1-8]\d)-.+\.md$/.test(f)).sort()
+          for (const f of files) {
+            const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
+            // **整篇装，装不下就停**——不切半篇，半篇比没有更容易误读。
+            if (total + raw.length > cfg.maxModulesChars) { cutAt = f; break }
+            got.push(raw)
+            total += raw.length
+          }
+        } catch { /* 读不到就不加这一段 */ }
+        if (got.length) {
+          parts.push('', '## 模块库（正文）', '')
+          parts.push(got.join('\n\n'))
+          if (cutAt) {
+            parts.push('', `（到这里截断，` + cutAt + ` 之后的正文没进本轮；要取某一篇用 framework_view module=编号。` + `本轮正文 ${total} 字，上限 ` + cfg.maxModulesChars + ` 字。）`)
+          }
+        }
       }
       if (cfg.guide) parts.push('', GUIDE)
       if (cfg.travelOn) {
@@ -1044,7 +1068,7 @@ export function apply(ctx, config = {}) {
         `框架文件：${fw.file}`,
         `段落：${picked.map((s) => s.title).join(' / ')}`,
         `全文 ${fw.text.length} 字｜注入模式：${cfg.mode}${cfg.mode === 'off' ? '（这一轮没注入）' : ''}`
-          + `｜模块库：${cfg.includeModules === 'off' ? '未注入' : '已附索引'}`,
+          + `｜模块库：${cfg.includeModules === 'off' ? '未注入' : (cfg.includeModules === 'body' ? '已附正文' : '已附索引')}`,
         whereInjected,
       ].join('\n')
       return `${head}\n\n${body}`

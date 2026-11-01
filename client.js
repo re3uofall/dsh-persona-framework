@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
       .map((x) => x.trim())
       .filter(Boolean)
 
-    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'index', maxModulesChars: 4000, closingTics: [], order: 20, guide: true, travelOn: false, travelGuide: '' }
+    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'body', maxModulesChars: 12000, closingTics: [], order: 20, guide: true, travelOn: false, travelGuide: '' }
 
     const flagText = (v) => (v === true ? '是' : v === false ? '否' : '未写')
 
@@ -254,7 +254,7 @@ window.__ModuleLoader__.load({
               mode: cfg.mode,
               maxChars: Number(cfg.maxChars) || 12000,
               includeModules: cfg.includeModules,
-              maxModulesChars: Number(cfg.maxModulesChars) || 4000,
+              maxModulesChars: Number(cfg.maxModulesChars) || 12000,
               closingTics: splitTics(tics),
               humanLike: cfg.humanLike === true,
               temper: cfg.temper === true,
@@ -431,14 +431,21 @@ window.__ModuleLoader__.load({
               h('option', { value: 'off' }, '不注入，只留工具'),
             )),
             sep('d3'),
-            field('idx', '附模块索引', h('select', {
+            field('idx', '模块注入', h('select', {
               style: T.input,
               value: cfg.includeModules,
               onChange: (e) => edit({ includeModules: e.target.value }),
             },
+              h('option', { value: 'body' }, '附正文（按编号顺序，受字数上限截断）'),
               h('option', { value: 'index' }, '附一句话索引'),
               h('option', { value: 'off' }, '不附'),
             )),
+            sep('d3b'),
+            field('trig', '触发器', h('div', { style: { fontSize: 12, opacity: 0.75, lineHeight: 1.7 } },
+              h('div', {}, '刺激 → 中介 → 反应。七条默认：08:30 反思、13:00 成果、22:00 日记、判断成形→成果、改口→日记、隔三轮→整合、碗空→探索。'),
+              h('div', {}, '十个对外接口都能被它调：探索、日记、关系、工作、学习、成果、娱乐、闲暇，加整合（记忆／人格／身体对一遍）与反思（回读还认不认）。'),
+              h('div', {}, '查清单用 framework_program op=trigger（子命令 list / ports / run / reset）；过不了中介就空着，不降级成「随便做点什么」。'),
+            ), '单开一行：它不在上面那些开关里，是另外一条路——不靠人开口，靠排班'),
             sep('d4'),
             field('cap', '字数上限', h('div', { style: { display: 'flex', gap: 12 } },
               h('input', {
