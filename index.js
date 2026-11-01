@@ -419,27 +419,40 @@ export function apply(ctx, config = {}) {
 
   // ── 模块库索引 ──────────────────────────────────────────────────────────────
   /**
-   * 模块库只读一处：**配置里那一份**。
+   * 模块库读两处：**工作区那份优先，包里那份兜底。**
    *
-   * 插件自带的 `framework/modules/` 已经移除——两份在，人就会改错那份。
-   * 这一条是踩出来的：改了一路 `persona-ai/modules`，插件读的是自带那份，白改。
+   * 两份都要有：
+   *   工作区 `persona-ai/modules` —— 这边改、这边生效
+   *   包里 `framework/modules`    —— **发布用**，别人装下来得自带，不然他们那份是空的
    *
-   * 现在只有一条路：`cfg.modulesFile`，没有就按约定找工作区那份。
-   * **兜底删了，就得报清楚**——不假装还读得到。
+   * 改模块要两边都改（`.tools/sync2.py` 一条命令搞定），不然装了的人读到的还是旧的。
    */
   const modulesFile = (() => {
     if (cfg.modulesFile) return String(cfg.modulesFile)
+    const tries = []
     try {
       const wd = ctx.get('workingDirectory')?.defaultDirectory
-      if (wd) {
-        const guess = join(wd, 'persona-ai', 'modules', '00-目录.md')
-        if (existsSync(guess)) return guess
-      }
-    } catch { /* 没有这个服务 */ }
-    return ''
+      if (wd) tries.push(join(wd, 'persona-ai', 'modules', '00-目录.md'))
+    } catch { /* 没有这个服务就靠自带那份 */ }
+    tries.push(BUNDLED_MODULES)
+    // 别只认路径顺序：工作区那份可能少了后加的模块（实证——00-目录.md 一直没有 63–67）。
+    // 都读一遍，数各自列了多少个模块编号，用覆盖多的那份。
+    const count = (f) => {
+      try {
+        const t = readFileSync(f, 'utf8')
+        const nums = new Set([...t.matchAll(/^(?:\|\s*|-\s+)(\d{2})\s/gm)].map((m) => m[1]))
+        return nums.size
+      } catch { return -1 }
+    }
+    let pick = ''
+    let best = -1
+    for (const f of tries) {
+      if (!f || !existsSync(f)) continue
+      const n = count(f)
+      if (n > best) { best = n; pick = f }
+    }
+    return pick || BUNDLED_MODULES
   })()
-
-  if (!modulesFile) warn('模块库路径没配：`modulesFile` 空着，工作区里也找不到 persona-ai/modules/00-目录.md')
 
   const aiFile = resolveAiFile(cfg, ctx)
   let aiCache = { sig: '', text: '' }
