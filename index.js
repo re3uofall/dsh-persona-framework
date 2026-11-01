@@ -2944,6 +2944,35 @@ export function apply(ctx, config = {}) {
     modulesChars: loadModules().length,
   })
 
+  // 一键重启的按钮入口。
+  // 工具（framework_restart）只有模型调得动；这个是给人点的。
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/persona-framework/restart',
+    async handler(req, res) {
+      try {
+        if (!ctx.configEditor) {
+          sendJson(res, 200, { ok: false, error: '拿不到 configEditor；只能手动重启 DSH。' })
+          return
+        }
+        const entries = ctx.configEditor.entries() || []
+        const mine = entries.find((e) => {
+          const t = `${e.name || ''} ${e.id || ''} ${e.package || ''}`.toLowerCase()
+          return t.includes('persona-framework') || t.includes('persona_framework')
+        })
+        if (!mine) {
+          sendJson(res, 200, { ok: false, error: `没找到自己这一条。登记里有：${entries.map((e) => e.name || e.id || '?').join('、') || '（空）'}` })
+          return
+        }
+        await ctx.configEditor.edit(mine, (current) => ({ ...current }))
+        sendJson(res, 200, { ok: true, name: mine.name || mine.id })
+      } catch (error) {
+        warn(error)
+        sendJson(res, 500, { ok: false, error: errText(error) })
+      }
+    },
+  }))
+
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/persona-framework/status',

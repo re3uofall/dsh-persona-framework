@@ -441,6 +441,24 @@ window.__ModuleLoader__.load({
               h('option', { value: 'index' }, '附一句话索引'),
               h('option', { value: 'off' }, '不附'),
             )),
+            sep('d3d'),
+            field('rst', '重启', h('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+              h('button', {
+                style: { ...T.primary, padding: '4px 14px' },
+                onClick: async () => {
+                  setSaved('重启中……')
+                  try {
+                    const res = await fetch(`${API}/restart`, { method: 'POST' })
+                    const j = await res.json()
+                    setSaved(j.ok ? `重走了：${j.name}` : `没成：${j.error}`)
+                  } catch (e) {
+                    setSaved('调不到：' + (e && e.message ? e.message : e))
+                  }
+                },
+              }, '一键重启'),
+              h('span', { style: { fontSize: 12, opacity: 0.7 } },
+                '改完 index.js / lib/*.mjs 点这里。**改 client.js 不算——那要刷新页面。**'),
+            )),
             sep('d3c'),
             field('fref', '功能自反', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
               h('input', {
