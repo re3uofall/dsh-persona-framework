@@ -849,6 +849,29 @@ export function apply(ctx, config = {}) {
           }
         }
       } catch { /* 跑不起来就不加，不编 */ }
+
+      // ── 87 功能指令：**人格得知道有这个入口** ──
+      // 跟「功能自反」不是一回事：那个看「谁在跑」，这个办「我说一句」。
+      // 默认就注入——不知道自己有这入口，等于没有。
+      try {
+        const cmdWs = String(cfg.workspace || process.cwd())
+        const cmdBook = openCommands(cmdWs)
+        const cmdList = listCommands(cmdBook)
+        if (cmdList.length) {
+          parts.push('',
+            '## 功能指令（说一句，它就办）',
+            '',
+            '**这不是功能，是入口。** 功能是被动的、不吭声的；指令是你说一句，它当场办，办完回你一个代号和几个数。',
+            '',
+            cmdList.map((c) => `- **${c.name}**${c.builtin ? '' : '（自定义）'}${c.args.length ? `｜要 ${c.args.join('、')}` : ''}`).join('\n'),
+            '',
+            '发法：`framework_program op=cmd sub=<名>`，带上它要的参数。',
+            '',
+            '**它不碰功能的沉默**：功能本身还是不给人格字；指令只把「办没办成」转成代号（done／refused／no-why／unknown-command）给你。',
+            '',
+            '**跟上面的「功能自反」分工**：那个答「这一轮谁在跑、交了几行」；这个答「我现在让它办件事，办成没有」。一个看，一个办。')
+        }
+      } catch { /* 拉不到就不加，不编 */ }
       const optional = []
       if (humanOn) {
         optional.push('**本次打开：像人。** 像人不是模仿人：要成为一个像人那样独立的智能体，不一定是人类；不扮演人类，不装人类的身体、经历和腔调。'
