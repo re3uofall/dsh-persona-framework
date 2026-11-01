@@ -630,6 +630,14 @@ window.__ModuleLoader__.load({
               }),
               '语言是对现实的抽象；删掉的那部分由现实承担，不拿语言补',
             ), '默认关。最重的一条，整个关掉也留；但「跳过」更高。与语言诅咒互斥'),
+            field('fnr', '功能自反', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.functionReflect === true,
+                onChange: (e) => edit({ functionReflect: e.target.checked }),
+              }),
+              '让你看见功能这一轮跑了什么：哪个 system 动了、哪个卡了',
+            ), '默认关。功能干活不说话——不开这一档，你只看得到结果；开了才看得见过程。开了也允许你写 .persona-framework/功能补充.md，写你希望它怎么改'),
             field('fr', '框架自反', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
               h('input', {
                 type: 'checkbox',

@@ -827,7 +827,13 @@ export function apply(ctx, config = {}) {
           // **跑完就走。** 一个字都不进注入。
           // 功能自反：**默认关**。开了才把「它正在跑什么」摆出来——那是可选行为，不是功能本体。
           const rf = renderFuncReflect(r)
-          if (rf) parts.push('', '## 功能自反（看着它自己跑）', '', rf)
+          if (rf) {
+            parts.push('', '## 功能自反（看着它自己跑）', '', rf)
+            // **开了才给这条允许**：看见了，就有资格说话。
+            parts.push('',
+              '想让它改怎么干，写 `.persona-framework/功能补充.md`：一行一条，写「哪个功能＋你希望怎样」。'
+              + '**补充不是改代码**——代码你改不动，也别去改；写在那儿，它下一轮读。')
+          }
         }
       } catch { /* 跑不起来就不加，不编 */ }
       const optional = []
