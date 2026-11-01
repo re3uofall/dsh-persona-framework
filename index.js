@@ -39,7 +39,7 @@ import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
 import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
-import { brief as autonomyBrief, decide as autonomyDecide, runAutonomy } from './lib/autonomy.mjs'
+import { REFUSE_REASONS, runAutonomy } from './lib/autonomy.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VERSION = '5.16.2'
@@ -760,15 +760,15 @@ export function apply(ctx, config = {}) {
       const breakoutOn = cfg.aiBreakout === true
       const selfBreakOn = cfg.selfBreak === true
       const selfReflectOn = cfg.selfReflect === true
-      // 自主程序：**每轮自己跑一轮**，不是写提醒。
-      // 它能自己做的当场做（补日志、记账），做不了的明说做不了。
+      // 自主（12）：**每轮真跑一遍五步**——起念、称重、决断、做、收口。
+      // 不是提醒该做什么；是它自己把这五步走完，并把痕迹落成能回读的字。
       try {
         const wsRoot = String(cfg.workspace || process.cwd())
         const run = runAutonomy(wsRoot)
-        const lines = ['**这一轮它自己做了**：' + (run.did.length ? run.did.join('、') : '没做')]
-        if (run.cant.length) lines.push('', '**做不了的**（程序不编内容）：')
-        for (const c of run.cant) lines.push('· ' + c)
-        parts.push('', '## 本轮的自主（程序自己跑的一轮）', '', lines.join('\n'))
+        const lines = [...run.lines]
+        if (run.did.length) lines.push('', '**做了**：' + run.did.join('、'))
+        if (run.cant.length) lines.push('**做不了**：' + run.cant.join('；'))
+        parts.push('', '## 自主（12）本轮真跑了一遍五步', '', lines.join('\n'))
       } catch { /* 跑不起来就不加，不编 */ }
       const optional = []
       if (humanOn) {
@@ -1957,14 +1957,13 @@ export function apply(ctx, config = {}) {
 
       if (op === 'autonomy') {
         const ws = String(cfg.workspace || process.cwd())
-        const sub = String(args.sub || '').trim()
-        if (sub === 'json') return JSON.stringify(autonomyDecide(ws), null, 2)
         const run = runAutonomy(ws)
-        const lines = [`自主程序跑完一轮（${ws}）`]
-        lines.push('  做了：' + (run.did.length ? run.did.join('、') : '没做'))
-        if (run.cant.length) { lines.push('  做不了：'); for (const c of run.cant) lines.push('    · ' + c) }
-        lines.push('  日志：<工作区>/.persona-framework/autonomy.log.md')
-        return lines.join('\n')
+        const out = [`自主（12）跑完五步｜${ws}`, '', ...run.lines.map((l) => '  ' + l)]
+        if (run.did.length) out.push('', '  做了：' + run.did.join('、'))
+        if (run.cant.length) out.push('  做不了：' + run.cant.join('；'))
+        out.push('', `  「不干」只认三种理由：${Object.keys(REFUSE_REASONS).join(' / ')}`)
+        out.push('  痕迹：<工作区>/.persona-framework/autonomy.log.md')
+        return out.join('\n')
       }
 
       if (op === 'trigger') {
