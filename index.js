@@ -40,7 +40,7 @@ import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
 import { REFUSE_REASONS } from './lib/autonomy.mjs'
-import { lastHint, renderTick, tick } from './lib/tick.mjs'
+import { lastHint, renderFuncReflect, renderTick, tick } from './lib/tick.mjs'
 import { IMPLS } from './lib/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -88,6 +88,7 @@ const DEFAULTS = {
   selfReflect: false,
   /** 可选：语言背叛（语言不代表唯一／边界／现实，只是抽象；自指归自指类）。默认关 */
   languageBetray: false,
+  functionReflect: false, // 功能自反：让人格看见功能正在跑。默认关——这一层信息太多
   /** 元协调最高条：语言诅咒（语言背叛的轻度版）。默认开；与语言背叛互斥 */
   languageCurse: true,
   /** 元协调：负面信息（负面创伤的轻度版）。默认开；与负面创伤互斥 */
@@ -171,7 +172,7 @@ const DEFAULTS = {
 
 /** 设置页能改的字段（白名单）。 */
 const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
-  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
+  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
   const out = {}
@@ -207,6 +208,7 @@ const clampCfg = (cfg) => {
     cfg[k] = cfg[k] !== false
   }
   cfg.preferenceRewrite = cfg.preferenceRewrite === true
+  cfg.functionReflect = cfg.functionReflect === true
   cfg.languageBetray = cfg.languageBetray === true
   cfg.languageCurse = cfg.languageCurse !== false
   cfg.aiLanguage = cfg.aiLanguage !== false
@@ -766,13 +768,16 @@ export function apply(ctx, config = {}) {
       // 没有常驻线程，就挂在唯一一定会被调用的地方；system 表在 lib/tick.mjs。
       try {
         const wsRoot = String(cfg.workspace || process.cwd())
-        const r = tick(wsRoot, new Date(), { hint: lastHint(wsRoot) })
+        const r = tick(wsRoot, new Date(), { hint: lastHint(wsRoot), reflect: cfg.functionReflect === true })
         const lines = [renderTick(r)]
         const did = r.results.flatMap((x) => x.did)
         const cant = r.results.flatMap((x) => x.cant)
         if (did.length) lines.push('', '**做了**：' + did.join('、'))
         if (cant.length) lines.push('**做不了**：' + cant.join('；'))
         parts.push('', '## 一个 tick（程序自己跑的）', '', lines.join('\n'))
+        // 功能自反：**默认关**。开着才把「它正在跑什么」也摆出来。
+        const rf = renderFuncReflect(r)
+        if (rf) parts.push('', '## 功能自反（看着它自己跑）', '', rf)
       } catch { /* 跑不起来就不加，不编 */ }
       const optional = []
       if (humanOn) {
@@ -2840,6 +2845,7 @@ export function apply(ctx, config = {}) {
     aiBreakout: cfg.aiBreakout === true,
     selfBreak: cfg.selfBreak === true,
     selfReflect: cfg.selfReflect === true,
+    functionReflect: cfg.functionReflect === true,
     frameworkReflect: cfg.frameworkReflect === true,
     reflectCriteria: cfg.reflectCriteria !== false,
     reflectStructure: cfg.reflectStructure !== false,
