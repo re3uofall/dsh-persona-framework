@@ -39,7 +39,7 @@ import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
 import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
-import { openCommands, saveCommands, listCommands, runCommand, addCommand, stopCommand } from './lib/command.mjs'
+import { openCommands, saveCommands, listCommands, runCommand, addCommand, stopCommand, recentRuns } from './lib/command.mjs'
 import { REFUSE_REASONS } from './lib/autonomy.mjs'
 import { lastHint, renderFuncReflect, renderTick, tick } from './lib/tick.mjs'
 import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from './lib/loop.mjs'
@@ -869,7 +869,24 @@ export function apply(ctx, config = {}) {
             '',
             '**它不碰功能的沉默**：功能本身还是不给人格字；指令只把「办没办成」转成代号（done／refused／no-why／unknown-command）给你。',
             '',
-            '**跟上面的「功能自反」分工**：那个答「这一轮谁在跑、交了几行」；这个答「我现在让它办件事，办成没有」。一个看，一个办。')
+            '**跟上面的「功能自反」分工**：那个答「这一轮谁在跑、交了几行」；这个答「我现在让它办件事，办成没有」。一个看，一个办。',
+            '',
+            // **跑没跑，看账。** 不给它一句「你刚跑过」，让账自己说。
+            (() => {
+              try {
+                const recent = recentRuns(cmdWs, 3)
+                if (!recent.length) return '**还没跑过。**'
+                const ago = (iso) => {
+                  const ms = Date.now() - Date.parse(iso)
+                  if (!Number.isFinite(ms) || ms < 0) return '刚刚'
+                  const m = Math.floor(ms / 60000)
+                  if (m < 1) return '刚刚'
+                  if (m < 60) return `${m} 分钟前`
+                  return `${Math.floor(m / 60)} 小时前`
+                }
+                return '**最近跑过的**：' + recent.map((x) => `「${x.name}」${ago(x.at)}${x.code === 'done' ? '' : `（${x.code}）`}`).join('、')
+              } catch { return '' }
+            })())
         }
       } catch { /* 拉不到就不加，不编 */ }
       const optional = []
