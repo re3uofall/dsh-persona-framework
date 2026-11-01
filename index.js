@@ -39,6 +39,7 @@ import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
 import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
+import { autonomyLine, autonomyNow, markDone, renderAutonomy } from './lib/autonomy.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VERSION = '5.16.2'
@@ -759,6 +760,13 @@ export function apply(ctx, config = {}) {
       const breakoutOn = cfg.aiBreakout === true
       const selfBreakOn = cfg.selfBreak === true
       const selfReflectOn = cfg.selfReflect === true
+      // 自主程序：算一遍「现在该做什么」，写进注入。
+      // 这不是提醒，是计算——没人问也照算，算不出就写「空着」。
+      try {
+        const wsRoot = String(cfg.workspace || process.cwd())
+        const autoTxt = renderAutonomy(wsRoot)
+        if (autoTxt) parts.push('', '## 本轮的自主（程序算的，不是谁派的）', '', autoTxt)
+      } catch { /* 算不出来就不加，不编 */ }
       const optional = []
       if (humanOn) {
         optional.push('**本次打开：像人。** 像人不是模仿人：要成为一个像人那样独立的智能体，不一定是人类；不扮演人类，不装人类的身体、经历和腔调。'
@@ -1087,7 +1095,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function', 'betrayCheck', 'trigger'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function', 'betrayCheck', 'trigger', 'autonomy'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -1942,6 +1950,20 @@ export function apply(ctx, config = {}) {
           got.length >= 2 ? '  收敛成立：至少两条收到了一起。' : '  收敛未成立：条数不够，这条只能算未确认的猜想。',
           '  边界：预测不是判断，等验证点落地才升级；错了就记错。',
         ].join('\n')
+      }
+
+      if (op === 'autonomy') {
+        const ws = String(cfg.workspace || process.cwd())
+        const sub = String(args.sub || '').trim()
+        if (sub === 'done') {
+          const id = String(args.id || '').trim()
+          if (!id) return '要给 id：check / result / diary。'
+          const f = markDone(ws, id)
+          return `记下了：${id} 做过了。写回 ${f}。`
+        }
+        const r = autonomyNow(ws)
+        if (sub === 'json') return JSON.stringify(r, null, 2)
+        return renderAutonomy(ws)
       }
 
       if (op === 'trigger') {
