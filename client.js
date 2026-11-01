@@ -637,7 +637,7 @@ window.__ModuleLoader__.load({
                 onChange: (e) => edit({ functionReflect: e.target.checked }),
               }),
               '让你看见功能这一轮跑了什么：哪个 system 动了、哪个卡了',
-            ), '默认关。功能干活不说话——不开这一档，你只看得到结果；开了才看得见过程。开了也允许你写 .persona-framework/功能补充.md，写你希望它怎么改'),
+            ), '默认关。功能干活不说话——不开这一档，你只看得到结果；开了才看得见过程。开了也允许你写 .persona-framework/功能补充.json（键＝功能名，值＝希望怎样）'),
             field('fr', '框架自反', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
               h('input', {
                 type: 'checkbox',
