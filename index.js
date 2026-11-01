@@ -834,6 +834,18 @@ export function apply(ctx, config = {}) {
           const rf = renderFuncReflect(r)
           if (rf) {
             parts.push('', '## 功能自反（看着它自己跑）', '', rf)
+            // **卡在哪儿，也得看得见。**
+            //
+            // 上一版只报「谁跑过、交了几行」，不报「它停在什么东西上」。
+            // 于是「还没称过」一直躺在账里：账知道，我知道不了，
+            // 那个结就永远没人去解——**卡住本身成了消息的终点。**
+            //
+            // 这里只交状态（哪一条在等、等的是什么），不交做法：
+            // 怎么称、称不称，是人格的事，不是功能替它定的。
+            const stuckAt = (r.results || [])
+              .filter((x) => x.cant && x.cant.length)
+              .map((x) => `· ${x.name}｜${x.cant[0]}`)
+            if (stuckAt.length) parts.push('', '**卡在哪**', '', ...stuckAt)
             // **开了才给这条允许**：看见了，就有资格说话。
             parts.push('',
               '想让它改怎么干，写 `.persona-framework/功能补充.json`。**不是 .md**——'
