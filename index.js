@@ -38,6 +38,7 @@ import { harvestCandidates, writeCandidates } from './lib/autolex.mjs'
 import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
 import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
+import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VERSION = '5.16.2'
@@ -1062,7 +1063,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function', 'betrayCheck'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function', 'betrayCheck', 'trigger'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
       },
@@ -1917,6 +1918,55 @@ export function apply(ctx, config = {}) {
           got.length >= 2 ? '  收敛成立：至少两条收到了一起。' : '  收敛未成立：条数不够，这条只能算未确认的猜想。',
           '  边界：预测不是判断，等验证点落地才升级；错了就记错。',
         ].join('\n')
+      }
+
+      if (op === 'trigger') {
+        // 触发器：刺激 → 中介 → 反应。每一个对外接口都能被它调。
+        const sub = String(args.sub || '').trim()
+        const ws = String(cfg.workspace || process.cwd())
+        if (!sub) return explainTrigger()
+        if (sub === 'list') {
+          const { list, from } = loadTriggers(ws)
+          const lines = [`触发器：${list.length} 条（来自 ${from}）`, '']
+          for (const t of list) {
+            const st = t.stimulus || {}
+            const when = st.kind === 'clock' ? `每天 ${st.daily}` : (st.kind === 'cue' ? `信号：${st.when}` : `隔 ${st.every}`)
+            const port = (t.reaction || {}).port || '(没写)'
+            lines.push(`- **${t.name}**（${t.id}）｜${st.kind}｜${when}｜→ ${port}`)
+          }
+          lines.push('', `对外接口 ${PORTS.length} 个：${PORT_IDS.join('、')}`)
+          return lines.join('\n')
+        }
+        if (sub === 'ports') {
+          return [
+            `对外接口：${PORTS.length} 个（每一个都能被触发器调）`,
+            '',
+            ...PORTS.map((p) => `- **${p.name}**（${p.id}）${p.added ? '｜本轮新加' : ''}\n  ${p.what}\n  接口：${p.call}`),
+          ].join('\n')
+        }
+        if (sub === 'run') {
+          const { list } = loadTriggers(ws)
+          let evidence = { have: {} }
+          try {
+            const raw = String(args.have || '').trim()
+            if (raw) {
+              const have = {}
+              for (const k of raw.split(/[,，]/).map((x) => x.trim()).filter(Boolean)) have[k] = true
+              evidence = { have }
+            }
+          } catch { /* 没有证据就不给，等于全不过 */ }
+          const res = runTriggers(list, {
+            now: args.now ? new Date(String(args.now)) : new Date(),
+            turnsSince: args.turns ? Number(args.turns) : 0,
+            evidence,
+          })
+          return renderTriggers(res)
+        }
+        if (sub === 'reset') {
+          const f = saveTriggers(ws, [])
+          return `触发器已清空，写回 ${f}。下次 op=trigger list 会用默认那几条。`
+        }
+        return `没这个子命令：${sub}。有 list / ports / run / reset。`
       }
 
       if (op === 'fetch') {
