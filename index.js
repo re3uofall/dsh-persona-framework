@@ -2495,6 +2495,61 @@ export function apply(ctx, config = {}) {
   // 理由：一次给七条「你该做的」，等于什么都没说——人会挑最省事那条做，或者干脆不做。
   // 所以它先看现状，挑**卡得最狠的那一处**，只报那一件，并说清为什么是这件。
   // ── 体检：换电脑 / 换工作区 / 换 profile 之后，先跑这个 ──────────
+  // 一键重启：不用再去设置页点，也不用杀进程。
+  // 走的是 configEditor.edit —— 它「apply them through the normal Loader path」，
+  // 空改一次，Loader 就把它重新走一遍，等于重载插件。
+  register({
+    name: 'framework_restart',
+    description:
+      '一键重启这个人格框架插件。不杀进程、不去设置页点——'
+      + '走 Loader 自己的重载路：把当前配置空改一次，Loader 会重新走一遍。'
+      + '改了 index.js / lib/*.mjs 之后用它，比关掉重开快。'
+      + '**改了 client.js 不管用**——那是前端包，得刷新页面。',
+    parameters: {
+      type: 'object',
+      properties: {
+        note: { type: 'string', description: '重启原因（写给人看的，可省）' },
+      },
+      additionalProperties: false,
+    },
+    async run(args) {
+      const note = String(args.note || '').trim()
+      const lines = []
+      try {
+        if (!ctx.configEditor) {
+          return [
+            '重启失败：拿不到 configEditor。',
+            '这条路要 Loader 的配置服务；没有它就只能手动重启 DSH。',
+          ].join('\n')
+        }
+        const entries = ctx.configEditor.entries()
+        // 找自己：包名或 id 里带 persona-framework 的那一条
+        const mine = (entries || []).find((e) => {
+          const t = `${e.name || ''} ${e.id || ''} ${e.package || ''}`.toLowerCase()
+          return t.includes('persona-framework') || t.includes('persona_framework')
+        })
+        if (!mine) {
+          const names = (entries || []).map((e) => `${e.name || e.id || '?'}`).join('、')
+          return `没找到自己这一条。登记里有：${names || '（空）'}`
+        }
+        // 空改一次：change 返回原样，但只要走这一趟，Loader 就会重走
+        await ctx.configEditor.edit(mine, (current) => ({ ...current }))
+        lines.push(`重走了：${mine.name || mine.id}`)
+        if (note) lines.push(`原因：${note}`)
+        lines.push('')
+        lines.push('**这一轮之后就是新代码了。** 下一轮注入里能看到变化。')
+        lines.push('（前端改动不算——client.js 要刷新页面。）')
+        return lines.join('\n')
+      } catch (e) {
+        return [
+          `重启失败：${e && e.message ? e.message : e}`,
+          '',
+          '手动办法：设置页里把这个人格框架关掉再打开；或者重启 DSH。',
+        ].join('\n')
+      }
+    },
+  })
+
   // 「跑不起来」很少是代码错，是路断了：插件登记指空、设置里的路径搬走了、目录还没建。
   register({
     name: 'framework_doctor',
