@@ -40,6 +40,7 @@ import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
 import { REFUSE_REASONS, runAutonomy } from './lib/autonomy.mjs'
+import { IMPLS } from './lib/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VERSION = '5.16.2'
@@ -1098,9 +1099,19 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function', 'betrayCheck', 'trigger', 'autonomy'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function', 'betrayCheck', 'trigger', 'autonomy', 'impl'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
+        id: { type: 'string', description: 'impl 用：功能编号（21、24 …）' },
+        q: { type: 'string', description: 'impl 用：查询词' },
+        path: { type: 'string', description: 'impl 用：文件路径' },
+        items: { type: 'string', description: 'impl 45 用：JSON 数组 [{name,hard,cost,gain}]' },
+        premises: { type: 'string', description: 'impl 56 用：JSON 数组 ["若 P 则 Q","P"]' },
+        mood: { type: 'string', description: 'impl 55 用：心情词' },
+        why: { type: 'string', description: 'impl 55 用：来源' },
+        title: { type: 'string', description: 'impl 40 用：成果标题' },
+        body: { type: 'string', description: 'impl 40 用：成果正文' },
+        limit: { type: 'number', description: 'impl 10 用：取几条' },
       },
       required: ['op'],
       additionalProperties: false,
@@ -1955,6 +1966,46 @@ export function apply(ctx, config = {}) {
         ].join('\n')
       }
 
+      if (op === 'impl') {
+        // 功能层实现：**做**，不是查。
+        // 和 functions（查一段话像不像）分开：那个喂 text 报检查项，这个真动手。
+        const ws = String(cfg.workspace || process.cwd())
+        const id = String(args.id || '').trim()
+        if (!id) {
+          const keys = Object.keys(IMPLS).sort()
+          const lines = [`功能层实现：${keys.length} 个已实现（真能跑）`, '']
+          for (const k of keys) lines.push(`- ${k} ${IMPLS[k].name}`)
+          lines.push('', `没实现的：${85 - keys.length} 个——那些是「查」的判据，不是实现`)
+          lines.push('用法：framework_program op=impl id=21 text="..."')
+          return lines.join('\n')
+        }
+        const key = String(id).padStart(2, '0')
+        const impl = IMPLS[key]
+        if (!impl) return `没这个实现：${key}。已实现的：${Object.keys(IMPLS).sort().join('、')}`
+        if (impl.delegate) return `这个功能不在 impl 里：它走 ${impl.delegate}（有自己的文件）`
+        let payload = {}
+        try {
+          if (args.text) payload.text = String(args.text)
+          if (args.q) payload.q = String(args.q)
+          if (args.path) payload.path = String(args.path)
+          if (args.items) payload.items = typeof args.items === 'string' ? JSON.parse(args.items) : args.items
+          if (args.premises) payload.premises = typeof args.premises === 'string' ? JSON.parse(args.premises) : args.premises
+          if (args.mood) payload.mood = String(args.mood)
+          if (args.why) payload.why = String(args.why)
+          if (args.title) payload.title = String(args.title)
+          if (args.body) payload.body = String(args.body)
+          if (args.limit) payload.limit = Number(args.limit)
+        } catch (e) {
+          return `参数读不出来：${e.message}`
+        }
+        const r = impl.run(ws, payload)
+        const out = [`${key} ${impl.name} —— 真跑了一遍`, '']
+        if (r.did.length) { out.push('做了：'); for (const d of r.did) out.push('  · ' + d) }
+        if (r.out.length) { out.push('', '产出：'); for (const o of r.out) out.push('  ' + o) }
+        if (r.cant.length) { out.push('', '做不了：'); for (const c of r.cant) out.push('  · ' + c) }
+        return out.join('\n')
+      }
+
       if (op === 'autonomy') {
         const ws = String(cfg.workspace || process.cwd())
         const run = runAutonomy(ws)
@@ -2447,8 +2498,21 @@ export function apply(ctx, config = {}) {
       },
       additionalProperties: false,
     },
-    async run(args) {
-      const ws = String(args.workspace || cfg.workspace || '').trim() || (await wd())
+    async run(args, exec) {
+      // 工作区解析跟 framework_program 里那套一样，但**不能共用那个局部函数**——
+      // 它是那个工具 run 里的 const，跨工具引用就是「wd is not defined」。
+      let ws = String(args.workspace || cfg.workspace || '').trim()
+      if (!ws || !existsSync(ws)) {
+        const fw = String(cfg.frameworkFile || '').trim()
+        if (fw) {
+          const d = dirname(fw)
+          const base = basename(d) === '.persona-framework' ? dirname(d) : d
+          if (existsSync(base)) ws = base
+        }
+      }
+      if (!ws || !existsSync(ws)) {
+        try { ws = await ctx.workingDirectory.ensure(exec?.agent, exec?.signal) } catch { ws = process.cwd() }
+      }
       return renderDoctor(doctorCheck({ workspace: ws, dshRoot: dshRoot(), version: VERSION }))
     },
   })
