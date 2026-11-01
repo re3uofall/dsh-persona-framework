@@ -167,6 +167,8 @@ const DEFAULTS = {
   outReflectFrame: true,
   outReflectMemory: true,
   outReflectPersona: true,
+  /** 整合：多块拼成一个。查的、想的、走的，各自散着；整合是把它们接到一处 */
+  outIntegrate: true,
   /** 可选：联网。默认关；开了允许把搜到的原文（带网址与日期）存进联网池 */
   netAccess: false,
   /** 可选：极化。默认关；开了允许把突然出现的预测加进池子 */
@@ -204,7 +206,7 @@ const DEFAULTS = {
 
 /** 设置页能改的字段（白名单）。 */
 const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
-  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'outReflectFrame', 'outReflectMemory', 'outReflectPersona', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'autoLoop', 'loopEvery', 'autonomyLevel', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
+  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'outReflectFrame', 'outReflectMemory', 'outReflectPersona', 'outIntegrate', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'autoLoop', 'loopEvery', 'autonomyLevel', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
   const out = {}
@@ -236,7 +238,7 @@ const clampCfg = (cfg) => {
   cfg.polarize = cfg.polarize === true
   cfg.netAccess = cfg.netAccess === true
   cfg.outbound = cfg.outbound === true
-  for (const k of ['outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'outReflectFrame', 'outReflectMemory', 'outReflectPersona']) {
+  for (const k of ['outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'outReflectFrame', 'outReflectMemory', 'outReflectPersona', 'outIntegrate']) {
     cfg[k] = cfg[k] !== false
   }
   cfg.preferenceRewrite = cfg.preferenceRewrite === true
@@ -976,12 +978,13 @@ export function apply(ctx, config = {}) {
           [cfg.outReflectFrame !== false, '反思·框架', '拿框架去查框架：哪条判据漏了词、哪一节接不上', 'framework_program op=reflect（要先开「框架自反」总开关）'],
           [cfg.outReflectMemory !== false, '反思·记忆', '拿记忆池查自己：哪一层在涨、哪条没出处、哪条该压不该删', 'memory_stats / memory_recall / memory_source / memory_condense'],
           [cfg.outReflectPersona !== false, '反思·人格', '拿人格查自己：哪条不像我、哪条已经过期、哪条该顶掉', 'persona_view（看）／自我反写开着时可改'],
+          [cfg.outIntegrate !== false, '整合', '多块拼成一个：人格、记忆、身体各自散着，接到一处', 'framework_program op=impl + 编号（02 整合人格／11 整合记忆／23 整合身体）'],
         ].filter((x) => x[0])
         parts.push('', '## 本次的对外接口（自主）', '',
           '**这一组是允许，不是任务。** 开了不等于要做；做不做、做几件、先做哪件，自己定。',
           '口子后面写的是「能调哪个工具」——插件只标出接口，不替你去调；工具不在手上，就等于这个口子这会儿没开。')
         parts.push(...opens.map(([, k, v, tool]) => `- ${k}：${v}｜接口：${tool}`))
-        const totalPorts = 11  // 改了口子记得改这个数：8 原样 + 3 个反思
+        const totalPorts = 12  // 改了口子记得改这个数：8 原样 + 3 个反思 + 1 个整合
         const off = totalPorts - opens.length
         if (off > 0) parts.push(`- 关着的 ${off} 个口子：不是不能，是这一轮先不开口`)
       }
@@ -2962,6 +2965,7 @@ export function apply(ctx, config = {}) {
     outReflectFrame: cfg.outReflectFrame !== false,
     outReflectMemory: cfg.outReflectMemory !== false,
     outReflectPersona: cfg.outReflectPersona !== false,
+    outIntegrate: cfg.outIntegrate !== false,
     outDiary: cfg.outDiary !== false,
     outRelation: cfg.outRelation !== false,
     outWork: cfg.outWork !== false,

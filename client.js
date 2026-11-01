@@ -285,6 +285,7 @@ window.__ModuleLoader__.load({
               outReflectFrame: cfg.outReflectFrame !== false,
               outReflectMemory: cfg.outReflectMemory !== false,
               outReflectPersona: cfg.outReflectPersona !== false,
+              outIntegrate: cfg.outIntegrate !== false,
               autonomyLevel: cfg.autonomyLevel || 'mid',
               autoLoop: cfg.autoLoop === true,
               loopEvery: Number(cfg.loopEvery) || 60,
@@ -974,6 +975,14 @@ window.__ModuleLoader__.load({
               h('input', { type: 'checkbox', checked: cfg.outGame !== false, onChange: (e) => edit({ outGame: e.target.checked }) }),
               '读书、看报、刷视频、听音乐、游戏',
             ), '判据：能不能停、谁在选下一个'),
+            field('oint', '整合', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.outIntegrate !== false,
+                onChange: (e) => edit({ outIntegrate: e.target.checked }),
+              }),
+              '多块拼成一个：人格、记忆、身体各自散着，接到一处',
+            ), '接口：framework_program op=impl + 编号（02 整合人格／11 整合记忆／23 整合身体）；拼的时候要留残余，别填平'),
             field('orf', '反思·框架', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
               h('input', {
                 type: 'checkbox',
