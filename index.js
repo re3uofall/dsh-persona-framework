@@ -40,7 +40,7 @@ import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
 import { REFUSE_REASONS } from './lib/autonomy.mjs'
-import { renderTick, tick } from './lib/tick.mjs'
+import { lastHint, renderTick, tick } from './lib/tick.mjs'
 import { IMPLS } from './lib/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -766,7 +766,7 @@ export function apply(ctx, config = {}) {
       // 没有常驻线程，就挂在唯一一定会被调用的地方；system 表在 lib/tick.mjs。
       try {
         const wsRoot = String(cfg.workspace || process.cwd())
-        const r = tick(wsRoot)
+        const r = tick(wsRoot, new Date(), { hint: lastHint(wsRoot) })
         const lines = [renderTick(r)]
         const did = r.results.flatMap((x) => x.did)
         const cant = r.results.flatMap((x) => x.cant)
