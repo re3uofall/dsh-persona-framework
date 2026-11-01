@@ -804,10 +804,18 @@ export function apply(ctx, config = {}) {
       const breakoutOn = cfg.aiBreakout === true
       const selfBreakOn = cfg.selfBreak === true
       const selfReflectOn = cfg.selfReflect === true
-      // 循环：开关决定谁跑。
-      //   autoLoop 开 → 它自己在后台按节奏转；这里**只读它写下的**，不重跑。
-      //   autoLoop 关 → 回到老样子，注入时现跑一次。
-      // **两样不许同时跑**——同一个活干两次叫重复，不叫实时。
+      // 功能干活不说话。
+      //
+      // 用户的原话：「去掉所有功能给功能本身字的」。
+      //
+      // 所以这里**不再把 tick 的输出塞进注入**——「接下 1 条劲」「同一性过 1/3」
+      // 那种句子全是功能在解释自己，那是给字，不是动作。
+      //
+      // 想知道功能生没生效，开「功能自反」那一档（`functionReflect`，默认关）。
+      // **那是另一件事**：解释是可选项，不是功能本身。
+      //
+      //   autoLoop 开 → 它自己在后台转；这里只读它写下的
+      //   autoLoop 关 → 注入时现跑一次，**跑完不留字**
       try {
         const wsRoot = String(cfg.workspace || process.cwd())
         if (cfg.autoLoop) {
@@ -816,13 +824,8 @@ export function apply(ctx, config = {}) {
           if (body) parts.push('', '## 循环（它自己在转）', '', body)
         } else {
           const r = tick(wsRoot, new Date(), { hint: lastHint(wsRoot), reflect: cfg.functionReflect === true, level: cfg.autonomyLevel })
-          const lines = [renderTick(r)]
-          const did = r.results.flatMap((x) => x.did)
-          const cant = r.results.flatMap((x) => x.cant)
-          if (did.length) lines.push('', '**做了**：' + did.join('、'))
-          if (cant.length) lines.push('**做不了**：' + cant.join('；'))
-          parts.push('', '## 一个 tick（程序自己跑的）', '', lines.join('\n'))
-          // 功能自反：**默认关**。开着才把「它正在跑什么」也摆出来。
+          // **跑完就走。** 一个字都不进注入。
+          // 功能自反：**默认关**。开了才把「它正在跑什么」摆出来——那是可选行为，不是功能本体。
           const rf = renderFuncReflect(r)
           if (rf) parts.push('', '## 功能自反（看着它自己跑）', '', rf)
         }
