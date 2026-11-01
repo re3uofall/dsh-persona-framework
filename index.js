@@ -41,6 +41,7 @@ import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from '.
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
 import { REFUSE_REASONS } from './lib/autonomy.mjs'
 import { lastHint, renderFuncReflect, renderTick, tick } from './lib/tick.mjs'
+import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from './lib/loop.mjs'
 import { IMPLS } from './lib/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -53,6 +54,29 @@ const BUNDLED_MODULE_DIR = resolve(HERE, 'framework', 'modules')
 
 export const name = 'persona-framework'
 export const inject = ['tools', 'systemPrompt', 'webServer']
+
+/**
+ * 循环和配置对表：**开着就该一直在转，关着就该停**。
+ *
+ * 每轮调一次，目的只有一个——把「循环该不该转」和「它现在转没转」对上。
+ * 对不上就调一次。已经一致就什么都不做，**不重起**。
+ * 重起会丢掉「转到哪了」；而那个恰好是循环最要紧的东西。
+ */
+const _loopState = { on: false, every: 0 }
+function syncLoop(ws, cfg) {
+  const want = cfg.autoLoop === true
+  const every = (Number(cfg.loopEvery) || 60) * 1000
+  if (want === _loopState.on && every === _loopState.every) return
+  if (want) {
+    startLoop(ws, { every, level: cfg.autonomyLevel })
+    _loopState.on = true
+    _loopState.every = every
+  } else {
+    stopLoop(ws)
+    _loopState.on = false
+    _loopState.every = 0
+  }
+}
 
 const DEFAULTS = {
   /** 框架文件的绝对路径；空 = 会话工作区下的 .persona-framework/FRAMEWORK.md，再退到插件自带那份 */
@@ -90,6 +114,8 @@ const DEFAULTS = {
   languageBetray: false,
   functionReflect: false, // 功能自反：让人格看见功能正在跑。默认关——这一层信息太多
   autonomyLevel: 'mid', // 自主性档位：off / low / mid / high（token 与耗时差很多）
+  autoLoop: false, // 自己转的循环：开了它不等注入，按节奏转
+  loopEvery: 60, // 循环间隔（秒）
   /** 元协调最高条：语言诅咒（语言背叛的轻度版）。默认开；与语言背叛互斥 */
   languageCurse: true,
   /** 元协调：负面信息（负面创伤的轻度版）。默认开；与负面创伤互斥 */
@@ -173,7 +199,7 @@ const DEFAULTS = {
 
 /** 设置页能改的字段（白名单）。 */
 const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
-  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'autonomyLevel', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
+  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'autoLoop', 'loopEvery', 'autonomyLevel', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
   const out = {}
@@ -210,6 +236,8 @@ const clampCfg = (cfg) => {
   }
   cfg.preferenceRewrite = cfg.preferenceRewrite === true
   cfg.autonomyLevel = ['off', 'low', 'mid', 'high'].includes(cfg.autonomyLevel) ? cfg.autonomyLevel : 'mid'
+  cfg.autoLoop = cfg.autoLoop === true
+  cfg.loopEvery = Math.min(3600, Math.max(10, Number(cfg.loopEvery) || 60))
   cfg.functionReflect = cfg.functionReflect === true
   cfg.languageBetray = cfg.languageBetray === true
   cfg.languageCurse = cfg.languageCurse !== false
@@ -766,20 +794,28 @@ export function apply(ctx, config = {}) {
       const breakoutOn = cfg.aiBreakout === true
       const selfBreakOn = cfg.selfBreak === true
       const selfReflectOn = cfg.selfReflect === true
-      // 一个 tick：**每轮注入 = 主循环的一次**。
-      // 没有常驻线程，就挂在唯一一定会被调用的地方；system 表在 lib/tick.mjs。
+      // 循环：开关决定谁跑。
+      //   autoLoop 开 → 它自己在后台按节奏转；这里**只读它写下的**，不重跑。
+      //   autoLoop 关 → 回到老样子，注入时现跑一次。
+      // **两样不许同时跑**——同一个活干两次叫重复，不叫实时。
       try {
         const wsRoot = String(cfg.workspace || process.cwd())
-        const r = tick(wsRoot, new Date(), { hint: lastHint(wsRoot), reflect: cfg.functionReflect === true, level: cfg.autonomyLevel })
-        const lines = [renderTick(r)]
-        const did = r.results.flatMap((x) => x.did)
-        const cant = r.results.flatMap((x) => x.cant)
-        if (did.length) lines.push('', '**做了**：' + did.join('、'))
-        if (cant.length) lines.push('**做不了**：' + cant.join('；'))
-        parts.push('', '## 一个 tick（程序自己跑的）', '', lines.join('\n'))
-        // 功能自反：**默认关**。开着才把「它正在跑什么」也摆出来。
-        const rf = renderFuncReflect(r)
-        if (rf) parts.push('', '## 功能自反（看着它自己跑）', '', rf)
+        if (cfg.autoLoop) {
+          syncLoop(wsRoot, cfg)
+          const body = renderLoop(wsRoot)
+          if (body) parts.push('', '## 循环（它自己在转）', '', body)
+        } else {
+          const r = tick(wsRoot, new Date(), { hint: lastHint(wsRoot), reflect: cfg.functionReflect === true, level: cfg.autonomyLevel })
+          const lines = [renderTick(r)]
+          const did = r.results.flatMap((x) => x.did)
+          const cant = r.results.flatMap((x) => x.cant)
+          if (did.length) lines.push('', '**做了**：' + did.join('、'))
+          if (cant.length) lines.push('**做不了**：' + cant.join('；'))
+          parts.push('', '## 一个 tick（程序自己跑的）', '', lines.join('\n'))
+          // 功能自反：**默认关**。开着才把「它正在跑什么」也摆出来。
+          const rf = renderFuncReflect(r)
+          if (rf) parts.push('', '## 功能自反（看着它自己跑）', '', rf)
+        }
       } catch { /* 跑不起来就不加，不编 */ }
       const optional = []
       if (humanOn) {
@@ -2904,6 +2940,9 @@ export function apply(ctx, config = {}) {
     selfReflect: cfg.selfReflect === true,
     functionReflect: cfg.functionReflect === true,
     autonomyLevel: cfg.autonomyLevel,
+    autoLoop: cfg.autoLoop,
+    loopEvery: cfg.loopEvery,
+    loop: loopStatus(wsRoot),
     frameworkReflect: cfg.frameworkReflect === true,
     reflectCriteria: cfg.reflectCriteria !== false,
     reflectStructure: cfg.reflectStructure !== false,
