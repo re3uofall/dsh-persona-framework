@@ -39,6 +39,7 @@ import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
 import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
+import { openCommands, saveCommands, listCommands, runCommand, addCommand, stopCommand } from './lib/command.mjs'
 import { REFUSE_REASONS } from './lib/autonomy.mjs'
 import { lastHint, renderFuncReflect, renderTick, tick } from './lib/tick.mjs'
 import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from './lib/loop.mjs'
@@ -2100,6 +2101,39 @@ export function apply(ctx, config = {}) {
         return out.join('\n')
       }
 
+      if (op === 'cmd') {
+        // 87 功能指令：说一句，让某个功能当场办。
+        // **跟 trigger 分工**：trigger 是「什么时候自动跑」；cmd 是「我现在就要它办」。
+        const sub = String(args.sub || '').trim()
+        const cws = String(cfg.workspace || process.cwd())
+        const book = openCommands(cws)
+        const BUILTIN_COUNT = { 记: 1, 忘: 1, 加固: 1, 锁: 1, 判: 1, 捞: 1 }
+
+        if (!sub || sub === 'list') {
+          const list = listCommands(book)
+          return [
+            `指令：${list.length} 条（内置 ${Object.keys(BUILTIN_COUNT).length} 条 + 自定义 ${Object.keys(book.extra).length} 条）`,
+            '',
+            ...list.map((c) => `- **${c.name}**${c.builtin ? '' : '（自定义）'}｜${c.what}${c.args.length ? `｜要 ${c.args.join('、')}` : ''}`),
+            '',
+            '用法：framework_program op=cmd sub=<指令名> 加上它要的参数。',
+          ].join('\n')
+        }
+        if (sub === 'add') {
+          const r = addCommand(book, args.name, args.to, args.with)
+          if (r.ok) saveCommands(book)
+          return r.ok ? `加了指令「${args.name}」→「${args.to}」` : `没加成：${r.reason}`
+        }
+        if (sub === 'stop') {
+          const r = stopCommand(book, args.name)
+          if (r.ok) saveCommands(book)
+          return r.ok ? `停了「${args.name}」` : `没停成：${r.reason}`
+        }
+
+        // 真办
+        const r = await runCommand(cws, sub, args)
+        return JSON.stringify(r, null, 2)
+      }
       if (op === 'trigger') {
         // 触发器：刺激 → 中介 → 反应。每一个对外接口都能被它调。
         const sub = String(args.sub || '').trim()
