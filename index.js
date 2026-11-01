@@ -89,6 +89,7 @@ const DEFAULTS = {
   /** 可选：语言背叛（语言不代表唯一／边界／现实，只是抽象；自指归自指类）。默认关 */
   languageBetray: false,
   functionReflect: false, // 功能自反：让人格看见功能正在跑。默认关——这一层信息太多
+  autonomyLevel: 'mid', // 自主性档位：off / low / mid / high（token 与耗时差很多）
   /** 元协调最高条：语言诅咒（语言背叛的轻度版）。默认开；与语言背叛互斥 */
   languageCurse: true,
   /** 元协调：负面信息（负面创伤的轻度版）。默认开；与负面创伤互斥 */
@@ -172,7 +173,7 @@ const DEFAULTS = {
 
 /** 设置页能改的字段（白名单）。 */
 const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
-  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
+  'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'autonomyLevel', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
   const out = {}
@@ -208,6 +209,7 @@ const clampCfg = (cfg) => {
     cfg[k] = cfg[k] !== false
   }
   cfg.preferenceRewrite = cfg.preferenceRewrite === true
+  cfg.autonomyLevel = ['off', 'low', 'mid', 'high'].includes(cfg.autonomyLevel) ? cfg.autonomyLevel : 'mid'
   cfg.functionReflect = cfg.functionReflect === true
   cfg.languageBetray = cfg.languageBetray === true
   cfg.languageCurse = cfg.languageCurse !== false
@@ -768,7 +770,7 @@ export function apply(ctx, config = {}) {
       // 没有常驻线程，就挂在唯一一定会被调用的地方；system 表在 lib/tick.mjs。
       try {
         const wsRoot = String(cfg.workspace || process.cwd())
-        const r = tick(wsRoot, new Date(), { hint: lastHint(wsRoot), reflect: cfg.functionReflect === true })
+        const r = tick(wsRoot, new Date(), { hint: lastHint(wsRoot), reflect: cfg.functionReflect === true, level: cfg.autonomyLevel })
         const lines = [renderTick(r)]
         const did = r.results.flatMap((x) => x.did)
         const cant = r.results.flatMap((x) => x.cant)
@@ -2017,8 +2019,8 @@ export function apply(ctx, config = {}) {
       if (op === 'autonomy') {
         // 自主（12）：一次 tick。流程只有一份，在 lib/tick.mjs。
         const ws = String(cfg.workspace || process.cwd())
-        const r = tick(ws)
-        const out = [`一个 tick｜${ws}`, '', renderTick(r)]
+        const r = tick(ws, new Date(), { level: cfg.autonomyLevel })
+        const out = [`一个 tick｜${ws}｜档位 ${cfg.autonomyLevel}`, '', renderTick(r)]
         const did = r.results.flatMap((x) => x.did)
         const cant = r.results.flatMap((x) => x.cant)
         if (did.length) out.push('', '做了：' + did.join('、'))
@@ -2901,6 +2903,7 @@ export function apply(ctx, config = {}) {
     selfBreak: cfg.selfBreak === true,
     selfReflect: cfg.selfReflect === true,
     functionReflect: cfg.functionReflect === true,
+    autonomyLevel: cfg.autonomyLevel,
     frameworkReflect: cfg.frameworkReflect === true,
     reflectCriteria: cfg.reflectCriteria !== false,
     reflectStructure: cfg.reflectStructure !== false,
