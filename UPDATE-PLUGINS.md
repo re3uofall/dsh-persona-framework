@@ -1,0 +1,91 @@
+# 插件更新指南
+
+> 管的是**附加插件**——`addons/` 底下那六个独立 npm 包，各自有 `package.json`、`index.js`、自检。
+> 框架本体发版看 `UPDATE-GUIDE.md`；框架内部的功能（某个模块的 impl）看 `GUIDE-FEATURES.md`。
+> 三份管三样东西，别拿错。
+
+## 一、先认清哪份是活的
+
+同一个插件在盘上常有三份，长得一样，动错一份白干：
+
+| 位置 | 是什么 | 动它有没有用 |
+| --- | --- | --- |
+| `C:\爱思考的大肥鱼思思\<插件目录>\` | **工作区那份，正在跑的就是它** | 有用，改这里 |
+| `dsh-persona-framework\addons\<插件目录>\` | **发布副本**，跟着仓库推给别人的 | 有用，但要先同步 |
+| `~/.dsh/profiles/desktop/node_modules/<包名>` | 指向工作区的**符号链接** | 别动，动了两边不一致 |
+
+判据：`ls -l` 看那个路径是不是箭头（`->`）。是箭头就说明它只是门牌，真正的屋子在工作区。
+
+**常见错法：改了 `addons/` 那份，以为在跑的那份也变了。** 不会——副本是独立文件，不是链接。所以顺序永远是：改工作区 → 跑通 → 同步到 `addons/`。
+
+## 二、改之前先看清楚它长什么样
+
+一个附加插件至少这几处，改之前先读一遍，别凭印象：
+
+- `package.json`：`name`（包名，可能与目录名不同）、`version`、`dsh` 段的挂载信息。
+- `index.js`：默认配置（`DEFAULTS`）、工具定义（`ctx.tool(...)`）、注入段（`systemPrompt.section`）。
+- `client.js`（有的话）：面板那一侧，改了要刷新页面，热重载不一定管用。
+- `selfcheck.mjs`：自检脚本，**改完必须真跑**。
+- `README.md`：给人看的用法，版本号、功能清单写在这。
+
+包名和目录名不是一回事：`persona-diary-plugin/` 的包名是 `dsh-persona-diary`。符号链接认的是包名，别拿目录名去找。
+
+## 三、更新七步
+
+1. **在工作区那份上改。** 改完先在当前会话里试一次真调用，别只读代码。
+2. **跑自检。** `node selfcheck.mjs`（或 `selfcheck-memory.mjs`），全绿再往下。自检里该有的项：纯函数、边界、错误路径。**只加功能不加自检，等于没验收。**
+3. **改版本号。** 三处要对得上：工作区 `package.json`、`addons/` 那份 `package.json`、`README.md` 里写的版本。小改 `+0.0.1`，加功能 `+0.1.0`，改行为与不兼容 `+1.0.0`。
+4. **更新 README。** 写清这一版多了什么、怎么用、有什么边界（比如「私密不是加密」这种要写明）。用户看的是它，不是代码。
+5. **同步到 `addons/`。** 用 `cp -r`，本机没有 `rsync`：
+
+   ```bash
+   src="/c/爱思考的大肥鱼思思/persona-diary-plugin"
+   dst="/c/爱思考的大肥鱼思思/dsh-persona-framework/addons/persona-diary-plugin"
+   cp -r "$src/." "$dst/"
+   diff -rq "$src" "$dst"    # 空输出才算同步干净
+   ```
+
+6. **提交。** 一次一个插件一件事，标题写清插件名和版本，别写「优化若干细节」。
+7. **推。** 见下面第五节——**只推插件，不推记忆和日记。**
+
+## 四、改完要真跑一次
+
+代码提交了不算生效，插件得重新加载：
+
+- `framework_restart`（走 Loader 的重载路，改了 `index.js` / `lib/*.mjs` 用它）。
+- 改了 `client.js` 不行——那是前端包，得刷新页面。
+- 改完看注入里有没有那一段（比如日记的 `persona:diary` order 13），再看面板上多没多出那一档。
+
+**判据：盘上多了一条、面板上多了一个能点的地方。** 只有代码变了、看得见的地方没变，就是没生效。
+
+## 五、推之前先证明「只推了插件」
+
+只在 `dsh-persona-framework` 这个仓库里推（它是唯一有 remote 的）。推之前跑这两条，都必须空：
+
+```bash
+cd "/c/爱思考的大肥鱼思思/dsh-persona-framework"
+git ls-files | grep -Ei "knowledge|日记|growth|session/"   # 仓库里混进了记忆/日记
+git status --short                                          # 还有没提交的东西
+```
+
+两个都空，再推：
+
+```bash
+git push origin main
+```
+
+推不动先分三样，别反复重试：
+
+- **连不上**（`Failed to connect` / `Connection was reset`）：网络或代理，跟凭证无关。等网，别改 git 配置。
+- **要用户名**（`could not read Username`）：`git config --global credential.helper manager`。
+- **认证失败**（`Invalid username or token`）：清掉旧凭据重来，别在弹窗里手输 token——那会把令牌留在记录里。
+
+**远端比自己新**（`fetch first` 或 `rejected`）时，先 `git log --oneline HEAD..origin/main` 看远端那几个提交本地有没有等价内容。全有的话用 `git merge -s ours origin/main` 把历史连上，内容仍以本地为准——**不用 force，远端的记录也留着**。
+
+## 六、这轮踩过的坑
+
+- **`addons/` 是副本，会变旧。** 长期不同步的后果是：推上去的是三个月前的插件，别人装下来就是坏的那版。
+- **目录名不等于包名。** 找符号链接、找配置里的挂载点，认包名。
+- **自检写了两处、跑了一处。** host 端加过滤、client 端加了，host 那次忘了加同样一条——面板能看见、接口查不到。**同一条判据写两遍，两遍都要验。**
+- **网络问题当成凭证问题。** 弹窗、清凭据、换账号折腾一圈，其实是连不上。先看错误原文说的是哪个词。
+- **「插件更新」和「功能更新」混着叫。** 插件是一个独立包，功能是框架里的一个 impl。混着说，改出来的东西落错地方。
