@@ -30,7 +30,10 @@ import {
 import { condenseJournal, excerpt, renderCondense } from './lib/journal.mjs'
 
 export const name = 'persona-memory'
-export const inject = ['tools']
+// systemPrompt 必须声明：不声明就不会先加载它，`ctx.systemPrompt` 是 undefined，
+// `ctx.effect(() => ctx.systemPrompt.section(...))` 抛 TypeError 被 catch 吞掉——
+// 表现是「插件 active、自测全过、渲染出得来，注入里一个字都没有」。
+export const inject = ['tools', 'systemPrompt']
 
 const DEFAULTS = {
   /** 记忆根（工作区根）。空 = 用会话工作区。 */
