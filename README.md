@@ -34,6 +34,8 @@
 
 **看图单独拿出来说一句**：它不认图——认图交给已经装着的 `vision_describe`。它管的是**看多久、看哪几帧、看完留什么**：抓一串帧 → 按指纹挑出变了的 → 拼成一张 → 想认才认 → 落一条带时间来源的记录。
 
+**四个还没做的，写在 [PLAN-PLUGINS.md](PLAN-PLUGINS.md)**：耳（`dsh-persona-listen`）、手（`dsh-persona-hand`）、心（`dsh-persona-heart`）、脑（`dsh-persona-brain`）。上面这些插件解决的是「东西放哪、怎么取、怎么说」，缺的是**器官**——切四刀的时候，用的是什么在切。四个都还没动工，各自怎么算成了、谁先做，在那一份里。
+
 | 工具 | 参数 | 干什么 |
 | --- | --- | --- |
 | `vision_look` | `duration`（默认 3 秒）、`interval`（默认 1 秒）、`threshold`、`monitor`、`describe` | 截一串帧 → 挑帧 → 拼图 →（可选认）→ 落记录 |
