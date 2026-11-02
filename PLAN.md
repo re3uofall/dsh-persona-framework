@@ -7,7 +7,7 @@
 | 线 | 管什么 | 分计划 | 现在到哪了 |
 | --- | --- | --- | --- |
 | **模块** | 框架正文。88 篇，七节同构，管「怎么想」 | [PLAN-MODULES.md](PLAN-MODULES.md) | 骨架与处境都齐；**文化这一组还没开** |
-| **功能** | 跑在人格文件旁边的实现。四层：元胞 → 组织 → 功能实现 → 调节 | [PLAN-FEATURES.md](PLAN-FEATURES.md) | 自主性一条链跑通；其余模块的 impl 大多还是空转 |
+| **功能** | 跑在人格文件旁边的实现。四层：元胞 → 组织 → 功能实现 → 调节 | [PLAN-FEATURES.md](PLAN-FEATURES.md) | **实现 0 个**；代码里写了 67 段，一条都没过三条判据 |
 | **插件** | 独立包。主件一个，附件六个，另有四个器官没动工 | [PLAN-PLUGINS.md](PLAN-PLUGINS.md) | 七件都装了；器官四件**一件没开** |
 | **器** | 指南：怎么改模块、怎么改功能、怎么改插件 | `UPDATE-MODULES.md`／`GUIDE-FEATURES.md`／`UPDATE-PLUGINS.md` | 模块这份本轮才补上 |
 
