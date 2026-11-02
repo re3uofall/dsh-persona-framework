@@ -28,6 +28,8 @@
     "MANIFEST.txt",
     "FILES.md",
     "release-check.mjs",
+    "UPDATE.md",
+    "UPDATE-CORE.md",
     "UPDATE-GUIDE.md"
   ],
   "dsh": {

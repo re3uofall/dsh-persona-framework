@@ -39,6 +39,7 @@ import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
 import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
 import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
+import { renderSelfCheck, runSelfCheck, takeUnread } from './lib/selfcheck-loop.mjs'
 import { openCommands, saveCommands, listCommands, runCommand, addCommand, stopCommand, recentRuns } from './lib/command.mjs'
 import { REFUSE_REASONS } from './lib/autonomy.mjs'
 import { lastHint, renderFuncReflect, renderTick, tick } from './lib/tick.mjs'
@@ -80,6 +81,28 @@ function syncLoop(ws, cfg) {
   }
 }
 
+/**
+ * 自检环：**这一条不等人开口。**
+ *
+ * 定时器自己读盘上最近一句「她」，跑 check/audit，把疑似写进状态文件。
+ * 状态由 lib/selfcheck-loop.mjs 管；这里只负责把它按时叫起来。
+ * 跟 autoLoop 分开：那个是自主循环（有开关），这个是出口自检（不该有开关）。
+ */
+let _selfcheckTimer = null
+let _selfcheckWs = ''
+function startSelfCheck(ws, cfg) {
+  if (_selfcheckTimer && _selfcheckWs === ws) return
+  if (_selfcheckTimer) { clearInterval(_selfcheckTimer); _selfcheckTimer = null }
+  _selfcheckWs = ws
+  const every = Math.max(60_000, Number(cfg.selfCheckEvery) || 5 * 60_000)
+  const run = () => {
+    try { runSelfCheck(ws, { closingTics: cfg.closingTics }) } catch { /* 查坏了不拖垮人，也不改状态 */ }
+  }
+  run()
+  _selfcheckTimer = setInterval(run, every)
+  if (typeof _selfcheckTimer.unref === 'function') _selfcheckTimer.unref()
+}
+
 const DEFAULTS = {
   /** 框架文件的绝对路径；空 = 会话工作区下的 .persona-framework/FRAMEWORK.md，再退到插件自带那份 */
   frameworkFile: '',
@@ -95,6 +118,8 @@ const DEFAULTS = {
   includeModules: 'body',
   /** 模块索引注入上限（字） */
   maxModulesChars: 12000,
+  /** 一次读几篇正文（篇数，不是字数）。读完轮转清零，下一轮接着往后读——88 篇都轮得到，不切半篇。 */
+  modulesPerRead: 8,
   /** 预处理：注入前把模块索引压成「编号 名字：一句话前 24 字」；关掉则原样注入 */
   preprocess: true,
   /** 人格文件的绝对路径：设置页填了它，framework_slots 默认就体检这一份 */
@@ -204,7 +229,7 @@ const DEFAULTS = {
 }
 
 /** 设置页能改的字段（白名单）。 */
-const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
+const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'modulesPerRead', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
   'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'outReflect', 'outIntegrate', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'autoLoop', 'loopEvery', 'autonomyLevel', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
@@ -225,6 +250,8 @@ const clampCfg = (cfg) => {
   cfg.travelGuide = String(cfg.travelGuide || '').slice(0, 4000)
   cfg.includeModules = ['off', 'index', 'body'].includes(cfg.includeModules) ? cfg.includeModules : 'body'
   cfg.maxModulesChars = int(cfg.maxModulesChars, 500, 240000, 12000)
+  // 一次读几篇（篇数，不是字数）——读完轮转，下一轮接着往后读，88 篇都轮得到
+  cfg.modulesPerRead = int(cfg.modulesPerRead, 1, 88, 8)
   cfg.preprocess = cfg.preprocess !== false
   cfg.humanLike = cfg.humanLike === true
   cfg.temper = cfg.temper === true
@@ -769,30 +796,111 @@ export function apply(ctx, config = {}) {
           parts.push('', '## 模块库（索引）', '', truncate(shaped, cfg.maxModulesChars))
         }
       } else if (cfg.includeModules === 'body') {
-        // 正文注入：按编号顺序拼每一篇的正文，受 maxModulesChars 限。
-        // **截断了就写明截到第几篇**——不假装全塞进去了。
+        // 正文注入：**整篇整篇地读，一次读 N 篇**——上限是**篇数**，不是字数。
+        // 读完轮转：读到哪儿落在 .persona-framework/模块轮转.json，下一轮从那儿接着读，
+        // 读满一圈回到第一篇。所以 88 篇都轮得到，排在后面的不会永远进不来。
         const dir = dirname(modulesFile)
-        let total = 0
-        const got = []
-        let cutAt = ''
+        let all = []
         try {
-          const files = readdirSync(dir).filter((f) => /^(0[1-9]|[1-8]\d)-.+\.md$/.test(f)).sort()
-          for (const f of files) {
-            const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
-            // **整篇装，装不下就停**——不切半篇，半篇比没有更容易误读。
-            if (total + raw.length > cfg.maxModulesChars) { cutAt = f; break }
-            got.push(raw)
-            total += raw.length
+          all = readdirSync(dir).filter((f) => /^(0[1-9]|[1-8]\d)-.+\.md$/.test(f)).sort()
+        } catch { /* 读不到目录就不加这一段 */ }
+        if (all.length) {
+          const n = Math.min(Math.max(1, Number(cfg.modulesPerRead) || 8), all.length)
+          const stateFile = join(String(cfg.workspace || ctx?.config?.workspace || process.cwd()), '.persona-framework', '模块轮转.json')
+          let next = 0
+          try {
+            if (existsSync(stateFile)) {
+              const st = JSON.parse(readFileSync(stateFile, 'utf8'))
+              const v = Number(st && st.next)
+              if (Number.isFinite(v) && v >= 0) next = v % all.length
+            }
+          } catch { /* 状态坏了就当从第一篇读起；不装成读过了 */ }
+          // 从 next 起取 n 篇，绕圈
+          const picked = []
+          for (let i = 0; i < n; i += 1) picked.push(all[(next + i) % all.length])
+          const got = []
+          let total = 0
+          for (const f of picked) {
+            try {
+              const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
+              got.push(raw)
+              total += raw.length
+            } catch { /* 单篇读不到就跳过，不拿别的顶替 */ }
           }
-        } catch { /* 读不到就不加这一段 */ }
-        if (got.length) {
-          parts.push('', '## 模块库（正文）', '')
-          parts.push(got.join('\n\n'))
-          if (cutAt) {
-            parts.push('', `（到这里截断，` + cutAt + ` 之后的正文没进本轮；要取某一篇用 framework_view module=编号。` + `本轮正文 ${total} 字，上限 ` + cfg.maxModulesChars + ` 字。）`)
+          // 索引：一行一篇，**全量、不轮转**。它和正文一起注——索引负责「有哪些」，
+          // 正文负责「那一篇到底怎么判断」。少哪一样都不对：只有正文不知道还有别的，
+          // 只有索引等于没读（正文比索引重要）。
+          parts.push('', '## 模块库（索引）', '')
+          parts.push(all.map((f) => `- ${f.replace(/\.md$/, '')}`).join('\n'))
+          parts.push('', `（全 ${all.length} 篇。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
+            + '这条不占轮转，也不改下一轮从哪儿接着读。）')
+          if (got.length) {
+            const bare = (s) => s.replace(/\.md$/, '')
+            const advance = (next + got.length) % all.length
+            try {
+              writeFileSync(stateFile, JSON.stringify({
+                next: advance,
+                at: new Date().toISOString(),
+                last: picked.slice(0, got.length).map(bare),
+              }, null, 2), 'utf8')
+            } catch { /* 写不进去就当这轮没推进——下一轮重读同一段，不算记住 */ }
+            parts.push('', '## 模块库（正文）', '')
+            parts.push(got.join('\n\n'))
+            parts.push('', `（本轮读 ${got.length} 篇：${bare(picked[0])} → ${bare(picked[got.length - 1])}｜`
+              + `共 ${all.length} 篇、本轮 ${total} 字。下一轮从 **${bare(all[advance])}** 接着读，`
+              + `读满一圈回到 ${bare(all[0])}。整篇读，不切半篇。）`)
           }
         }
       }
+      // 触发器：只摆清单，不跑。**过中介才动手**——响了不等于该做，过不了就空着。
+      // 这里只读（loadTriggers），不 runTriggers：注入不该有副作用。
+      try {
+        const ws0 = String(cfg.workspace || ctx?.config?.workspace || process.cwd())
+        const { list, from } = loadTriggers(ws0)
+        // 条件触发要让人看见「它是条件」：拿最后一句去比对判据词，报命中了哪几条。
+        const said = String(lastHint(ws0) || '')
+        const cues = list.filter((t) => (t.stimulus || {}).kind === 'cue')
+        const clocks = list.filter((t) => (t.stimulus || {}).kind === 'clock')
+        const hit = cues.filter((t) => {
+          const need = Array.isArray(t.stimulus?.match) ? t.stimulus.match.filter(Boolean) : []
+          return need.length > 0 && said && need.some((w) => said.includes(w))
+        })
+        const noJudge = cues.filter((t) => !(Array.isArray(t.stimulus?.match) && t.stimulus.match.length))
+        const condLine = said
+          ? `条件触发：最后一句「${said.replace(/\s+/g, ' ').slice(0, 40)}」→ 命中 ${hit.length} / ${cues.length} 条`
+            + `${hit.length ? `（${hit.slice(0, 4).map((t) => t.name).join('、')}${hit.length > 4 ? ' 等' : ''}）` : ''}；时钟 ${clocks.length} 条只看到点`
+          : `条件触发：这一轮还没人说话 → 0 / ${cues.length} 条响；时钟 ${clocks.length} 条只看到点`
+        const lines = [
+          '## 触发器（什么时候自己动）',
+          '',
+          `现有 ${list.length} 条（来自 ${from}）。` +
+            '**触发不等于动手**：响了还要过中介（手上有没有料、能不能落地），过不了就空着，不降级成「随便做点什么」。',
+          '',
+          condLine,
+          ...(noJudge.length ? [`另有 ${noJudge.length} 条没写判据词，这轮不响：${noJudge.slice(0, 5).map((t) => t.name).join('、')}`] : []),
+          '',
+        ]
+        for (const t of list) {
+          const st = t.stimulus || {}
+          const when = st.kind === 'clock' ? `每天 ${st.daily}`
+            : st.kind === 'cue' ? `信号：${st.when || '（说不清）'}`
+              : st.kind === 'gap' ? `隔 ${st.every}`
+                : (st.kind || '（没说刺激）')
+          const ask = t.reaction?.ask ? String(t.reaction.ask).replace(/\s+/g, ' ').slice(0, 120) : ''
+          lines.push(`- **${t.name}**｜${when} → 走「${t.reaction?.port || '?'}」${ask ? `｜${ask}` : ''}`)
+        }
+        parts.push('', ...lines)
+      } catch (error) {
+        parts.push('', '## 触发器', '', `读不出来：${error?.message || error}（不装成没有触发器。）`)
+      }
+
+      // 自检环：上一轮它自己查出来的疑似，摆出来；**读过一次就不再重复报**。
+      // 没疑似就不出这一段——没毛病不占地方。
+      try {
+        const found = takeUnread(String(cfg.workspace || process.cwd()))
+        if (found) parts.push('', renderSelfCheck(found))
+      } catch { /* 读不出来就不加这一段，不冒充查过 */ }
+
       if (cfg.guide) parts.push('', GUIDE)
       if (cfg.travelOn) {
         parts.push('', '## 旅行（69）', '',
@@ -823,6 +931,8 @@ export function apply(ctx, config = {}) {
       //   autoLoop 关 → 注入时现跑一次，**跑完不留字**
       try {
         const wsRoot = String(cfg.workspace || process.cwd())
+        // 自检环：不管 autoLoop 开不开都转——它不是自主循环，是出口自检。
+        try { startSelfCheck(wsRoot, cfg) } catch { /* 起不来不拖垮注入 */ }
         if (cfg.autoLoop) {
           syncLoop(wsRoot, cfg)
           const body = renderLoop(wsRoot)
@@ -2266,6 +2376,7 @@ export function apply(ctx, config = {}) {
           const res = runTriggers(list, {
             now: args.now ? new Date(String(args.now)) : new Date(),
             turnsSince: args.turns ? Number(args.turns) : 0,
+            lastSaid: String(args.said || ''),
             evidence,
           })
           return renderTriggers(res)

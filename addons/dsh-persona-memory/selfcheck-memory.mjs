@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_LAYERS, recall, scanPools } from './lib/pools.mjs'
 import { scoreFiles, saveReinforce, loadReinforce, scoreOf } from './lib/reinforce.mjs'
-import { addStimulus, readStimulus, renderLongLibrary, renderNowLibrary, renderShortLibrary } from './lib/libraries.mjs'
+import { addStimulus, readStimulus, renderLongLibrary, renderNowLibrary, renderOtherLibrary, renderShortLibrary } from './lib/libraries.mjs'
 import { findVerbatim, renderTrace, sectionsOf } from './lib/trace.mjs'
 
 const root = mkdtempSync(join(tmpdir(), 'pm-'))
@@ -22,11 +22,15 @@ writeFileSync(join(root, 'persona-ai/knowledge/长期记忆/加固.md'),
   '# 加固\n\n加固只改排序，不删字节。\n')
 writeFileSync(join(root, 'knowledge/无关.md'), '# 无关\n\n这是一条跟主体无关的记录，字数也不多。\n')
 
-// ── 两个库（拆成两段：短期 order 25 / 其他 order 30，各有各的标题）
+// ── 两格（长期 order 23 / 其他 order 30）；它们是两格，不是一格
 const short = renderShortLibrary(root, { journalDir: 'persona-ai/knowledge/session', longTermDir: 'persona-ai/knowledge/长期记忆' })
 const long = renderLongLibrary(root, { journalDir: 'persona-ai/knowledge/session', longTermDir: 'persona-ai/knowledge/长期记忆' })
+const other = renderOtherLibrary(root, { journalDir: 'persona-ai/knowledge/session', longTermDir: 'persona-ai/knowledge/长期记忆' })
 check(short.includes('## 短期记忆'), '短期那格有标题')
-check(long.includes('## 其他记忆'), '长期那格叫「其他记忆」（排在短期之后）')
+check(long.includes('## 长期记忆'), '长期那格叫「长期记忆」')
+check(long.includes('记得久') && long.includes('重要'), '长期那格写明判据：记得久 + 重要')
+check(!long.includes('## 其他记忆'), '长期那格不再冒充「其他记忆」')
+check(other.includes('## 其他记忆'), '其他记忆是独立的一格')
 check(short.includes('比人格原文件重要'), '短期那格写明它比人格原文件更重要')
 
 const nowEmpty = renderNowLibrary(root, {})

@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
       .map((x) => x.trim())
       .filter(Boolean)
 
-    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'body', maxModulesChars: 12000, closingTics: [], order: 20, guide: true, travelOn: false, travelGuide: '' }
+    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'body', maxModulesChars: 12000, modulesPerRead: 8, closingTics: [], order: 20, guide: true, travelOn: false, travelGuide: '' }
 
     const flagText = (v) => (v === true ? '是' : v === false ? '否' : '未写')
 
@@ -107,6 +107,7 @@ window.__ModuleLoader__.load({
       maxChars: Number(c.maxChars),
       includeModules: c.includeModules,
       maxModulesChars: Number(c.maxModulesChars),
+      modulesPerRead: Number(c.modulesPerRead),
       humanLike: c.humanLike === true,
       temper: c.temper === true,
       negativeTrauma: c.negativeTrauma === true,
@@ -255,6 +256,7 @@ window.__ModuleLoader__.load({
               maxChars: Number(cfg.maxChars) || 12000,
               includeModules: cfg.includeModules,
               maxModulesChars: Number(cfg.maxModulesChars) || 12000,
+              modulesPerRead: Number(cfg.modulesPerRead) || 8,
               closingTics: splitTics(tics),
               humanLike: cfg.humanLike === true,
               temper: cfg.temper === true,
@@ -442,7 +444,7 @@ window.__ModuleLoader__.load({
               value: cfg.includeModules,
               onChange: (e) => edit({ includeModules: e.target.value }),
             },
-              h('option', { value: 'body' }, '附正文（按编号顺序，受字数上限截断）'),
+              h('option', { value: 'body' }, '附正文（一次读几篇，读完轮转）'),
               h('option', { value: 'index' }, '附一句话索引'),
               h('option', { value: 'off' }, '不附'),
             )),
@@ -504,7 +506,7 @@ window.__ModuleLoader__.load({
               '七条默认：08:30 反思 · 13:00 成果 · 22:00 日记 · 判断成形→成果 · 改口→日记 · 隔三轮→整合 · 碗空→探索',
             ), '不靠人开口，靠排班。十个对外接口都能被它调；查清单 op=trigger'),
             sep('d4'),
-            field('cap', '字数上限', h('div', { style: { display: 'flex', gap: 12 } },
+            field('cap', '字数上限 / 一次读几篇', h('div', { style: { display: 'flex', gap: 12 } },
               h('input', {
                 style: { ...T.input, flex: 1 },
                 type: 'number', min: 1500, max: 40000, step: 500,
@@ -513,11 +515,19 @@ window.__ModuleLoader__.load({
               }),
               h('input', {
                 style: { ...T.input, flex: 1 },
-                type: 'number', min: 500, max: 20000, step: 100,
+                type: 'number', min: 1, max: 88, step: 1,
+                title: '正文档：一次读几篇（篇数上限，不是字数）。读完轮转，下一轮接着往后读。',
+                value: cfg.modulesPerRead,
+                onChange: (e) => edit({ modulesPerRead: e.target.value }),
+              }),
+              h('input', {
+                style: { ...T.input, flex: 1 },
+                type: 'number', min: 500, max: 240000, step: 100,
+                title: '索引档：索引最多多少字。',
                 value: cfg.maxModulesChars,
                 onChange: (e) => edit({ maxModulesChars: e.target.value }),
               }),
-            ), '框架 / 索引'),
+            ), '框架字数 / 正文一次读几篇 / 索引字数'),
           )),
 
         section('s3', '出口', '说话前的最后一道闸',

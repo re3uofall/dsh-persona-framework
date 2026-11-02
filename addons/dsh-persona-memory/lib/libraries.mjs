@@ -189,24 +189,89 @@ export function renderShortLibrary(root, cfg = {}) {
 }
 
 /**
- * 长期那一段：攒下来的判断，不装流水。
- * 它单独落一个 order——排在「短期」之后，是注入顺序里的「其他记忆」。
+ * 长期记忆那一格：**记得久、而且重要**的值。
+ *
+ * ★ 它和「其他记忆」是两格，不是一格（这一条以前被我并成过一格，错了）：
+ *   其他记忆 = 不属于即时／短期／长期／人格的东西都放那儿（判断、见闻、网络、词表、收件箱）；
+ *   长期记忆 = 从短期里**挑出来**的值，两个条件同时成立才进来——
+ *     **记得久**（跨过很多天还成立，不是今天热明天凉）；
+ *     **重要**（少了它，后面判断会歪，不是可有可无的一条）。
+ *   两条缺一，它留在短期或「其他」里，不进这格。
+ *
+ * 所以这格**不会多**，也不装流水：它是攒下来的判断，进人格还要单独点一次头。
  */
 export function renderLongLibrary(root, cfg = {}) {
   const longDir = cfg.longTermDir || 'persona-ai/knowledge/长期记忆'
   const max = Math.max(2000, Number(cfg.maxInjectChars ?? 200000))
   const long = longTerm(root, longDir)
 
-  const parts = ['## 其他记忆（长期那格：攒下来的，还没进人格）', '']
+  const parts = [
+    '## 长期记忆（记得久、且重要）',
+    '',
+    '这一格只装**从短期里挑出来的值**：既记得久，又重要，两条缺一不进。它不装流水，所以不会多。',
+    '',
+  ]
   if (!long.length) {
-    parts.push(`（空着。长期在 \`${longDir}\`——它只装提炼过的值，不装流水。）`, '')
+    parts.push(`（空着。目录：\`${longDir}\`。）`, '')
     return parts.join('\n')
   }
-  parts.push(`${long.length} 篇。这是**攒出来的判断**，不是流水；进人格要单独点一次头。`, '')
+  parts.push(`${long.length} 篇。进人格要单独点一次头。`, '')
   for (const f of long) {
     parts.push(`#### ${f.name}`, '', read(f.path).trim(), '')
   }
   return clamp(parts.join('\n'), max)
+}
+
+/**
+ * 其他记忆那一格：**其余的一切**。
+ *
+ * 不属于即时、短期、长期、人格的，都放这儿——判断（chat）、见闻、网络（web）、
+ * 人类观察（human）、世界理解（world）、词表（lexicon）、收件箱……
+ *
+ * 它只摆**标题行**，不摆正文：这一格东西杂、量不可控，全摆进来会把短期挤掉。
+ * 要正文，去 `memory_recall`，或者拿这里的路径/指针翻。
+ */
+export function renderOtherLibrary(root, cfg = {}) {
+  const knowledge = cfg.knowledgeDir || 'persona-ai/knowledge'
+  const base = join(root, knowledge)
+  const max = Math.max(500, Number(cfg.maxOtherChars ?? 3000))
+  const skip = new Set(['session', '长期记忆', 'README.md'])
+
+  const lines = [
+    '## 其他记忆',
+    '',
+    '不属于即时、短期、长期、人格的，都放这一格：判断、见闻、网络、词表、收件箱。**只摆标题行**——要正文用 `memory_recall`，或按路径翻。',
+    '',
+  ]
+
+  let entries = 0
+  let names = []
+  try { names = existsSync(base) ? readdirSync(base) : [] } catch { names = [] }
+
+  for (const name of names.sort()) {
+    if (skip.has(name)) continue
+    const full = join(base, name)
+    let st
+    try { st = statSync(full) } catch { continue }
+
+    if (st.isDirectory()) {
+      const files = listMd(full).sort()
+      if (!files.length) continue
+      lines.push(`**${name}** · ${files.length} 篇`)
+      for (const f of files.slice(-5)) {
+        const title = read(f, 4000).split('\n').find((l) => l.trim()) || basename(f)
+        lines.push(`- ${title.trim().slice(0, 80)}（\`${name}/${basename(f)}\`）`)
+        entries += 1
+      }
+    } else if (MD.test(name)) {
+      const title = read(full, 4000).split('\n').find((l) => l.trim()) || name
+      lines.push(`- ${title.trim().slice(0, 80)}（\`${name}\`）`)
+      entries += 1
+    }
+  }
+
+  if (!entries) lines.push('（空着。）')
+  return clamp(lines.join('\n'), max)
 }
 
 /** 超上限就截，而且截了要说出来——不说就是偷偷缩水。 */

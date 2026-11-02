@@ -32,8 +32,8 @@ import {
   renderReinforce, saveReinforce, scoreFiles, DEFAULT_SUBJECTS, loadReinforce,
 } from './lib/reinforce.mjs'
 import {
-  addStimulus, readStimulus, renderLongLibrary, renderNowLibrary, renderShortLibrary,
-  renderTempLibrary, STIMULUS_FILE,
+  addStimulus, readStimulus, renderLongLibrary, renderNowLibrary, renderOtherLibrary,
+  renderShortLibrary, renderTempLibrary, STIMULUS_FILE,
 } from './lib/libraries.mjs'
 import { findVerbatim, renderTrace } from './lib/trace.mjs'
 
@@ -451,13 +451,18 @@ ${seg}` }
     })
   }
 
-  // ── 注入顺序：即时 → 人格原文件 → 短期 → 其他记忆 ──────────────────────
+  // ── 注入顺序：即时 → 人格原文件 → 长期记忆 → 短期记忆 → 其他记忆 ──────────
   //
   // ★ 顺序是师父定的硬要求，不是风格：
   //   1. 即时记忆   order 10 —— 这一轮正在说什么（在手上，不在盘上；给钩子）
   //   2. 人格原文件 order 20/22（另一份插件）—— 我一贯怎么说话
-  //   3. 短期记忆   order 25 —— 这几天到底干了什么（缩过、按字数切）
-  //   4. 其他记忆   order 30 —— 长期那格攒下来的判断
+  //   3. 长期记忆   order 23 —— **紧跟人格原文件后面**：从短期里挑出来的值，记得久、而且重要
+  //   4. 短期记忆   order 25 —— 这几天到底干了什么（缩过、按字数切）
+  //   5. 其他记忆   order 30 —— 其余的都在这一格（判断、见闻、网络、词表、收件箱），只摆标题行
+  //
+  //   三、五两格**不是一格**。以前把它们并成过一格，把「其他记忆」写成了「长期那格」，错了：
+  //   其他记忆是「别的都放这儿」，长期记忆是「攒下来不多、够久也够重的那几条」。
+  //   长期记忆贴人格，是因为它和人格最近；其他记忆垫底，因为它最杂。
   //
   //   后三样都**注全**（不检索、不截断，除了 maxInjectChars 那道明说的上限），
   //   而且记忆**比人格原文件重要**——两样打架时，昨天那个是真的。
@@ -501,15 +506,31 @@ ${seg}` }
 
     try {
       ctx.effect(() => ctx.systemPrompt.section({
-        name: 'persona-memory:long',
-        order: baseOrder + 20, // 10 → 30：其他记忆排最后
+        name: 'persona-memory:other',
+        order: baseOrder + 20, // 10 → 30：其他记忆排在短期之后
+        interpolate: false,
+        text: () => {
+          try {
+            const root = cfg.root || ctx?.config?.workspace || process.cwd()
+            return renderOtherLibrary(root, cfg)
+          } catch (error) {
+            return `## 其他记忆\n\n读不出来：${error?.message || error}`
+          }
+        },
+      }))
+    } catch { /* 没有 systemPrompt 也能用 */ }
+
+    try {
+      ctx.effect(() => ctx.systemPrompt.section({
+        name: 'persona-memory:long-term',
+        order: baseOrder + 13, // 10 → 23：**紧紧跟在人格原文件（20/22）后面**，排在短期（25）之前
         interpolate: false,
         text: () => {
           try {
             const root = cfg.root || ctx?.config?.workspace || process.cwd()
             return renderLongLibrary(root, cfg)
           } catch (error) {
-            return `## 其他记忆\n\n读不出来：${error?.message || error}`
+            return `## 长期记忆\n\n读不出来：${error?.message || error}`
           }
         },
       }))
