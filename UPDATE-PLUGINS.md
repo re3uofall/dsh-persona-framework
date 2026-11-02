@@ -101,3 +101,29 @@ git push origin main
 - **自检写了两处、跑了一处。** host 端加过滤、client 端加了，host 那次忘了加同样一条——面板能看见、接口查不到。**同一条判据写两遍，两遍都要验。**
 - **网络问题当成凭证问题。** 弹窗、清凭据、换账号折腾一圈，其实是连不上。先看错误原文说的是哪个词。
 - **「插件更新」和「功能更新」混着叫。** 插件是一个独立包，功能是框架里的一个 impl。混着说，改出来的东西落错地方。
+
+## 附录：当前清单
+
+> 2026-11-02 核对。**只列自建的**——别人的插件自有它的作者和文档，抄进来出事时不知道该找谁。
+> 这里只有一份真源；`framework/modules/83-插件清单.md` 已改成指向这一节。
+
+### 主件
+
+| 包名 | 版本 | 做什么 | 位置 |
+| --- | --- | --- | --- |
+| `dsh-persona-framework` | 5.17.0 | 人格框架：88 个模块，外挂注入，不覆盖人格文件 | `https://github.com/re3uofall/dsh-persona-framework` |
+
+### 可随框架一起装的
+
+| 包名 | 版本 | 做什么 | 位置 |
+| --- | --- | --- | --- |
+| `dsh-persona-grow` | 1.2.0 | 每轮注入人格；从纠正里长出新的一条，带版本可回滚 | `persona-grow-plugin/`，未发布 |
+| `dsh-persona-diary` | 1.3.0 | 日记：公开／私密两本、分类、搜索、浏览 | `persona-diary-plugin/`，未发布 |
+| `dsh-persona-explore` | 0.3.0 | 自己上网搜、读原文，把值得留的写进 `knowledge/web` | `persona-explore-plugin/`，未发布 |
+| `dsh-persona-results` | 1.2.0 | 把认下的判断收进侧栏 | `persona-results-plugin/`，未发布 |
+| `dsh-persona-memory` | 1.2.2 | 记忆分层：按预算取、超期归档、摘要带指针可翻原文 | `dsh-persona-memory/`，未发布 |
+| `dsh-persona-vision` | 0.1.0 | 看图：抓几帧、只留变了的、拼一张喂视觉模型 | `addons/dsh-persona-vision/`，未发布 |
+
+**一加六**：一个主件有仓库，六个附件都没上 GitHub。vision 没有独立的工作区目录，只活在 `addons/` 里——它还没装进 node_modules，设置页里也扫不到。
+
+改清单的规矩和改模块一样：**不删旧条，划一道线写「已迁往」**。删掉等于抹。
