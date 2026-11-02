@@ -1,8 +1,8 @@
 {
   "name": "dsh-persona-explore",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "主动探索：自己上网搜、读原文，把值得留的判断写进 knowledge/web，可按点自己出门",
+  "description": "主动探索：自己上网搜、读原文，把值得留的判断写进 knowledge/web，可按点自己出门；受「人格出现」闸管，整家关掉时这一段不进上下文（工具还在）",
   "type": "module",
   "main": "index.js",
   "exports": {

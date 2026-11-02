@@ -1,8 +1,8 @@
 {
   "name": "dsh-persona-diary",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": true,
-  "description": "日记本：公开／私密两本，记还没成型的心得，按天摆、按类筛、按词找",
+  "description": "日记本：三本——公开（能拿给人看的判断）／私密（拿不准、不给人看的）／记录（记事：谁、何时、做了什么、结果如何）。按天摆、按类筛、按词找",
   "type": "module",
   "main": "index.js",
   "exports": {

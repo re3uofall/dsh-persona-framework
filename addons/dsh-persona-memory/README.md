@@ -158,6 +158,23 @@ dsh plugin --profile <profile> add "file:C:/path/to/dsh-persona-memory"
 | `dryRunDefault` | true | condense / archive 默认只干跑 |
 | `hint` | true | 往系统提示加一段「记忆池怎么用」 |
 
+### 设置页（1.3.0 起）
+
+设置里多了一页「记忆分层」，能直接调这些：
+
+- **短期记忆**：取最近几天、字数预算、开不开注入
+- **即时记忆**：分段间隔（停几分钟算这一段结束）
+- **注入顺序**：基准序号（即时＝它，短期＝它+15，其他＝它+20）、防爆上限
+- **检索与归档**：recall 预算、流水占比、归档天数、加固排序、干跑默认
+
+存在 `<root>/.persona-framework/记忆配置.json`，存的时候留一份 `.bak`。
+**设置页的值压过 `cordis.patch.yml` 里的 config**——界面上刚改的就是最新意愿。
+
+两条硬边界：
+
+- **只收白名单字段**。`root` 和各层目录**不在**设置页里——那是装的人的事，写错一个字记忆就指到空目录。表外的键一律不收。
+- **不改记忆里的字**。这一页只调「进上下文给多少、按几天、排第几位」；掐断的是每轮摆出来的那一段，盘上的文件一个不动。
+
 ## 它不是什么
 
 - **不是记忆插件**。它不存、不取、不记新东西——那是别的插件的事。它只管「已经有的东西怎么放进预算里」。
@@ -167,7 +184,9 @@ dsh plugin --profile <profile> add "file:C:/path/to/dsh-persona-memory"
 ## 自检
 
 ```bash
-node selfcheck.mjs
+node selfcheck.mjs            # 跑真文件：预算、分层、归档、渲染
+node selfcheck-memory.mjs     # 加固、按字查、指针形状
+node selfcheck-settings.mjs   # 设置白名单：范围、垃圾容错、界面键对齐
 ```
 
 跑的是四个工具的纯逻辑：统计、提炼、按预算取、归档干跑。认「代码跑得通、边界不炸」，不认「记忆写得好不好」。

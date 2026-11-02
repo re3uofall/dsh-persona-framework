@@ -22,8 +22,9 @@
  * 配置全部走 `cordis.patch.yml` 里这一行的 `config`。
  * ============================================================================
  */
-import { existsSync, readFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
+import { FIELDS, SETTINGS_DIR, SETTINGS_FILE, normalizePatch, normalizeStored, pickCurrent } from './lib/settings.mjs'
 import {
   DEFAULT_LAYERS, archiveOld, recall, renderArchive, renderPools, renderRecall, scanPools,
 } from './lib/pools.mjs'
@@ -41,7 +42,7 @@ export const name = 'persona-memory'
 // systemPrompt 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
 // 下面那几处 `ctx.effect(() => ctx.systemPrompt.section(...))` 会抛 TypeError 被 catch 吞掉——
 // 表现就是「插件 active、自测全过、渲染得出内容，但注入里一个字都没有」。
-export const inject = ['tools', 'systemPrompt']
+export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
   /** 记忆根（工作区根）。空 = 用会话工作区。 */
@@ -91,6 +92,13 @@ const DEFAULTS = {
   reinforce: true,
 }
 
+/** 设置页写在哪：工作区里的 .persona-framework/记忆配置.json */
+function settingsPathOf(cfg) {
+  const root = cfg?.root ? String(cfg.root) : ''
+  if (!root) return ''
+  return join(root, SETTINGS_DIR, SETTINGS_FILE)
+}
+
 function cfgOf(ctx, cfg) {
   const c = { ...DEFAULTS, ...(cfg || {}) }
   if (!c.root) {
@@ -98,6 +106,14 @@ function cfgOf(ctx, cfg) {
       const wd = ctx?.config?.workspace || ctx?.workspace
       if (wd) c.root = String(wd)
     } catch { /* 保持空 */ }
+  }
+  // 设置页改的（白名单字段）压过 cordis 配置：界面上刚改的就是最新意愿。
+  // 只收白名单里的键——设置文件被写坏，最多丢掉一个字段，不会让插件跑挂。
+  c._settingsPath = settingsPathOf(c)
+  if (c._settingsPath && existsSync(c._settingsPath)) {
+    try {
+      Object.assign(c, normalizeStored(JSON.parse(readFileSync(c._settingsPath, 'utf8'))))
+    } catch { /* 读坏当没有，用默认 */ }
   }
   return c
 }
@@ -177,8 +193,105 @@ const textOutput = {
   },
 }
 
+/** 给前端递一份 JSON；出错也要回一份，别让页面挂在转圈上 */
+function sendJson(res, status, payload) {
+  try {
+    res.statusCode = status
+    res.setHeader('content-type', 'application/json; charset=utf-8')
+    res.setHeader('cache-control', 'no-store')
+    res.end(JSON.stringify(payload))
+  } catch {
+    try { res.end('{}') } catch { /* 收摊 */ }
+  }
+}
+
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = ''
+    req.on('data', (chunk) => {
+      raw += chunk
+      if (raw.length > 64 * 1024) { reject(new Error('请求太大')); try { req.destroy() } catch { /* 收摊 */ } }
+    })
+    req.on('end', () => resolve(raw))
+    req.on('error', reject)
+  })
+}
+
 export function apply(ctx, config = {}) {
   const cfg = cfgOf(ctx, config)
+
+  // ── 设置页：读／写 ──────────────────────────────────────────────────────
+  // 两件事分开：读报「当前真在用的值」，写只收白名单字段并留一份旧的。
+  // 写坏了能退回——覆盖写不备份，等于没有撤销。
+  ctx.effect(() => ctx.webServer?.register({
+    kind: 'exact',
+    path: '/api/persona-memory/status',
+    handler(req, res) {
+      try {
+        sendJson(res, 200, {
+          ok: true,
+          fields: FIELDS,
+          values: pickCurrent(cfg),
+          file: cfg._settingsPath || '',
+          fileExists: !!(cfg._settingsPath && existsSync(cfg._settingsPath)),
+          root: cfg.root || '',
+        })
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String(error?.message || error) })
+      }
+    },
+  }))
+
+  ctx.effect(() => ctx.webServer?.register({
+    kind: 'exact',
+    path: '/api/persona-memory/config',
+    async handler(req, res) {
+      try {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { ok: false, error: '只收 POST' })
+          return
+        }
+        const file = cfg._settingsPath
+        if (!file) {
+          sendJson(res, 400, { ok: false, error: '没有可写的位置：config.root 是空的' })
+          return
+        }
+        const raw = await readRequestBody(req)
+        let patch = {}
+        try {
+          patch = normalizePatch(JSON.parse(raw || '{}'))
+        } catch {
+          sendJson(res, 400, { ok: false, error: '递上来的不是合法 JSON' })
+          return
+        }
+        if (!Object.keys(patch).length) {
+          sendJson(res, 400, { ok: false, error: '没有一个字段过得了白名单（键名或范围不对）' })
+          return
+        }
+        let current = {}
+        let existed = false
+        try {
+          current = normalizeStored(JSON.parse(readFileSync(file, 'utf8')))
+          existed = true
+        } catch { current = {} }
+        const next = { ...current, ...patch }
+        mkdirSync(dirname(file), { recursive: true })
+        if (existed) {
+          try { writeFileSync(`${file}.bak`, readFileSync(file, 'utf8'), 'utf8') } catch { /* 备份失败不拦 */ }
+        }
+        writeFileSync(file, JSON.stringify(next, null, 2) + '\n', 'utf8')
+        sendJson(res, 200, {
+          ok: true,
+          saved: Object.keys(patch),
+          next,
+          file,
+          note: '存好了。下一条消息起生效——注入是在每轮组装系统提示词时现读的。',
+        })
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String(error?.message || error) })
+      }
+    },
+  }))
 
   const need = (s) => {
     if (!s) throw new Error('persona-memory 需要会话工作区，读不到。请显式设 config.root。')

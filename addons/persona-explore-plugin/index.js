@@ -14,8 +14,8 @@
  * 配置见 cordis.patch.yml；全部改动只写 knowledge/web/ 与 explore/，不碰人格稿。
  * ============================================================================
  */
-import { existsSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
 import {
   appendEntry, cleanBody, cleanTitle, countEntries, ensureDir, findEntry, localDate,
   normalizeTitle, nowIso, readJson, recentEntries, todayEntries, writeJson,
@@ -432,12 +432,30 @@ export function apply(ctx, config = {}) {
     return text
   }
 
+  /**
+   * 人格出现（dsh-persona-appear）的闸：这一轮探索出不出场。
+   * 不问就是不放行——闸文件不在就当没装、照常注入。
+   * 只读一处盘，出错一律放行：闸坏了不该把探索也带死。
+   */
+  const appearOn = () => {
+    try {
+      if (!dir) return true
+      const gate = join(dirname(dir), '.persona-framework', '出现.json')
+      if (!existsSync(gate)) return true
+      const s = JSON.parse(readFileSync(gate, 'utf8'))
+      if (s && s.global === 'off') return false
+      return !(s && s.plugins && s.plugins['dsh-persona-explore'] === 'off')
+    } catch {
+      return true
+    }
+  }
+
   if (p) {
     ctx.effect(() => ctx.systemPrompt.section({
       name: 'persona:explore',
       order: 20,
       interpolate: false,
-      text: sectionText,
+      text: () => (appearOn() ? sectionText() : ''),
     }))
     // 队列第一次落盘（种子）；失败不影响工具。
     try { if (!existsSync(p.queueFile)) { ensureDir(p.homeDir); saveQueue(queueTopics()) } } catch (error) { warn(error) }
