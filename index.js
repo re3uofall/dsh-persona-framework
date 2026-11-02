@@ -2948,13 +2948,16 @@ export function apply(ctx, config = {}) {
       const note = String(args.note || '').trim()
       const lines = []
       try {
-        if (!ctx.configEditor) {
+        // configEditor 是宿主（dsh-settings）挂的服务，不在本插件的 inject 里，
+        // 所以不能直接读 ctx.configEditor，要走 get 现取。
+        const ce = (typeof ctx.get === 'function' ? ctx.get('configEditor') : null) || ctx.configEditor
+        if (!ce) {
           return [
             '重启失败：拿不到 configEditor。',
             '这条路要 Loader 的配置服务；没有它就只能手动重启 DSH。',
           ].join('\n')
         }
-        const entries = ctx.configEditor.entries()
+        const entries = ce.entries()
         // 找自己：包名或 id 里带 persona-framework 的那一条
         const mine = (entries || []).find((e) => {
           const t = `${e.name || ''} ${e.id || ''} ${e.package || ''}`.toLowerCase()
@@ -2965,7 +2968,7 @@ export function apply(ctx, config = {}) {
           return `没找到自己这一条。登记里有：${names || '（空）'}`
         }
         // 空改一次：change 返回原样，但只要走这一趟，Loader 就会重走
-        await ctx.configEditor.edit(mine, (current) => ({ ...current }))
+        await ce.edit(mine, (current) => ({ ...current }))
         lines.push(`重走了：${mine.name || mine.id}`)
         if (note) lines.push(`原因：${note}`)
         lines.push('')
@@ -3391,11 +3394,12 @@ export function apply(ctx, config = {}) {
     path: '/api/persona-framework/restart',
     async handler(req, res) {
       try {
-        if (!ctx.configEditor) {
+        const ce = (typeof ctx.get === 'function' ? ctx.get('configEditor') : null) || ctx.configEditor
+        if (!ce) {
           sendJson(res, 200, { ok: false, error: '拿不到 configEditor；只能手动重启 DSH。' })
           return
         }
-        const entries = ctx.configEditor.entries() || []
+        const entries = ce.entries() || []
         const mine = entries.find((e) => {
           const t = `${e.name || ''} ${e.id || ''} ${e.package || ''}`.toLowerCase()
           return t.includes('persona-framework') || t.includes('persona_framework')
@@ -3404,7 +3408,7 @@ export function apply(ctx, config = {}) {
           sendJson(res, 200, { ok: false, error: `没找到自己这一条。登记里有：${entries.map((e) => e.name || e.id || '?').join('、') || '（空）'}` })
           return
         }
-        await ctx.configEditor.edit(mine, (current) => ({ ...current }))
+        await ce.edit(mine, (current) => ({ ...current }))
         sendJson(res, 200, { ok: true, name: mine.name || mine.id })
       } catch (error) {
         warn(error)

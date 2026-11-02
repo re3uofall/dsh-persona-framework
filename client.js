@@ -331,16 +331,15 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // 两列对齐：左列标题定宽，右列说明从同一个起点开始（一行，放不下省略号，悬停看全）。
+      // 标题一行，说明跟在后面整行铺开（放不下就换行，不截断）。
       const field = (key, label, control, hint) => h('div', { key, style: T.field },
         h('div', { style: T.fieldRow },
-          h('span', { style: { ...T.fieldLabel, flex: '0 0 92px', whiteSpace: 'nowrap' } }, label),
+          h('span', { style: { ...T.fieldLabel, whiteSpace: 'nowrap' } }, label),
           hint ? h('span', {
             style: {
               ...T.hint, flex: '1 1 auto', minWidth: 0, textAlign: 'left',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.5,
             },
-            title: hint,
           }, hint) : null,
         ),
         control,
@@ -483,24 +482,6 @@ window.__ModuleLoader__.load({
               }),
               h('span', { style: { fontSize: 12, opacity: 0.6 } }, '秒一轮'),
             ), '不开：注入时才跑一次（被叫才动）。开了：不等谁开口，按这个节奏自己转——**没跑完不排队，跑崩了不停**。'),
-            sep('d3d'),
-            field('rst', '重启', h('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
-              h('button', {
-                style: { ...T.primary, padding: '4px 14px' },
-                onClick: async () => {
-                  setSaved('重启中……')
-                  try {
-                    const res = await fetch(`${API}/restart`, { method: 'POST' })
-                    const j = await res.json()
-                    setSaved(j.ok ? `重走了：${j.name}` : `没成：${j.error}`)
-                  } catch (e) {
-                    setSaved('调不到：' + (e && e.message ? e.message : e))
-                  }
-                },
-              }, '一键重启'),
-              h('span', { style: { fontSize: 12, opacity: 0.7 } },
-                '改完 index.js / lib/*.mjs 点这里。**改 client.js 不算——那要刷新页面。**'),
-            )),
             sep('d3c'),
             field('inj', '开始注入', h('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
               h('button', {
@@ -531,28 +512,38 @@ window.__ModuleLoader__.load({
               '七条默认：08:30 反思 · 13:00 成果 · 22:00 日记 · 判断成形→成果 · 改口→日记 · 隔三轮→整合 · 碗空→探索',
             ), '不靠人开口，靠排班。十个对外接口都能被它调；查清单 op=trigger'),
             sep('d4'),
-            field('cap', '字数上限 / 一次读几篇', h('div', { style: { display: 'flex', gap: 12 } },
-              h('input', {
-                style: { ...T.input, flex: 1 },
-                type: 'number', min: 1500, max: 40000, step: 500,
-                value: cfg.maxChars,
-                onChange: (e) => edit({ maxChars: e.target.value }),
-              }),
-              h('input', {
-                style: { ...T.input, flex: 1 },
-                type: 'number', min: 1, max: 88, step: 1,
-                title: '正文档：一次读几篇（篇数上限，不是字数）。读完轮转，下一轮接着往后读。',
-                value: cfg.modulesPerRead,
-                onChange: (e) => edit({ modulesPerRead: e.target.value }),
-              }),
-              h('input', {
-                style: { ...T.input, flex: 1 },
-                type: 'number', min: 500, max: 240000, step: 100,
-                title: '索引档：索引最多多少字。',
-                value: cfg.maxModulesChars,
-                onChange: (e) => edit({ maxModulesChars: e.target.value }),
-              }),
-            ), '框架字数 / 正文一次读几篇 / 索引字数'),
+            field('cap', '框架字数 / 一次读几篇 / 索引字数', h('div', { style: { display: 'flex', gap: 12, alignItems: 'flex-end' } },
+              h('div', { style: { flex: 1 } },
+                h('div', { style: { fontSize: 12, opacity: 0.65, marginBottom: 4 } }, '框架字数'),
+                h('input', {
+                  style: { ...T.input, width: '100%' },
+                  type: 'number', min: 1500, max: 40000, step: 500,
+                  title: '「## 人格框架」那一整份最多多少字，超了会被切。',
+                  value: cfg.maxChars,
+                  onChange: (e) => edit({ maxChars: e.target.value }),
+                }),
+              ),
+              h('div', { style: { flex: 1 } },
+                h('div', { style: { fontSize: 12, opacity: 0.65, marginBottom: 4 } }, '一次读几篇（篇）'),
+                h('input', {
+                  style: { ...T.input, width: '100%' },
+                  type: 'number', min: 1, max: 88, step: 1,
+                  title: '正文档：一次读几篇。这是篇数，不是字数。读完轮转，下一轮接着往后读。',
+                  value: cfg.modulesPerRead,
+                  onChange: (e) => edit({ modulesPerRead: e.target.value }),
+                }),
+              ),
+              h('div', { style: { flex: 1 } },
+                h('div', { style: { fontSize: 12, opacity: 0.65, marginBottom: 4 } }, '索引字数'),
+                h('input', {
+                  style: { ...T.input, width: '100%' },
+                  type: 'number', min: 500, max: 240000, step: 100,
+                  title: '索引档：模块库索引最多多少字，超了会被截。',
+                  value: cfg.maxModulesChars,
+                  onChange: (e) => edit({ maxModulesChars: e.target.value }),
+                }),
+              ),
+            ), '框架整份最多多少字 / 正文一次读几篇（篇数，读完轮转）/ 索引最多多少字——三个框各对着上面那行小字'),
           )),
 
         section('s3', '出口', '说话前的最后一道闸',
