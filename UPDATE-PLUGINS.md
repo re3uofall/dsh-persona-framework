@@ -131,7 +131,7 @@ git push origin main
 
 | 包名 | 版本 | 做什么 | 位置 |
 | --- | --- | --- | --- |
-| `dsh-persona-framework` | 5.17.0 | 人格框架：88 个模块，外挂注入，不覆盖人格文件 | `https://github.com/re3uofall/dsh-persona-framework` |
+| `dsh-persona-framework` | 5.18.0 | 人格框架：88 个模块，外挂注入，不覆盖人格文件 | `https://github.com/re3uofall/dsh-persona-framework` |
 
 ### 可随框架一起装的
 

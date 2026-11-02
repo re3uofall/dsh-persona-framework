@@ -38,7 +38,8 @@ import { harvestCandidates, writeCandidates } from './lib/autolex.mjs'
 import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
 import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
 import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
-import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
+import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, dueTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
+import { frameworkLanguageCheck } from './lib/framelang.mjs'
 import { renderSelfCheck, runSelfCheck, takeUnread } from './lib/selfcheck-loop.mjs'
 import { openCommands, saveCommands, listCommands, runCommand, addCommand, stopCommand, recentRuns } from './lib/command.mjs'
 import { REFUSE_REASONS } from './lib/autonomy.mjs'
@@ -47,7 +48,7 @@ import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from
 import { IMPLS } from './lib/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '5.17.0'
+const VERSION = '5.18.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 // 插件自带的模块**正文**（85 个）。
 // 原来只有 BUNDLED_MODULES（索引），别人装了插件只能看见目录、取不到内容——
@@ -120,14 +121,16 @@ const DEFAULTS = {
   maxModulesChars: 12000,
   /** 一次读几篇正文（篇数，不是字数）。读完轮转清零，下一轮接着往后读——88 篇都轮得到，不切半篇。 */
   modulesPerRead: 8,
+  /** 一天之内分几轮把 88 篇读完（每轮按「剩余 ÷ 今天还剩几轮」取整）。0 = 不管天数，按 modulesPerRead 走 */
+  dailyModuleRounds: 8,
   /** 预处理：注入前把模块索引压成「编号 名字：一句话前 24 字」；关掉则原样注入 */
   preprocess: true,
   /** 人格文件的绝对路径：设置页填了它，framework_slots 默认就体检这一份 */
   personalityFile: '',
   /** 收尾口头禅清单：插件不带任何人的口癖，要查就自己填；空 = 不查这一条 */
   closingTics: [],
-  /** 系统提示词里的排序位；人格段（persona:grow）是 10，框架段跟在它后面 */
-  order: 22,
+  /** 系统提示词里的排序位：人格 20 → 记忆 23／25／30 → 框架 35。顺序是人 → 记忆 → 框架 */
+  order: 35,
   /** 可选：像人（有人味）。默认关——开了才按 R19 的六条痕迹要求，且不许表演 */
   humanLike: false,
   /** 可选：有脾气（可以对撞到底线的指令说「不」）。默认关——开了也必须给理由与替代 */
@@ -229,7 +232,7 @@ const DEFAULTS = {
 }
 
 /** 设置页能改的字段（白名单）。 */
-const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'modulesPerRead', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
+const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'modulesPerRead', 'dailyModuleRounds', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
   'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'outReflect', 'outIntegrate', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'autoLoop', 'loopEvery', 'autonomyLevel', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
@@ -796,67 +799,138 @@ export function apply(ctx, config = {}) {
           parts.push('', '## 模块库（索引）', '', truncate(shaped, cfg.maxModulesChars))
         }
       } else if (cfg.includeModules === 'body') {
-        // 正文注入：**整篇整篇地读，一次读 N 篇**——上限是**篇数**，不是字数。
-        // 读完轮转：读到哪儿落在 .persona-framework/模块轮转.json，下一轮从那儿接着读，
-        // 读满一圈回到第一篇。所以 88 篇都轮得到，排在后面的不会永远进不来。
+        // 正文注入：**整篇整篇地读**，一次读几篇由「今天还剩多少篇」定，不按字数。
+        // 三档：
+        //   ① 注入档 all=true（按了「开始注入」）→ 一次把全部正文注入，读完清标记；
+        //   ② dailyModuleRounds>0 → 一天之内读完一圈：第 k 轮读 ceil(剩余 ÷ 今天还剩几轮)；
+        //   ③ dailyModuleRounds=0 → 按 modulesPerRead 走。
+        // 元协调（53）**固定最先注**，不占轮转——它是框架的上一部分，每一轮都该在。
         const dir = dirname(modulesFile)
         let all = []
         try {
           all = readdirSync(dir).filter((f) => /^(0[1-9]|[1-8]\d)-.+\.md$/.test(f)).sort()
         } catch { /* 读不到目录就不加这一段 */ }
         if (all.length) {
-          const n = Math.min(Math.max(1, Number(cfg.modulesPerRead) || 8), all.length)
-          const stateFile = join(String(cfg.workspace || ctx?.config?.workspace || process.cwd()), '.persona-framework', '模块轮转.json')
+          const bare = (s) => s.replace(/\.md$/, '')
+          const wsDir = join(String(cfg.workspace || ctx?.config?.workspace || process.cwd()), '.persona-framework')
+          const stateFile = join(wsDir, '模块轮转.json')
+          const doseFile = join(wsDir, '注入档.json')
+          const today = new Date().toISOString().slice(0, 10)
           let next = 0
+          let day = ''
+          let roundsToday = 0
+          let dayRead = []
           try {
             if (existsSync(stateFile)) {
               const st = JSON.parse(readFileSync(stateFile, 'utf8'))
               const v = Number(st && st.next)
               if (Number.isFinite(v) && v >= 0) next = v % all.length
+              day = String(st.day || '')
+              if (day === today) {
+                roundsToday = Number(st.roundsToday) || 0
+                dayRead = Array.isArray(st.dayRead) ? st.dayRead : []
+              }
             }
           } catch { /* 状态坏了就当从第一篇读起；不装成读过了 */ }
-          // 从 next 起取 n 篇，绕圈
-          const picked = []
-          for (let i = 0; i < n; i += 1) picked.push(all[(next + i) % all.length])
+          let allOn = false
+          try {
+            if (existsSync(doseFile)) {
+              const d = JSON.parse(readFileSync(doseFile, 'utf8'))
+              allOn = d && d.all === true
+            }
+          } catch { /* 注入档读不到就当没按过 */ }
+          // 今天还没读满一圈的篇数
+          const seen = new Set(dayRead)
+          const remainToday = all.filter((f) => !seen.has(bare(f))).length
+          const total = all.length
+          let n
+          if (allOn) {
+            n = remainToday || total
+          } else if (Number(cfg.dailyModuleRounds) > 0) {
+            const rounds = Math.max(1, Number(cfg.dailyModuleRounds) || 8)
+            const left = Math.max(1, rounds - roundsToday)
+            n = remainToday > 0 ? Math.ceil(remainToday / left) : 0
+            n = Math.min(Math.max(1, n), total)
+          } else {
+            n = Math.min(Math.max(1, Number(cfg.modulesPerRead) || 8), total)
+          }
           const got = []
-          let total = 0
-          for (const f of picked) {
+          let chars = 0
+          const picked = []
+          if (n > 0) {
+            // 从 next 起取 n 篇，绕圈；当天已经读过的排在后面，先补没读的
+            const order = []
+            for (let i = 0; i < total; i += 1) order.push(all[(next + i) % total])
+            const fresh = order.filter((f) => !seen.has(bare(f)))
+            const pickFrom = fresh.length >= n ? fresh : order
+            for (let i = 0; i < Math.min(n, pickFrom.length); i += 1) picked.push(pickFrom[i])
+            for (const f of picked) {
+              try {
+                const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
+                got.push(raw)
+                chars += raw.length
+              } catch { /* 单篇读不到就跳过，不拿别的顶替 */ }
+            }
+          }
+          // 元协调：固定最先，不占轮转
+          const metaFile = all.find((f) => /^53-/.test(f))
+          if (metaFile) {
             try {
-              const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
-              got.push(raw)
-              total += raw.length
-            } catch { /* 单篇读不到就跳过，不拿别的顶替 */ }
+              const raw = readFileSync(join(dir, metaFile), 'utf8').replace(/\r\n/g, '\n')
+              parts.push('', '## 模块库（正文·元协调固定）', '', raw)
+            } catch { /* 读不到就算了，不拿别的顶 */ }
           }
           // 索引：一行一篇，**全量、不轮转**。它和正文一起注——索引负责「有哪些」，
           // 正文负责「那一篇到底怎么判断」。少哪一样都不对：只有正文不知道还有别的，
           // 只有索引等于没读（正文比索引重要）。
           parts.push('', '## 模块库（索引）', '')
-          parts.push(all.map((f) => `- ${f.replace(/\.md$/, '')}`).join('\n'))
-          parts.push('', `（全 ${all.length} 篇。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
+          parts.push(all.map((f) => `- ${bare(f)}`).join('\n'))
+          parts.push('', `（全 ${total} 篇。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
             + '这条不占轮转，也不改下一轮从哪儿接着读。）')
           if (got.length) {
-            const bare = (s) => s.replace(/\.md$/, '')
-            const advance = (next + got.length) % all.length
+            const advance = (next + got.length) % total
+            const nextDayRead = Array.from(new Set([...dayRead, ...picked.slice(0, got.length).map(bare)]))
             try {
               writeFileSync(stateFile, JSON.stringify({
                 next: advance,
                 at: new Date().toISOString(),
+                day: today,
+                roundsToday: roundsToday + 1,
+                dayRead: nextDayRead.length > total ? nextDayRead.slice(-total) : nextDayRead,
                 last: picked.slice(0, got.length).map(bare),
               }, null, 2), 'utf8')
             } catch { /* 写不进去就当这轮没推进——下一轮重读同一段，不算记住 */ }
+            if (allOn) {
+              try { writeFileSync(doseFile, JSON.stringify({ all: false, at: new Date().toISOString() }, null, 2), 'utf8') }
+              catch { /* 清不掉标记就下一轮再清；只会多读一遍，不会漏 */ }
+            }
             parts.push('', '## 模块库（正文）', '')
             parts.push(got.join('\n\n'))
+            const doneCount = nextDayRead.length
             parts.push('', `（本轮读 ${got.length} 篇：${bare(picked[0])} → ${bare(picked[got.length - 1])}｜`
-              + `共 ${all.length} 篇、本轮 ${total} 字。下一轮从 **${bare(all[advance])}** 接着读，`
-              + `读满一圈回到 ${bare(all[0])}。整篇读，不切半篇。）`)
+              + `共 ${total} 篇、本轮 ${chars} 字。今天第 ${roundsToday + 1} 轮，今天已过 ${doneCount}/${total} 篇`
+              + `${doneCount >= total ? '——今天一圈读完了' : `，下一轮补剩下的 ${total - doneCount} 篇`}。`
+              + `下一轮从 **${bare(all[advance])}** 接着读。整篇读，不切半篇${allOn ? '；本次是「开始注入」全量档' : ''}。）`)
+          } else {
+            parts.push('', '## 模块库（正文）', '')
+            parts.push(`（今天一圈读完了：${total} 篇全过了一遍。要重读：按「开始注入」，`
+              + `或说编号走 \`framework_view module=编号\`。明天从第一篇重新过。）`)
           }
         }
       }
       // 触发器：只摆清单，不跑。**过中介才动手**——响了不等于该做，过不了就空着。
-      // 这里只读（loadTriggers），不 runTriggers：注入不该有副作用。
+      // 但「该响几条」必须真算一遍，「框架语言必过」必须真跑一遍——这是「触发器有没有生效」的可查证据。
       try {
         const ws0 = String(cfg.workspace || ctx?.config?.workspace || process.cwd())
         const { list, from } = loadTriggers(ws0)
+        // 框架语言必过 check：**每次注入都现场跑一遍**，查的是框架正文自己。
+        // 它不写「该跑 X」——它就是那一步本身：跑了、过了没有，写在注入头里。
+        let flang = { ok: true, fails: [], ran: false }
+        try {
+          const fwText = (load().text || '')
+          const r = frameworkLanguageCheck(fwText, { strict: cfg.framelangStrict === true })
+          flang = { ok: r.ok, fails: r.fails || [], ran: true }
+        } catch (e) { flang = { ok: false, fails: [], ran: false, err: String(e?.message || e) } }
         // 条件触发要让人看见「它是条件」：拿最后一句去比对判据词，报命中了哪几条。
         const said = String(lastHint(ws0) || '')
         const cues = list.filter((t) => (t.stimulus || {}).kind === 'cue')
@@ -866,16 +940,28 @@ export function apply(ctx, config = {}) {
           return need.length > 0 && said && need.some((w) => said.includes(w))
         })
         const noJudge = cues.filter((t) => !(Array.isArray(t.stimulus?.match) && t.stimulus.match.length))
+        // 程序触发器有没有生效：按同一套 dueTriggers 真算一遍「现在该响哪几条」。
+        const dueNow = dueTriggers(list, { now: new Date(), turnsSince: 0, lastSaid: said, fired: {} })
         const condLine = said
           ? `条件触发：最后一句「${said.replace(/\s+/g, ' ').slice(0, 40)}」→ 命中 ${hit.length} / ${cues.length} 条`
             + `${hit.length ? `（${hit.slice(0, 4).map((t) => t.name).join('、')}${hit.length > 4 ? ' 等' : ''}）` : ''}；时钟 ${clocks.length} 条只看到点`
           : `条件触发：这一轮还没人说话 → 0 / ${cues.length} 条响；时钟 ${clocks.length} 条只看到点`
+        const dueLine = `程序触发器：按同一套判据现算 → 本轮该响 **${dueNow.length}** 条`
+          + `${dueNow.length ? `（${dueNow.slice(0, 5).map((t) => t.name).join('、')}${dueNow.length > 5 ? ' 等' : ''}）` : ''}；`
+          + `响≠动手，还要过中介`
+        const flangLine = !flang.ran
+          ? `框架语言必过：**没跑成**（${flang.err || '检查器没起来'}）——这件事不装成「通过了」`
+          : flang.ok
+            ? '框架语言必过：**通过**（框架正文里没有被当成固定名的词）'
+            : `框架语言必过：**${flang.fails.length} 处疑似**（${flang.fails.slice(0, 3).map((f) => `${f.kind}：${String(f.hit || '').slice(0, 20)}`).join('；')}${flang.fails.length > 3 ? ' 等' : ''}）`
         const lines = [
           '## 触发器（什么时候自己动）',
           '',
           `现有 ${list.length} 条（来自 ${from}）。` +
             '**触发不等于动手**：响了还要过中介（手上有没有料、能不能落地），过不了就空着，不降级成「随便做点什么」。',
           '',
+          flangLine,
+          dueLine,
           condLine,
           ...(noJudge.length ? [`另有 ${noJudge.length} 条没写判据词，这轮不响：${noJudge.slice(0, 5).map((t) => t.name).join('、')}`] : []),
           '',
@@ -2658,6 +2744,23 @@ export function apply(ctx, config = {}) {
         if (!text) return '语言背叛检查：给一段要交付的话（text）。它查三样——绝对化没划范围、大词没锚、认领式误认。'
         return renderBetray(betrayCheck(text, { strict: cfg.betrayStrict === true }))
       }
+      if (op === 'injectStart' || op === 'injectstart') {
+        // 「开始注入」这一下是真按的：写标记，下一轮组装时把 88 篇正文一次全读。
+        // 不清空轮转表——读全是**加**，不是把今天已经读过的抹掉重来。
+        const ws0 = String(cfg.workspace || ctx?.config?.workspace || process.cwd())
+        const dir0 = join(ws0, '.persona-framework')
+        const f0 = join(dir0, '注入档.json')
+        try {
+          mkdirSync(dir0, { recursive: true })
+          writeFileSync(f0, JSON.stringify({ all: true, at: new Date().toISOString() }, null, 2), 'utf8')
+        } catch (e) {
+          return `按不了：注入档写不进（${e?.message || e}）。`
+        }
+        return '按下了「开始注入」。\n'
+          + '下一轮组装注入时，模块正文**一次全读**（88 篇整篇正文，不再按轮转取几篇）；读完这一份标记自己清掉。\n'
+          + `标记：${f0}\n`
+          + '这条改的是注入读哪份状态——状态文件每轮现读，所以不用重载插件。'
+      }
       if (op === 'functions' || op === 'function') {
         // 功能层：一个模块 = 一个功能。
         // 为什么单开这一层：AI 的「思考」是语义拼接 / 封闭运用，不会自己回头查落地了没有。
@@ -3203,6 +3306,8 @@ export function apply(ctx, config = {}) {
     maxChars: cfg.maxChars,
     includeModules: cfg.includeModules,
     maxModulesChars: cfg.maxModulesChars,
+    modulesPerRead: cfg.modulesPerRead,
+    dailyModuleRounds: cfg.dailyModuleRounds,
     preprocess: cfg.preprocess,
     humanLike: cfg.humanLike,
     temper: cfg.temper,
@@ -3301,6 +3406,27 @@ export function apply(ctx, config = {}) {
         }
         await ctx.configEditor.edit(mine, (current) => ({ ...current }))
         sendJson(res, 200, { ok: true, name: mine.name || mine.id })
+      } catch (error) {
+        warn(error)
+        sendJson(res, 500, { ok: false, error: errText(error) })
+      }
+    },
+  }))
+
+  // 「开始注入」按钮：一次把 88 篇正文全读一遍。
+  // 它只写一个标记文件，不动轮转表——读全是**加**，不是把今天读过的抹掉重来。
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/persona-framework/inject-start',
+    async handler(req, res) {
+      try {
+        let wsRoot = ''
+        try { wsRoot = String(cfg.workspace || (await wd())) } catch { wsRoot = String(cfg.workspace || process.cwd()) }
+        const dir0 = join(wsRoot, '.persona-framework')
+        const f0 = join(dir0, '注入档.json')
+        mkdirSync(dir0, { recursive: true })
+        writeFileSync(f0, JSON.stringify({ all: true, at: new Date().toISOString() }, null, 2), 'utf8')
+        sendJson(res, 200, { ok: true, file: f0 })
       } catch (error) {
         warn(error)
         sendJson(res, 500, { ok: false, error: errText(error) })

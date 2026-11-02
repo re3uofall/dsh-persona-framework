@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
       .map((x) => x.trim())
       .filter(Boolean)
 
-    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'body', maxModulesChars: 12000, modulesPerRead: 8, closingTics: [], order: 20, guide: true, travelOn: false, travelGuide: '' }
+    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'body', maxModulesChars: 12000, modulesPerRead: 8, closingTics: [], order: 35, guide: true, travelOn: false, travelGuide: '' }
 
     const flagText = (v) => (v === true ? '是' : v === false ? '否' : '未写')
 
@@ -297,7 +297,7 @@ window.__ModuleLoader__.load({
               aiLanguage: cfg.aiLanguage !== false,
               synonym: cfg.synonym !== false,
               skipChance: cfg.skipChance === 0 ? 0 : Number(cfg.skipChance) || 0.1,
-              order: Number(cfg.order) || 22,
+              order: Number(cfg.order) || 35,
               guide: cfg.guide !== false,
               travelOn: cfg.travelOn === true,
               travelGuide: String(cfg.travelGuide || ''),
@@ -501,6 +501,31 @@ window.__ModuleLoader__.load({
               h('span', { style: { fontSize: 12, opacity: 0.7 } },
                 '改完 index.js / lib/*.mjs 点这里。**改 client.js 不算——那要刷新页面。**'),
             )),
+            sep('d3c'),
+            field('inj', '开始注入', h('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
+              h('button', {
+                style: { ...T.primary, padding: '4px 14px' },
+                onClick: async () => {
+                  setSaved('按下「开始注入」……')
+                  try {
+                    const res = await fetch(`${API}/inject-start`, { method: 'POST' })
+                    const j = await res.json()
+                    setSaved(j.ok ? '下一轮注入会把 88 篇正文一次全读' : `没成：${j.error}`)
+                  } catch (e) {
+                    setSaved('调不到：' + (e && e.message ? e.message : e))
+                  }
+                },
+              }, '开始注入'),
+              h('span', { style: { fontSize: 12, opacity: 0.6 } }, '一天分'),
+              h('input', {
+                style: { ...T.input, width: 70 },
+                type: 'number', min: 0, max: 88, step: 1,
+                title: '0 = 不管天数，按「一次读几篇」走。大于 0 时按「剩余 ÷ 今天还剩几轮」取整。',
+                value: cfg.dailyModuleRounds,
+                onChange: (e) => edit({ dailyModuleRounds: Number(e.target.value) || 0 }),
+              }),
+              h('span', { style: { fontSize: 12, opacity: 0.6 } }, '轮读完'),
+            ), '按了它：下一轮组装注入时把 **88 篇正文一次全读**，读完标记自己清掉。不管天数时按上面的篇数走；管天数时按「剩余 ÷ 今天还剩几轮」取整，一天正好走完一圈。元协调（53）每一轮都排在最前，不占轮转。'),
             sep('d3b'),
             field('trig', '触发器', h('div', { style: { fontSize: 12, opacity: 0.75 } },
               '七条默认：08:30 反思 · 13:00 成果 · 22:00 日记 · 判断成形→成果 · 改口→日记 · 隔三轮→整合 · 碗空→探索',

@@ -218,13 +218,13 @@ curl -X PUT -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+
 
 ### 2. tag 与 release
 
-- tag 名：`v<版本>`（跟 `index.js` 的 `VERSION` 一模一样，别写 `5.17.0` 不写 `v`）。
+- tag 名：`v<版本>`（跟 `index.js` 的 `VERSION` 一模一样，别写 `5.18.0` 不写 `v`）。
 - release 标题：`<tag> · <一句话说这版修了什么>`，不写「若干改进」。
 - release 正文：抄 CHANGELOG 当前那一版，按 **修 / 改 / 记住 / 测试** 分块。测试结果要具体到数（`46/46`），不写「测试通过」。
 
 ```bash
 # tag（第一次；已存在就跳过）
-curl -X POST -H "Authorization: token $TOKEN" -d "{\"ref\":\"refs/tags/v5.17.0\",\"sha\":\"<commit>\"}"   https://api.github.com/repos/<owner>/<repo>/git/refs
+curl -X POST -H "Authorization: token $TOKEN" -d "{\"ref\":\"refs/tags/v5.18.0\",\"sha\":\"<commit>\"}"   https://api.github.com/repos/<owner>/<repo>/git/refs
 
 # release
 curl -X POST -H "Authorization: token $TOKEN"   -d @release.json   https://api.github.com/repos/<owner>/<repo>/releases
