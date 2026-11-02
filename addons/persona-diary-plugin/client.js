@@ -2,7 +2,7 @@
  * dsh-persona-diary —— client 半端
  * ============================================================================
  * 侧栏一个「日记」图标，点开是一块面板：
- *   - **两档**：公开（默认摆着）／私密（点开才出现，早先没分档的也在这一档）。
+ *   - **三档**：公开（默认摆着）／私密（点开才出现，早先没分档的也在这一档）／记录（记事，字多一点）。
  *   - **分类**：按实际出现的类别筛（心得／自省／见闻／杂记，加上自己起的类）。
  *   - **浏览**：按天分组、按词找、能清空。
  *
@@ -102,7 +102,9 @@ window.__ModuleLoader__.load({
     /** 某一条属不属于这一档：私密那档把早先没分档的一起收着。 */
     const inBook = (item, book) => (book === '公开'
       ? item.privacy === '公开'
-      : item.privacy === '私密' || item.privacy === '未标')
+      : book === '记录'
+        ? item.privacy === '记录'
+        : item.privacy === '私密' || item.privacy === '未标')
 
     /** 「日记」面板。 */
     function DiaryPanel() {
@@ -157,6 +159,7 @@ window.__ModuleLoader__.load({
       const bookCount = {
         公开: all.filter((x) => x.privacy === '公开').length,
         私密: all.filter((x) => inBook(x, '私密')).length,
+        记录: all.filter((x) => x.privacy === '记录').length,
       }
       const earlyCount = pool.filter((x) => x.privacy === '未标').length
 
@@ -216,7 +219,7 @@ window.__ModuleLoader__.load({
                   style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)' },
                 }, '· ' + String(item.source))
                 : null,
-              item.privacy === '私密'
+              item.privacy !== '公开'
                 ? h('span', {
                   style: {
                     marginLeft: 'auto', fontSize: 11, padding: '0 7px',
@@ -224,17 +227,8 @@ window.__ModuleLoader__.load({
                     border: '1px dashed var(--dsw-alias-border-l2)',
                     color: 'var(--dsw-alias-label-secondary)',
                   },
-                }, '私密')
-                : item.privacy === '未标'
-                  ? h('span', {
-                    style: {
-                      marginLeft: 'auto', fontSize: 11, padding: '0 7px',
-                      lineHeight: '17px', borderRadius: 999,
-                      border: '1px dashed var(--dsw-alias-border-l2)',
-                      color: 'var(--dsw-alias-label-secondary)',
-                    },
-                  }, '早先')
-                  : null,
+                }, item.privacy === '未标' ? '早先' : item.privacy)
+                : null,
             ),
             h('div', {
               style: {
@@ -251,20 +245,16 @@ window.__ModuleLoader__.load({
 
       const emptyHint = kind || word
         ? '这个范围里没有。换个类、或者把词清掉。'
-        : book === '公开'
-          ? '公开这一本还空着。'
-          : '私密这一本还空着。'
-      // 公开档空着的时候指一下私密那边有多少条，免得看着像丢了。
-      const otherCount = book === '公开' ? bookCount['私密'] : bookCount['公开']
+        : `${book}这一本还空着。`
+      const others = ['公开', '私密', '记录'].filter((x) => x !== book && bookCount[x])
+      const otherCount = others.length
+        ? others.map((x) => `${x} ${bookCount[x]}`).join('、')
+        : ''
       const emptySub = kind || word
         ? ''
-        : book === '公开'
-          ? (otherCount
-            ? `能拿给人看的那些，才会记到这里。私密那本有 ${otherCount} 条，点上面切过去。`
-            : '能拿给人看的那些，才会记到这里。')
-          : (otherCount
-            ? `写给自己的那些，点开就在这里。公开那本有 ${otherCount} 条。`
-            : '写给自己的那些，点开就在这里。')
+        : otherCount
+          ? `这几本各管一样：公开是能拿给人看的判断，私密是拿不准的，记录是发生过的事。现在有 ${otherCount} 条，点上面切过去。`
+          : '这三本各管一样：公开（能拿给人看的判断）、私密（拿不准的）、记录（发生过的事）。'
 
       const body = shown.length
         ? h('div', { style: { display: 'grid', gap: 4 } }, blocks)
@@ -329,7 +319,7 @@ window.__ModuleLoader__.load({
               margin: '8px 0 18px', fontSize: 13,
               color: 'var(--dsw-alias-label-secondary)',
             },
-          }, '一天一天记，不写给谁看。两本：能拿给人看的那些，和只留给自己的那些。'),
+          }, '一天一天记，不写给谁看。三本：能拿给人看的判断、只留给自己的那些、和发生过的事。'),
 
           // 两本
           h('div', {
@@ -344,6 +334,12 @@ window.__ModuleLoader__.load({
               label: `公开 ${bookCount['公开']}`,
               active: book === '公开',
               onClick: () => setBook('公开'),
+            }),
+            chip({
+              key: '记录',
+              label: `记录 ${bookCount['记录']}`,
+              active: book === '记录',
+              onClick: () => setBook('记录'),
             }),
             chip({
               key: '私密',

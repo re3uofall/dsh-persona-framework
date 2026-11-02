@@ -19,8 +19,8 @@
  * 配置全部走 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 export const name = 'persona-diary'
 export const inject = ['tools', 'webServer', 'systemPrompt']
@@ -37,24 +37,37 @@ const DEFAULTS = {
   maxBodyChars: 4000,
   /** 每轮附「什么时候该记」说明 */
   injectPrompt: true,
+  /** 到点提醒：今天一本没写、又过了这个钟点，就在提示词里提一句（只提醒，不替你写） */
+  injectReminder: true,
+  /** 几点之后才提醒（0–23） */
+  remindFromHour: 20,
+  /** 连提几次没响应就静默几天（0 = 不静默） */
+  remindQuietDays: 3,
 }
 
 /** 内置四类；也认自定义短词（写入时钉住，浏览时按实际出现的聚合）。 */
 const KINDS = ['心得', '自省', '见闻', '杂记']
 
-/** 两档。`未标` 不是能写的档，只用来装根下那些没分档的旧日记。 */
-const PRIVACY = ['公开', '私密']
+/** 三档。`未标` 不是能写的档，只用来装根下那些没分档的旧日记。 */
+const PRIVACY = ['公开', '私密', '记录']
 const DIRS = [
   { privacy: '公开', sub: '公开' },
   { privacy: '私密', sub: '私密' },
+  { privacy: '记录', sub: '记录' },
   { privacy: '未标', sub: '' },
 ]
 
-const GUIDE = `## 日记（写给自己，不是交付）
+const GUIDE = `## 日记（三本，是特殊的记忆）
 
-- 今天真正想明白了一点、拐了个弯、没忍住一次——调 diary_write 记一笔：一两句，像写给自己，别写成报告。
-- **两本**：默认写**私密**那本（只在本地、不主动翻出来）；确定能拿给人看的，才写**公开**那本。
-- 成果是交出去的判断；日记是还没成型的心得。分不清时，先记日记。
+日记不是记忆之外的另一本账，是**特殊的记忆**：备忘录记「发生过什么」——原话、时间、出处，翻得回去；日记记「我怎么想、我怎么过来的」——同一件事，被系统收进来的是记忆，自己挑出来重写一遍的是日记。区别不在内容，在谁挑的。
+
+不是三个抽屉，是三种距离：
+
+- **公开**：能拿给人看的判断。站得住的才写。
+- **私密**（默认）：拿不准的、不给人看的、没绕过去的。一两句就够。
+- **记录**：**记事**——谁、什么时候、做了什么、结果如何。这一本不许省字：省掉的那半句，日后翻到时就是断掉的那一节。
+
+前两本记「我怎么想」，短；记录那本记「发生了什么」，长一点、具体一点。分不清时：想出来的进私密，做过的进记录。
 - 不用每天写，也不用凑数。空着比凑数强。`
 
 const int = (v, min, max, fallback) => {
@@ -72,6 +85,81 @@ const errText = (error) => (error && error.message ? error.message : String(erro
 const two = (n) => String(n).padStart(2, '0')
 const dayOf = (d = new Date()) => `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`
 const clockOf = (d = new Date()) => `${two(d.getHours())}:${two(d.getMinutes())}`
+
+/** 连续提几次都没响应，就开始静默几天。 */
+const QUIET_AFTER = 3
+
+/** 提醒的文案。`times` 是「连提几次没响应」的累计。 */
+const remindText = (day, clock, times = 0) => {
+  const hard = Number(times) >= 2
+  return [
+    hard ? `## 又该记一笔了（连提 ${times} 次，一直没写）` : '## 该记一笔了',
+    '',
+    `今天（${day}）三本还空着。现在是 ${clock}。`,
+    '',
+    '日记是特殊的记忆，不是流水——挑一件写：想出来的进私密，做过的进记录，站得住的进公开。',
+    hard
+      ? '要么今晚挑一件写下，要么干脆说这几天不写——别再让这一句自己响。'
+      : '要记就调 `diary_write`；真没有值得记的就空着，凑数比空着更糟。',
+  ].join('\n')
+}
+
+/**
+ * 提醒触发器的一步：**先验收上一次，再决定这一次提不提。**
+ *
+ * 纯函数——时间、现有条目、门槛、上一次的状态进；这一轮出什么字、状态变成什么、验收结论。
+ * `verdict` 三档：已应（盘上多了）/ 没响应（过了那天还空着）/ 未验（还不到时点）。
+ * 它只提醒、不替人写；提了还不算完，得看有没有真被接住。
+ */
+export const remindStep = (opts) => {
+  const { now, items, fromHour, quietDays, state } = opts || {}
+  const fallback = { lastDay: '', last: '', times: 0, quietUntil: '' }
+  const out = { text: '', verdict: '', state: { ...fallback } }
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) return out
+
+  const day = dayOf(now)
+  const list = Array.isArray(items) ? items : []
+  const wrote = (d) => list.some((x) => x && x.day === d)
+
+  const s = { ...fallback, ...(state && typeof state === 'object' ? state : {}) }
+  s.times = Number.isFinite(Number(s.times)) ? Math.max(0, Math.round(Number(s.times))) : 0
+
+  // 零、静默期：不验收、不提，让它先歇着。
+  //    过了就把账清掉重新计——否则每次验收都重新延长静默，永远出不来。
+  if (s.quietUntil && day > s.quietUntil) {
+    s.quietUntil = ''
+    s.times = 0
+    s.lastDay = ''
+  }
+  const quiet = Boolean(s.quietUntil)
+
+  // 一、验收上一次：看盘，不听它自己说。
+  if (!quiet && s.lastDay) {
+    if (wrote(s.lastDay)) {
+      out.verdict = '已应'
+      s.times = 0
+    } else if (s.lastDay < day) {
+      out.verdict = '没响应'
+      s.times += 1
+      if (s.times >= QUIET_AFTER) {
+        const days = int(quietDays, 0, 30, 3)
+        s.quietUntil = dayOf(new Date(now.getTime() + days * 86400000))
+      }
+    } else {
+      out.verdict = '未验'
+    }
+  }
+
+  // 二、还提不提：静默期里不提；不到点不提；今天写过了也不提。
+  if (!quiet && now.getHours() >= int(fromHour, 0, 23, 20) && !wrote(day)) {
+    out.text = remindText(day, clockOf(now), s.times)
+    s.lastDay = day
+    s.last = `${day}T${clockOf(now)}`
+  }
+
+  out.state = s
+  return out
+}
 
 /** 分类：内置四类原样收，其余收成一个短词（限 12 字，去掉空白与换行）。 */
 const kindOf = (raw) => {
@@ -92,6 +180,9 @@ export function apply(ctx, config = {}) {
   cfg.maxEntries = int(cfg.maxEntries, 1, 5000, 300)
   cfg.maxBodyChars = int(cfg.maxBodyChars, 200, 20000, 4000)
   cfg.injectPrompt = cfg.injectPrompt !== false
+  cfg.injectReminder = cfg.injectReminder !== false
+  cfg.remindFromHour = int(cfg.remindFromHour, 0, 23, 20)
+  cfg.remindQuietDays = int(cfg.remindQuietDays, 0, 30, 3)
 
   const warn = (error) => {
     try { console.warn('[persona-diary]', errText(error)) } catch { /* 控制台都没了就算了 */ }
@@ -124,6 +215,27 @@ export function apply(ctx, config = {}) {
 
   /** 某一档的目录；`未标` 是根目录本身。 */
   const dirOf = (sub) => (sub ? join(diaryDir, sub) : diaryDir)
+
+  /** 提醒的验收状态：跟加固分放一处，不塞进日记正文。 */
+  const remindFile = dir ? join(dir, '.persona-framework', '日记提醒.json') : ''
+  const readRemindState = () => {
+    if (!remindFile || !existsSync(remindFile)) return null
+    try {
+      const raw = JSON.parse(readFileSync(remindFile, 'utf8'))
+      return raw && typeof raw === 'object' ? raw : null
+    } catch {
+      return null
+    }
+  }
+  const writeRemindState = (state) => {
+    if (!remindFile) return
+    try {
+      mkdirSync(dirname(remindFile), { recursive: true })
+      writeFileSync(remindFile, JSON.stringify(state, null, 2) + '\n', 'utf8')
+    } catch (error) {
+      warn(error)
+    }
+  }
 
   // ── 读：把 markdown 日记解析成条目 ─────────────────────────────────────────
 
@@ -206,6 +318,7 @@ export function apply(ctx, config = {}) {
     let out = items
     const privacy = String(args.privacy ?? '').trim()
     if (privacy === '公开') out = out.filter((x) => x.privacy === '公开')
+    else if (privacy === '记录') out = out.filter((x) => x.privacy === '记录')
     // 私密那档把早先没分档的一起收着——那本来就是写给自己的。
     else if (privacy === '私密') out = out.filter((x) => x.privacy === '私密' || x.privacy === '未标')
     else if (privacy === '未标') out = out.filter((x) => x.privacy === '未标')
@@ -251,13 +364,12 @@ export function apply(ctx, config = {}) {
 
   register({
     name: 'diary_write',
-    description: '往自己的日记本里记一笔心得体会：一两句，像写给自己。'
-      + '两本：默认写私密那本（只在本地、不主动翻出来）；确定能拿给人看的，才写公开那本。'
-      + '成果是交出去的判断，日记是还没成型的心得；一次记一条，别凑数。',
+    description: '往自己的日记里记一笔。三本：公开（能拿给人看的判断）／私密（默认，拿不准的）／记录（记事：谁、什么时候、做了什么、结果如何）。'
+      + '前两本短，记录那本字要多——省掉的那半句，日后翻到时就是断掉的那一节。一次记一条，别凑数。',
     parameters: {
       type: 'object',
       properties: {
-        body: { type: 'string', description: '正文：今天想明白的那点，或那一处没绕过弯' },
+        body: { type: 'string', description: '正文：心得/自省写想明白的那点、没绕过弯的地方；记录写清谁、何时、做了什么、结果如何' },
         kind: {
           type: 'string',
           description: '这一条算哪一类：心得／自省／见闻／杂记，也可以写一个自己的短词（默认心得）',
@@ -265,7 +377,7 @@ export function apply(ctx, config = {}) {
         privacy: {
           type: 'string',
           enum: PRIVACY,
-          description: '写进哪一本：私密（默认，只留本地）／公开（能拿给人看的）',
+          description: '写进哪一本：私密（默认，只留本地）／公开（能拿给人看的）／记录（记事，字多一点）',
         },
       },
       required: ['body'],
@@ -277,11 +389,11 @@ export function apply(ctx, config = {}) {
       const body = clip(args.body, cfg.maxBodyChars)
       if (body.length < 2) return '空的。心得不是空白页。'
       const kind = kindOf(args.kind)
-      const privacy = args.privacy === '公开' ? '公开' : '私密'
+      const privacy = PRIVACY.includes(args.privacy) ? args.privacy : '私密'
       const now = new Date()
       const day = dayOf(now)
       const time = clockOf(now)
-      const sub = privacy === '公开' ? '公开' : '私密'
+      const sub = privacy
       const bookDir = dirOf(sub)
       const file = join(bookDir, `日记_${day}.md`)
       mkdirSync(bookDir, { recursive: true })
@@ -301,7 +413,7 @@ export function apply(ctx, config = {}) {
       appendFileSync(file, `${prefix}### ${time} · ${kind}\n\n${body}\n\n`, 'utf8')
       const count = countOfDay(day, privacy)
       return `记下了（今天${privacy}第 ${count} 条）：${body.slice(0, 40)}${body.length > 40 ? '…' : ''}\n` +
-        `落在 ${cfg.diaryDir}/${sub}/日记_${day}.md；侧栏「日记」面板里${privacy === '公开' ? '直接能看到' : '点开私密那一档才看得到'}。`
+        `落在 ${cfg.diaryDir}/${sub}/日记_${day}.md；侧栏「日记」面板里${privacy === '公开' ? '直接能看到' : `点开${privacy}那一档才看得到`}。`
     },
   })
 
@@ -315,7 +427,7 @@ export function apply(ctx, config = {}) {
         limit: { type: 'number', description: '看几条（默认 8，最多 50）' },
         day: { type: 'string', description: '只看某一天，格式 2026-10-24（可选）' },
         kind: { type: 'string', description: '只看这一类（可选，自定义类也认）' },
-        privacy: { type: 'string', enum: PRIVACY, description: '只翻哪一本（可选；不填就两本一起翻）' },
+        privacy: { type: 'string', enum: PRIVACY, description: '只翻哪一本：公开／私密／记录（可选；不填就三本一起翻）' },
         q: { type: 'string', description: '按词找：正文里含这个词的（可选）' },
       },
       additionalProperties: false,
@@ -356,8 +468,34 @@ export function apply(ctx, config = {}) {
     }))
   }
 
+  // ── 到点提醒：只提一句，不替你写 ────────────────────────────────────────────
+  if (cfg.injectReminder) {
+    ctx.effect(() => ctx.systemPrompt.section({
+      name: 'persona:diary-remind',
+      order: 14,
+      interpolate: false,
+      text: () => {
+        try {
+          const step = remindStep({
+            now: new Date(),
+            items: readAll(),
+            fromHour: cfg.remindFromHour,
+            quietDays: cfg.remindQuietDays,
+            state: readRemindState(),
+          })
+          // 只有真验收了、或真提了才落盘——否则每轮都要写一次文件。
+          if (step.verdict || step.text) writeRemindState(step.state)
+          return step.text
+        } catch (error) {
+          warn(error)
+          return ''
+        }
+      },
+    }))
+  }
+
   // ── 面板的数据口 ────────────────────────────────────────────────────────────
-  //   ?privacy=公开|私密   只给一本
+  //   ?privacy=公开|私密|记录   只给一本
   //   ?kind=自省            只给一类
   //   ?q=词                 正文里含这个词的
   //   ?limit=N              截到多少条（默认 maxEntries）
@@ -381,7 +519,7 @@ export function apply(ctx, config = {}) {
         for (const item of filterItems(all, { privacy: query.privacy })) {
           kinds[item.kind] = (kinds[item.kind] || 0) + 1
         }
-        const counts = { 全部: all.length, 公开: 0, 私密: 0, 未标: 0 }
+        const counts = { 全部: all.length, 公开: 0, 私密: 0, 记录: 0, 未标: 0 }
         for (const item of all) counts[item.privacy] = (counts[item.privacy] || 0) + 1
         res.writeHead(200, {
           'content-type': 'application/json; charset=utf-8',
