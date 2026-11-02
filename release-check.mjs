@@ -85,8 +85,13 @@ const cnToInt = (s) => {
 }
 const ops = new Set([...idx.matchAll(/op === '([a-zA-Z]+)'/g)].map((m) => m[1]))
 const opCount = ops.size
-const readmeOpMatch = readme.match(/([零一二三四五六七八九十\d]+)\s*个\s*op/)
-const readmeOpNum = readmeOpMatch ? cnToInt(readmeOpMatch[1]) : NaN
+// 「共有 N 个 op」才是登记数；正文里「不硬配一个 op 冒充」这类句子也会命中，
+// 所以取全部命中里最大的那个数——登记数一定不小于句子里的量词。
+const readmeOpAll = [...readme.matchAll(/([零一二三四五六七八九十\d]+)\s*个\s*op/g)]
+  .map((m) => cnToInt(m[1]))
+  .filter((n) => Number.isFinite(n))
+const readmeOpMatch = readmeOpAll.length ? [String(readmeOpAll.length), Math.max(...readmeOpAll)] : null
+const readmeOpNum = readmeOpMatch ? readmeOpMatch[1] : NaN
 if (!readmeOpMatch) warn('README 里没写「N 个 op」', '没法核对 op 数')
 else if (readmeOpNum === opCount) ok('op 数对得上', String(opCount))
 else bad('README 的 op 数跟代码不一致', `README ${readmeOpMatch[1]}（${readmeOpNum}）／ 代码 ${opCount}`)
