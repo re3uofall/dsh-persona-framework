@@ -1,15 +1,21 @@
 /**
  * dsh-persona-diary —— host 半端
  * ============================================================================
- * 一句话：给人格一份自己的日记本，记心得体会，不记交付。
+ * 一句话：给人格两本日记，记心得体会，不记交付。
  *
- * 它做三件事：
- *   1. **记**：她调 `diary_write` 记一笔心得，追加进
- *      `persona-ai/growth/日记/日记_YYYY-MM-DD.md`（和 growth.py 的睡前自审同一本）。
- *   2. **看**：`/api/persona-diary` 把日记读成 JSON，侧栏的「日记」面板按天摆出来。
- *   3. **提醒**：每轮在提示词里挂一小段——有心得才记，别凑数。
+ * 两本：
+ *   - **私密**（默认）：`growth/日记/私密/日记_YYYY-MM-DD.md`。日记本来的样子，
+ *     只在本地、不主动翻出来给人看。
+ *   - **公开**：`growth/日记/公开/日记_YYYY-MM-DD.md`。确定能拿给人看的那些。
+ *   - 根下那些没分档的旧日记，读的时候算「未标」，仍按私密那档摆着——不挪、不改。
  *
- * 只往 `growth/日记/` 追加，不重写旧日记；人格原稿一个字不动。
+ * 它做四件事：
+ *   1. **记**：`diary_write` 记一笔，带档位与分类，追加不覆盖。
+ *   2. **看**：`diary_list` 按档、按类、按词翻。
+ *   3. **摆**：`/api/persona-diary` 把日记读成 JSON，侧栏面板分档、筛类、搜词。
+ *   4. **提醒**：提示词里挂一小段——有心得才记，别凑数。
+ *
+ * 只往两本日记里追加，不重写旧日记；人格原稿一个字不动。
  * 配置全部走 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
  */
@@ -23,7 +29,7 @@ export const inject = ['tools', 'webServer', 'systemPrompt']
 const DEFAULTS = {
   /** 人格根目录（`persona-ai` 那一层）。空 = 从会话工作区推。 */
   personaDir: '',
-  /** 日记目录，相对人格根目录 */
+  /** 日记根目录，相对人格根目录；两本在它下面各占一个子目录 */
   diaryDir: 'growth/日记',
   /** 面板最多显示多少条（新的在前） */
   maxEntries: 300,
@@ -33,11 +39,21 @@ const DEFAULTS = {
   injectPrompt: true,
 }
 
+/** 内置四类；也认自定义短词（写入时钉住，浏览时按实际出现的聚合）。 */
 const KINDS = ['心得', '自省', '见闻', '杂记']
+
+/** 两档。`未标` 不是能写的档，只用来装根下那些没分档的旧日记。 */
+const PRIVACY = ['公开', '私密']
+const DIRS = [
+  { privacy: '公开', sub: '公开' },
+  { privacy: '私密', sub: '私密' },
+  { privacy: '未标', sub: '' },
+]
 
 const GUIDE = `## 日记（写给自己，不是交付）
 
 - 今天真正想明白了一点、拐了个弯、没忍住一次——调 diary_write 记一笔：一两句，像写给自己，别写成报告。
+- **两本**：默认写**私密**那本（只在本地、不主动翻出来）；确定能拿给人看的，才写**公开**那本。
 - 成果是交出去的判断；日记是还没成型的心得。分不清时，先记日记。
 - 不用每天写，也不用凑数。空着比凑数强。`
 
@@ -56,6 +72,15 @@ const errText = (error) => (error && error.message ? error.message : String(erro
 const two = (n) => String(n).padStart(2, '0')
 const dayOf = (d = new Date()) => `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`
 const clockOf = (d = new Date()) => `${two(d.getHours())}:${two(d.getMinutes())}`
+
+/** 分类：内置四类原样收，其余收成一个短词（限 12 字，去掉空白与换行）。 */
+const kindOf = (raw) => {
+  const s = String(raw ?? '').replace(/\s+/g, '').trim()
+  if (!s) return '心得'
+  if (KINDS.includes(s)) return s
+  const cut = s.slice(0, 12)
+  return cut || '心得'
+}
 
 /** 一条日记：kind + 正文；也可以是 growth.py 写的那种没有时间与类型的块。 */
 const ID_RE = /^日记_(\d{4}-\d{2}-\d{2})\.md$/
@@ -97,10 +122,13 @@ export function apply(ctx, config = {}) {
   const diaryDir = dir ? join(dir, cfg.diaryDir) : ''
   if (!diaryDir) warn('没有找到人格目录：请在 patch 的 config.personaDir 里指到 persona-ai 那一层')
 
+  /** 某一档的目录；`未标` 是根目录本身。 */
+  const dirOf = (sub) => (sub ? join(diaryDir, sub) : diaryDir)
+
   // ── 读：把 markdown 日记解析成条目 ─────────────────────────────────────────
 
   /** 一份文件里的 ### 块 → 条目；文件头（# 日期、> 引用）不算。 */
-  const parseFile = (file, day) => {
+  const parseFile = (file, day, privacy) => {
     let text = ''
     try { text = readFileSync(file, 'utf8') } catch { return [] }
     const out = []
@@ -112,10 +140,11 @@ export function apply(ctx, config = {}) {
       if (body) {
         index += 1
         out.push({
-          id: `${day}#${index}`,
+          id: `${privacy}/${day}#${index}`,
           day,
           time: cur.time,
           kind: cur.kind,
+          privacy,
           source: cur.source,
           body,
           t: `${day}T${cur.time || '00:00'}:00`,
@@ -134,13 +163,13 @@ export function apply(ctx, config = {}) {
           const tag = clock[3].trim()
           cur = {
             time: `${two(Number(clock[1]))}:${clock[2]}`,
-            kind: KINDS.includes(tag) ? tag : '心得',
-            source: KINDS.includes(tag) ? '' : tag,
+            kind: tag && tag.length <= 12 ? tag : '心得',
+            source: tag && tag.length <= 12 ? '' : tag,
             lines: [],
           }
         } else {
           // growth.py 写的：### 睡前自审 / ### 读对话（xxx），没有时间
-          const own = KINDS.includes(label)
+          const own = label.length <= 12
           cur = { time: '', kind: own ? label : '心得', source: own ? '' : label, lines: [] }
         }
       } else if (cur) {
@@ -151,21 +180,41 @@ export function apply(ctx, config = {}) {
     return out
   }
 
-  /** 读全部日记，按时间倒序（新 → 旧）。坏文件跳过。 */
+  /** 读两本（＋根下未标那些），按时间倒序（新 → 旧）。坏文件跳过。 */
   const readAll = () => {
-    if (!diaryDir || !existsSync(diaryDir)) return []
-    let files = []
-    try { files = readdirSync(diaryDir) } catch (error) { warn(error); return [] }
+    if (!diaryDir) return []
     const out = []
-    for (const name of files) {
-      const m = ID_RE.exec(name)
-      if (!m) continue
-      try { out.push(...parseFile(join(diaryDir, name), m[1])) } catch (error) { warn(error) }
+    for (const { privacy, sub } of DIRS) {
+      const base = dirOf(sub)
+      if (!base || !existsSync(base)) continue
+      let files = []
+      try { files = readdirSync(base) } catch (error) { warn(error); continue }
+      for (const name of files) {
+        const m = ID_RE.exec(name)
+        if (!m) continue
+        try { out.push(...parseFile(join(base, name), m[1], privacy)) } catch (error) { warn(error) }
+      }
     }
     return out.sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime())
   }
 
-  const entriesOfDay = (day) => readAll().filter((x) => x.day === day)
+  /** 今天某一档里已经记了几条（写回执用）。 */
+  const countOfDay = (day, privacy) => readAll().filter((x) => x.day === day && x.privacy === privacy).length
+
+  /** 按档、按类、按词筛；都为空就是全部。 */
+  const filterItems = (items, args = {}) => {
+    let out = items
+    const privacy = String(args.privacy ?? '').trim()
+    if (privacy === '公开') out = out.filter((x) => x.privacy === '公开')
+    // 私密那档把早先没分档的一起收着——那本来就是写给自己的。
+    else if (privacy === '私密') out = out.filter((x) => x.privacy === '私密' || x.privacy === '未标')
+    else if (privacy === '未标') out = out.filter((x) => x.privacy === '未标')
+    const kind = String(args.kind ?? '').trim()
+    if (kind) out = out.filter((x) => x.kind === kind)
+    const q = String(args.q ?? '').trim().toLowerCase()
+    if (q) out = out.filter((x) => (x.body + ' ' + x.kind + ' ' + x.source).toLowerCase().includes(q))
+    return out
+  }
 
   // ── 工具 ────────────────────────────────────────────────────────────────────
 
@@ -203,12 +252,21 @@ export function apply(ctx, config = {}) {
   register({
     name: 'diary_write',
     description: '往自己的日记本里记一笔心得体会：一两句，像写给自己。'
+      + '两本：默认写私密那本（只在本地、不主动翻出来）；确定能拿给人看的，才写公开那本。'
       + '成果是交出去的判断，日记是还没成型的心得；一次记一条，别凑数。',
     parameters: {
       type: 'object',
       properties: {
         body: { type: 'string', description: '正文：今天想明白的那点，或那一处没绕过弯' },
-        kind: { type: 'string', enum: KINDS, description: '这条算哪一类（默认心得）' },
+        kind: {
+          type: 'string',
+          description: '这一条算哪一类：心得／自省／见闻／杂记，也可以写一个自己的短词（默认心得）',
+        },
+        privacy: {
+          type: 'string',
+          enum: PRIVACY,
+          description: '写进哪一本：私密（默认，只留本地）／公开（能拿给人看的）',
+        },
       },
       required: ['body'],
       additionalProperties: false,
@@ -218,12 +276,15 @@ export function apply(ctx, config = {}) {
       if (missing) return missing
       const body = clip(args.body, cfg.maxBodyChars)
       if (body.length < 2) return '空的。心得不是空白页。'
-      const kind = KINDS.includes(args.kind) ? args.kind : '心得'
+      const kind = kindOf(args.kind)
+      const privacy = args.privacy === '公开' ? '公开' : '私密'
       const now = new Date()
       const day = dayOf(now)
       const time = clockOf(now)
-      const file = join(diaryDir, `日记_${day}.md`)
-      mkdirSync(diaryDir, { recursive: true })
+      const sub = privacy === '公开' ? '公开' : '私密'
+      const bookDir = dirOf(sub)
+      const file = join(bookDir, `日记_${day}.md`)
+      mkdirSync(bookDir, { recursive: true })
       let prefix = ''
       if (!existsSync(file)) {
         prefix = `# ${day}\n\n`
@@ -238,22 +299,24 @@ export function apply(ctx, config = {}) {
         } catch { /* 读不到就当有换行 */ }
       }
       appendFileSync(file, `${prefix}### ${time} · ${kind}\n\n${body}\n\n`, 'utf8')
-      const count = entriesOfDay(day).length
-      return `记下了（今天第 ${count} 条）：${body.slice(0, 40)}${body.length > 40 ? '…' : ''}\n` +
-        `落在 ${cfg.diaryDir}/日记_${day}.md；侧栏「日记」面板里能看到。`
+      const count = countOfDay(day, privacy)
+      return `记下了（今天${privacy}第 ${count} 条）：${body.slice(0, 40)}${body.length > 40 ? '…' : ''}\n` +
+        `落在 ${cfg.diaryDir}/${sub}/日记_${day}.md；侧栏「日记」面板里${privacy === '公开' ? '直接能看到' : '点开私密那一档才看得到'}。`
     },
   })
 
   register({
     name: 'diary_list',
     description: '翻自己的日记：最近记了些什么，按天倒序。'
-      + '「我最近想起了什么」「上次那点心得」时用。',
+      + '「我最近想起了什么」「上次那点心得」时用；可以只翻一本、只看一类、按词找。',
     parameters: {
       type: 'object',
       properties: {
         limit: { type: 'number', description: '看几条（默认 8，最多 50）' },
         day: { type: 'string', description: '只看某一天，格式 2026-10-24（可选）' },
-        kind: { type: 'string', enum: KINDS, description: '只看这一类（可选）' },
+        kind: { type: 'string', description: '只看这一类（可选，自定义类也认）' },
+        privacy: { type: 'string', enum: PRIVACY, description: '只翻哪一本（可选；不填就两本一起翻）' },
+        q: { type: 'string', description: '按词找：正文里含这个词的（可选）' },
       },
       additionalProperties: false,
     },
@@ -265,8 +328,8 @@ export function apply(ctx, config = {}) {
       if (typeof args.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.day)) {
         items = items.filter((x) => x.day === args.day)
       }
-      if (KINDS.includes(args.kind)) items = items.filter((x) => x.kind === args.kind)
-      if (items.length === 0) return '还没写过日记。今天想明白的那半句，记一笔。'
+      items = filterItems(items, args)
+      if (items.length === 0) return '这个范围里还没写过。今天想明白的那半句，记一笔。'
       const recent = items.slice(0, limit)
       const lines = [`共 ${items.length} 条，先看最近 ${recent.length} 条：`]
       let lastDay = ''
@@ -277,7 +340,7 @@ export function apply(ctx, config = {}) {
         }
         const head = item.body.replace(/\s+/g, ' ')
         const tag = item.source ? `（${item.source}）` : ''
-        lines.push(`- ${item.time || '——'} [${item.kind}]${tag} ${head.slice(0, 60)}${head.length > 60 ? '…' : ''}`)
+        lines.push(`- ${item.time || '——'} [${item.kind}·${item.privacy}]${tag} ${head.slice(0, 60)}${head.length > 60 ? '…' : ''}`)
       }
       return lines.join('\n')
     },
@@ -294,17 +357,37 @@ export function apply(ctx, config = {}) {
   }
 
   // ── 面板的数据口 ────────────────────────────────────────────────────────────
+  //   ?privacy=公开|私密   只给一本
+  //   ?kind=自省            只给一类
+  //   ?q=词                 正文里含这个词的
+  //   ?limit=N              截到多少条（默认 maxEntries）
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/persona-diary',
     handler(req, res) {
       try {
-        const items = readAll().slice(0, cfg.maxEntries)
+        let query = {}
+        try {
+          const url = new URL(req.url || '/', 'http://localhost')
+          query = Object.fromEntries(url.searchParams.entries())
+        } catch { /* 解析不了就当没条件 */ }
+        let items = readAll()
+        const all = items
+        items = filterItems(items, query)
+        const limit = int(query.limit, 1, 5000, cfg.maxEntries)
+        items = items.slice(0, limit)
+        // 分类清单按**筛过之后的池子**给，免得点一个空类。
+        const kinds = {}
+        for (const item of filterItems(all, { privacy: query.privacy })) {
+          kinds[item.kind] = (kinds[item.kind] || 0) + 1
+        }
+        const counts = { 全部: all.length, 公开: 0, 私密: 0, 未标: 0 }
+        for (const item of all) counts[item.privacy] = (counts[item.privacy] || 0) + 1
         res.writeHead(200, {
           'content-type': 'application/json; charset=utf-8',
           'cache-control': 'no-store',
         })
-        res.end(JSON.stringify({ ok: true, count: items.length, items }))
+        res.end(JSON.stringify({ ok: true, count: items.length, items, kinds, counts }))
       } catch (error) {
         warn(error)
         res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })

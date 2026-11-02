@@ -273,6 +273,27 @@ export function recall(root, opts = {}) {
   const layers = opts.layers || DEFAULT_LAYERS
   const scan = scanPools(root, layers)
 
+  /**
+   * 加固：同一层里谁先浮。
+   *
+   * ★ 这一行是「加固」整套东西唯一的落点。
+   *   加固不碰字节、不改权重、不改预算——**它只改同层内的先后**。
+   *   所以它对层与层之间的次序一格都不动：层是有理由排的，加固没资格重排它。
+   *
+   * `opts.reinforce` 是一个函数：给一个文件（含 path / mtime / chars），返回分数。
+   * 传不进来就按老样子（字数大的先）。
+   */
+  if (typeof opts.reinforce === 'function') {
+    for (const p of scan.pools) {
+      p.files = p.files.slice().sort((a, b) => {
+        const sa = Number(opts.reinforce(a)) || 0
+        const sb = Number(opts.reinforce(b)) || 0
+        if (sb !== sa) return sb - sa
+        return b.chars - a.chars
+      })
+    }
+  }
+
   // 每层的预算 = 总预算 × 权重（再按该层实际字数封顶）；流水层最后一个拿
   const order = Object.keys(layers).sort((a, b) => layers[b].weight - layers[a].weight)
   const picked = []

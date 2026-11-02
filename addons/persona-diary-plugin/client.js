@@ -1,8 +1,13 @@
 /**
  * dsh-persona-diary —— client 半端
  * ============================================================================
- * 侧栏一个「日记」图标，点开是一块面板：按天摆着自己记的心得，
- * 数据从 host 的 `/api/persona-diary` 取（见 index.js）。
+ * 侧栏一个「日记」图标，点开是一块面板：
+ *   - **两档**：公开（默认摆着）／私密（点开才出现，早先没分档的也在这一档）。
+ *   - **分类**：按实际出现的类别筛（心得／自省／见闻／杂记，加上自己起的类）。
+ *   - **浏览**：按天分组、按词找、能清空。
+ *
+ * 数据从 host 的 `/api/persona-diary` 一次取全量，筛在前端做——
+ * 条数不大，换来点一下立刻变，不走请求。
  *
  * 只用宿主主题 token（--dsw-alias-*），不引 Harness 的 Client 包，
  * 不碰 DOM 以外的东西；样式靠 React 元素带，卸载即走。
@@ -65,6 +70,24 @@ window.__ModuleLoader__.load({
       cursor: 'pointer',
     }
 
+    /** 一个可点的筛片；选中时换个底与字色。 */
+    const chip = (opts) => h('button', {
+      key: opts.key,
+      onClick: opts.onClick,
+      style: {
+        fontSize: 12,
+        lineHeight: '24px',
+        height: 24,
+        padding: '0 10px',
+        borderRadius: 999,
+        cursor: 'pointer',
+        border: '1px solid ' + (opts.active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-border-l2)'),
+        background: opts.active ? 'var(--dsw-alias-brand-primary)' : 'transparent',
+        color: opts.active ? 'var(--dsw-alias-bg-layer-1)' : 'var(--dsw-alias-label-secondary)',
+        fontWeight: opts.active ? 600 : 400,
+      },
+    }, opts.label)
+
     /** 把倒序的条目按天分组，保持原有顺序。 */
     const groupByDay = (items) => {
       const groups = []
@@ -76,10 +99,18 @@ window.__ModuleLoader__.load({
       return groups
     }
 
+    /** 某一条属不属于这一档：私密那档把早先没分档的一起收着。 */
+    const inBook = (item, book) => (book === '公开'
+      ? item.privacy === '公开'
+      : item.privacy === '私密' || item.privacy === '未标')
+
     /** 「日记」面板。 */
     function DiaryPanel() {
       const [state, setState] = React.useState({ phase: 'loading', items: [], error: '' })
       const [nonce, setNonce] = React.useState(0)
+      const [book, setBook] = React.useState('公开')
+      const [kind, setKind] = React.useState('')
+      const [q, setQ] = React.useState('')
 
       React.useEffect(() => {
         let alive = true
@@ -109,7 +140,25 @@ window.__ModuleLoader__.load({
         }
       }, [nonce])
 
-      const groups = groupByDay(state.items)
+      // ── 这一档的池子 → 类别清单 → 再按类与词收一遍 ──────────────────────────
+      const all = state.items
+      const pool = all.filter((x) => inBook(x, book))
+      const kindCount = {}
+      for (const item of pool) kindCount[item.kind] = (kindCount[item.kind] || 0) + 1
+      const kindList = Object.keys(kindCount).sort((a, b) => kindCount[b] - kindCount[a])
+      const word = q.trim().toLowerCase()
+      const shown = pool.filter((item) => {
+        if (kind && item.kind !== kind) return false
+        if (word && !(String(item.body) + ' ' + item.kind + ' ' + String(item.source || '')).toLowerCase().includes(word)) return false
+        return true
+      })
+      const groups = groupByDay(shown)
+
+      const bookCount = {
+        公开: all.filter((x) => x.privacy === '公开').length,
+        私密: all.filter((x) => inBook(x, '私密')).length,
+      }
+      const earlyCount = pool.filter((x) => x.privacy === '未标').length
 
       const blocks = groups.map((group) => h('section', {
         key: group.day,
@@ -140,7 +189,9 @@ window.__ModuleLoader__.load({
             key: item.id,
             style: {
               background: 'var(--dsw-alias-bg-layer-1)',
-              border: '1px solid var(--dsw-alias-border-l1)',
+              border: '1px solid ' + (item.privacy === '私密' || item.privacy === '未标'
+                ? 'var(--dsw-alias-border-l2)'
+                : 'var(--dsw-alias-border-l1)'),
               borderRadius: 12,
               padding: '13px 16px',
               display: 'block',
@@ -165,6 +216,25 @@ window.__ModuleLoader__.load({
                   style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)' },
                 }, '· ' + String(item.source))
                 : null,
+              item.privacy === '私密'
+                ? h('span', {
+                  style: {
+                    marginLeft: 'auto', fontSize: 11, padding: '0 7px',
+                    lineHeight: '17px', borderRadius: 999,
+                    border: '1px dashed var(--dsw-alias-border-l2)',
+                    color: 'var(--dsw-alias-label-secondary)',
+                  },
+                }, '私密')
+                : item.privacy === '未标'
+                  ? h('span', {
+                    style: {
+                      marginLeft: 'auto', fontSize: 11, padding: '0 7px',
+                      lineHeight: '17px', borderRadius: 999,
+                      border: '1px dashed var(--dsw-alias-border-l2)',
+                      color: 'var(--dsw-alias-label-secondary)',
+                    },
+                  }, '早先')
+                  : null,
             ),
             h('div', {
               style: {
@@ -179,7 +249,24 @@ window.__ModuleLoader__.load({
         h('div', { style: { height: 22 } }),
       ))
 
-      const body = state.items.length
+      const emptyHint = kind || word
+        ? '这个范围里没有。换个类、或者把词清掉。'
+        : book === '公开'
+          ? '公开这一本还空着。'
+          : '私密这一本还空着。'
+      // 公开档空着的时候指一下私密那边有多少条，免得看着像丢了。
+      const otherCount = book === '公开' ? bookCount['私密'] : bookCount['公开']
+      const emptySub = kind || word
+        ? ''
+        : book === '公开'
+          ? (otherCount
+            ? `能拿给人看的那些，才会记到这里。私密那本有 ${otherCount} 条，点上面切过去。`
+            : '能拿给人看的那些，才会记到这里。')
+          : (otherCount
+            ? `写给自己的那些，点开就在这里。公开那本有 ${otherCount} 条。`
+            : '写给自己的那些，点开就在这里。')
+
+      const body = shown.length
         ? h('div', { style: { display: 'grid', gap: 4 } }, blocks)
         : state.phase === 'loading'
           ? h('div', {
@@ -196,9 +283,26 @@ window.__ModuleLoader__.load({
               color: 'var(--dsw-alias-label-secondary)', fontSize: 14, lineHeight: 2,
             },
           },
-            h('div', {}, '还没写过。'),
-            h('div', { style: { fontSize: 13 } }, '今天想明白的那半句，她会记下来。'),
+            h('div', {}, emptyHint),
+            emptySub ? h('div', { style: { fontSize: 13 } }, emptySub) : null,
           )
+
+      const kindChips = kindList.length
+        ? h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
+          chip({
+            key: '',
+            label: `全部 ${pool.length}`,
+            active: kind === '',
+            onClick: () => setKind(''),
+          }),
+          kindList.map((k) => chip({
+            key: k,
+            label: `${k} ${kindCount[k]}`,
+            active: kind === k,
+            onClick: () => setKind(kind === k ? '' : k),
+          })),
+        )
+        : null
 
       return h('div', {
         style: {
@@ -213,7 +317,7 @@ window.__ModuleLoader__.load({
             h('h1', { style: { margin: 0, fontSize: 22, fontWeight: 650 } }, '日记'),
             h('span', {
               style: { fontSize: 13, color: 'var(--dsw-alias-label-secondary)' },
-            }, `${state.items.length} 条`),
+            }, kind || word ? `${shown.length} / ${pool.length} 条` : `${pool.length} 条`),
             h('button', {
               onClick: () => setNonce((n) => n + 1),
               disabled: state.phase === 'loading',
@@ -222,10 +326,68 @@ window.__ModuleLoader__.load({
           ),
           h('p', {
             style: {
-              margin: '8px 0 28px', fontSize: 13,
+              margin: '8px 0 18px', fontSize: 13,
               color: 'var(--dsw-alias-label-secondary)',
             },
-          }, '一天一天记，不写给谁看。'),
+          }, '一天一天记，不写给谁看。两本：能拿给人看的那些，和只留给自己的那些。'),
+
+          // 两本
+          h('div', {
+            style: {
+              display: 'flex', gap: 8, alignItems: 'center',
+              paddingBottom: 14,
+              borderBottom: '1px solid var(--dsw-alias-border-l1)',
+            },
+          },
+            chip({
+              key: '公开',
+              label: `公开 ${bookCount['公开']}`,
+              active: book === '公开',
+              onClick: () => setBook('公开'),
+            }),
+            chip({
+              key: '私密',
+              label: `私密 ${bookCount['私密']}`,
+              active: book === '私密',
+              onClick: () => setBook('私密'),
+            }),
+            book === '私密'
+              ? h('span', {
+                style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)' },
+              }, earlyCount ? `点开了私密那本（另有 ${earlyCount} 条早先没分档的）` : '点开了私密那本')
+              : null,
+          ),
+
+          // 分类 + 找
+          h('div', {
+            style: {
+              display: 'flex', gap: 10, alignItems: 'center',
+              flexWrap: 'wrap', margin: '14px 0 24px',
+            },
+          },
+            kindChips,
+            h('input', {
+              value: q,
+              onChange: (event) => setQ(event.target.value || ''),
+              placeholder: '找一个词……',
+              style: {
+                marginLeft: 'auto', width: 190, height: 26,
+                boxSizing: 'border-box', padding: '0 10px',
+                fontSize: 12, borderRadius: 7,
+                border: '1px solid var(--dsw-alias-border-l2)',
+                background: 'transparent',
+                color: 'var(--dsw-alias-label-primary)',
+                outline: 'none',
+              },
+            }),
+            q
+              ? h('button', {
+                onClick: () => setQ(''),
+                style: Object.assign({}, buttonStyle, { height: 26, lineHeight: '24px' }),
+              }, '清')
+              : null,
+          ),
+
           state.error
             ? h('div', {
               style: {
