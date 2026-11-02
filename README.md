@@ -36,7 +36,9 @@
 
 **四个还没做的，写在 [PLAN-PLUGINS.md](PLAN-PLUGINS.md)**：耳（`dsh-persona-listen`）、手（`dsh-persona-hand`）、心（`dsh-persona-heart`）、脑（`dsh-persona-brain`）。上面这些插件解决的是「东西放哪、怎么取、怎么说」，缺的是**器官**——切四刀的时候，用的是什么在切。四个都还没动工，各自怎么算成了、谁先做，在那一份里。
 
-**未来计划分四份**：总计划 [PLAN.md](PLAN.md)（四条线、凭什么排先后），模块的 [PLAN-MODULES.md](PLAN-MODULES.md)，功能的 [PLAN-FEATURES.md](PLAN-FEATURES.md)，插件的 [PLAN-PLUGINS.md](PLAN-PLUGINS.md)。改模块之前看 [UPDATE-MODULES.md](UPDATE-MODULES.md)。
+**未来计划分四份**：总计划 [PLAN.md](PLAN.md)（四条线、凭什么排先后），模块的 [PLAN-MODULES.md](PLAN-MODULES.md)，功能的 [PLAN-FEATURES.md](PLAN-FEATURES.md)，插件的 [PLAN-PLUGINS.md](PLAN-PLUGINS.md)。
+
+**更新指南也分总与分**：分不清手上这一改是模块、功能、插件还是发版，先看 [UPDATE.md](UPDATE.md)；四份分指南是 [UPDATE-MODULES.md](UPDATE-MODULES.md)、[GUIDE-FEATURES.md](GUIDE-FEATURES.md)、[UPDATE-PLUGINS.md](UPDATE-PLUGINS.md)、[UPDATE-GUIDE.md](UPDATE-GUIDE.md)。
 
 | 工具 | 参数 | 干什么 |
 | --- | --- | --- |

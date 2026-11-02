@@ -1,8 +1,8 @@
 # 插件更新指南
 
 > 管的是**附加插件**——`addons/` 底下那六个独立 npm 包，各自有 `package.json`、`index.js`、自检。
-> 框架本体发版看 `UPDATE-GUIDE.md`；框架内部的功能（某个模块的 impl）看 `GUIDE-FEATURES.md`。
-> 三份管三样东西，别拿错。
+> 分不清这是哪一类的活，先看总指南 [UPDATE.md](UPDATE.md)。框架本体发版看 `UPDATE-GUIDE.md`；框架内部的功能（某个模块的 impl）看 `GUIDE-FEATURES.md`；模块正文看 `UPDATE-MODULES.md`。
+> 四份管四样东西，别拿错。
 
 ## 一、先认清哪份是活的
 
