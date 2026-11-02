@@ -218,13 +218,13 @@ curl -X PUT -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+
 
 ### 2. tag 与 release
 
-- tag 名：`v<版本>`（跟 `index.js` 的 `VERSION` 一模一样，别写 `5.16.2` 不写 `v`）。
+- tag 名：`v<版本>`（跟 `index.js` 的 `VERSION` 一模一样，别写 `5.17.0` 不写 `v`）。
 - release 标题：`<tag> · <一句话说这版修了什么>`，不写「若干改进」。
 - release 正文：抄 CHANGELOG 当前那一版，按 **修 / 改 / 记住 / 测试** 分块。测试结果要具体到数（`46/46`），不写「测试通过」。
 
 ```bash
 # tag（第一次；已存在就跳过）
-curl -X POST -H "Authorization: token $TOKEN" -d "{\"ref\":\"refs/tags/v5.16.2\",\"sha\":\"<commit>\"}"   https://api.github.com/repos/<owner>/<repo>/git/refs
+curl -X POST -H "Authorization: token $TOKEN" -d "{\"ref\":\"refs/tags/v5.17.0\",\"sha\":\"<commit>\"}"   https://api.github.com/repos/<owner>/<repo>/git/refs
 
 # release
 curl -X POST -H "Authorization: token $TOKEN"   -d @release.json   https://api.github.com/repos/<owner>/<repo>/releases
@@ -260,7 +260,7 @@ GH_TOKEN=… node .tools/_gh/push_api.mjs "提交说明"
 
 ### 4. 附加插件跟着一起推
 
-框架仓库里有一个 `addons/` 目录，装着五个附加插件的源码：
+框架仓库里有一个 `addons/` 目录，装着六个附加插件的源码：
 
 ```
 addons/
@@ -268,10 +268,11 @@ addons/
 ├── persona-diary-plugin/    日记
 ├── persona-results-plugin/  成果
 ├── persona-explore-plugin/  碗外探索
-└── dsh-persona-memory/      记忆分层
+├── dsh-persona-memory/      记忆分层
+└── dsh-persona-vision/      看图
 ```
 
-**为什么放这儿**：那五个目录原本各自躺在我机器的工作区里，都不是 git 仓库——框架推上去了，它们还只在我这儿活着。别人下载框架，拿不到它们。
+**为什么放这儿**：那六个目录原本各自躺在我机器的工作区里，都不是 git 仓库——框架推上去了，它们还只在我这儿活着。别人下载框架，拿不到它们。
 
 现在 `addons/` 是**唯一源**：改插件 → 改 `addons/` 里那份 → 跟框架一起 commit/push。
 
