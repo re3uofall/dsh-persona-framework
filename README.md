@@ -36,6 +36,8 @@
 
 **四个还没做的，写在 [PLAN-PLUGINS.md](PLAN-PLUGINS.md)**：耳（`dsh-persona-listen`）、手（`dsh-persona-hand`）、心（`dsh-persona-heart`）、脑（`dsh-persona-brain`）。上面这些插件解决的是「东西放哪、怎么取、怎么说」，缺的是**器官**——切四刀的时候，用的是什么在切。四个都还没动工，各自怎么算成了、谁先做，在那一份里。
 
+**未来计划分四份**：总计划 [PLAN.md](PLAN.md)（四条线、凭什么排先后），模块的 [PLAN-MODULES.md](PLAN-MODULES.md)，功能的 [PLAN-FEATURES.md](PLAN-FEATURES.md)，插件的 [PLAN-PLUGINS.md](PLAN-PLUGINS.md)。改模块之前看 [UPDATE-MODULES.md](UPDATE-MODULES.md)。
+
 | 工具 | 参数 | 干什么 |
 | --- | --- | --- |
 | `vision_look` | `duration`（默认 3 秒）、`interval`（默认 1 秒）、`threshold`、`monitor`、`describe` | 截一串帧 → 挑帧 → 拼图 →（可选认）→ 落记录 |
