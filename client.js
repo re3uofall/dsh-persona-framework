@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
       .map((x) => x.trim())
       .filter(Boolean)
 
-    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'index', maxModulesChars: 4000, closingTics: [], order: 20, guide: true, travelOn: false, travelGuide: '' }
+    const SHAPE = { frameworkFile: '', workspace: '', modulesFile: '', personalityFile: '', mode: 'full', maxChars: 9000, includeModules: 'body', maxModulesChars: 12000, closingTics: [], order: 20, guide: true, travelOn: false, travelGuide: '' }
 
     const flagText = (v) => (v === true ? '是' : v === false ? '否' : '未写')
 
@@ -254,7 +254,7 @@ window.__ModuleLoader__.load({
               mode: cfg.mode,
               maxChars: Number(cfg.maxChars) || 12000,
               includeModules: cfg.includeModules,
-              maxModulesChars: Number(cfg.maxModulesChars) || 4000,
+              maxModulesChars: Number(cfg.maxModulesChars) || 12000,
               closingTics: splitTics(tics),
               humanLike: cfg.humanLike === true,
               temper: cfg.temper === true,
@@ -281,6 +281,12 @@ window.__ModuleLoader__.load({
               aiBreakout: cfg.aiBreakout === true,
               selfBreak: cfg.selfBreak === true,
               selfReflect: cfg.selfReflect === true,
+              functionReflect: cfg.functionReflect === true,
+              outReflect: cfg.outReflect !== false,
+              outIntegrate: cfg.outIntegrate !== false,
+              autonomyLevel: cfg.autonomyLevel || 'mid',
+              autoLoop: cfg.autoLoop === true,
+              loopEvery: Number(cfg.loopEvery) || 60,
               languageBetray: cfg.languageBetray === true,
               frameworkReflect: cfg.frameworkReflect === true,
               reflectCriteria: cfg.reflectCriteria !== false,
@@ -431,14 +437,72 @@ window.__ModuleLoader__.load({
               h('option', { value: 'off' }, '不注入，只留工具'),
             )),
             sep('d3'),
-            field('idx', '附模块索引', h('select', {
+            field('idx', '模块注入', h('select', {
               style: T.input,
               value: cfg.includeModules,
               onChange: (e) => edit({ includeModules: e.target.value }),
             },
+              h('option', { value: 'body' }, '附正文（按编号顺序，受字数上限截断）'),
               h('option', { value: 'index' }, '附一句话索引'),
               h('option', { value: 'off' }, '不附'),
             )),
+            sep('d3e'),
+            field('auto', '自主性', h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+              h('select', {
+                style: T.input,
+                value: cfg.autonomyLevel || 'mid',
+                onChange: (e) => edit({ autonomyLevel: e.target.value }),
+              },
+                h('option', { value: 'off' }, '关｜0 token｜不跑'),
+                h('option', { value: 'low' }, '低｜~150–300 token｜3 个 system｜不捞记忆'),
+                h('option', { value: 'mid' }, '中｜~500–900 token｜7 个 system｜捞 3 条（默认）'),
+                h('option', { value: 'high' }, '高｜~1200–2200 token｜7 个 system｜捞 5 条'),
+              ),
+              h('div', { style: { fontSize: 11.5, opacity: 0.7 } },
+                '每轮注入跑一次 tick。档位决定：跑几个 system、捞几条记忆、注入最多几字。',
+              ),
+            ), '这是「拿多少碗」的旋钮：开得越高，每轮烧的 token 和时间越多，但看得也越清'),
+            field('loop', '循环', h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+                h('input', {
+                  type: 'checkbox',
+                  checked: cfg.autoLoop === true,
+                  onChange: (e) => edit({ autoLoop: e.target.checked }),
+                }),
+                '让它自己转',
+              ),
+              h('span', { style: { fontSize: 12, opacity: 0.6 } }, '每'),
+              h('input', {
+                style: { ...T.input, width: 70 },
+                type: 'number', min: 10, max: 3600, step: 10,
+                value: cfg.loopEvery || 60,
+                disabled: cfg.autoLoop !== true,
+                onChange: (e) => edit({ loopEvery: Number(e.target.value) || 60 }),
+              }),
+              h('span', { style: { fontSize: 12, opacity: 0.6 } }, '秒一轮'),
+            ), '不开：注入时才跑一次（被叫才动）。开了：不等谁开口，按这个节奏自己转——**没跑完不排队，跑崩了不停**。'),
+            sep('d3d'),
+            field('rst', '重启', h('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+              h('button', {
+                style: { ...T.primary, padding: '4px 14px' },
+                onClick: async () => {
+                  setSaved('重启中……')
+                  try {
+                    const res = await fetch(`${API}/restart`, { method: 'POST' })
+                    const j = await res.json()
+                    setSaved(j.ok ? `重走了：${j.name}` : `没成：${j.error}`)
+                  } catch (e) {
+                    setSaved('调不到：' + (e && e.message ? e.message : e))
+                  }
+                },
+              }, '一键重启'),
+              h('span', { style: { fontSize: 12, opacity: 0.7 } },
+                '改完 index.js / lib/*.mjs 点这里。**改 client.js 不算——那要刷新页面。**'),
+            )),
+            sep('d3b'),
+            field('trig', '触发器', h('div', { style: { fontSize: 12, opacity: 0.75 } },
+              '七条默认：08:30 反思 · 13:00 成果 · 22:00 日记 · 判断成形→成果 · 改口→日记 · 隔三轮→整合 · 碗空→探索',
+            ), '不靠人开口，靠排班。十个对外接口都能被它调；查清单 op=trigger'),
             sep('d4'),
             field('cap', '字数上限', h('div', { style: { display: 'flex', gap: 12 } },
               h('input', {
@@ -568,6 +632,14 @@ window.__ModuleLoader__.load({
               }),
               '语言是对现实的抽象；删掉的那部分由现实承担，不拿语言补',
             ), '默认关。最重的一条，整个关掉也留；但「跳过」更高。与语言诅咒互斥'),
+            field('fnr', '功能自反', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.functionReflect === true,
+                onChange: (e) => edit({ functionReflect: e.target.checked }),
+              }),
+              '让你看见功能这一轮跑了什么：哪个 system 动了、哪个卡了',
+            ), '默认关。功能干活不说话——不开这一档，你只看得到结果；开了才看得见过程。开了也允许你写 .persona-framework/功能补充.json（键＝功能名，值＝希望怎样）'),
             field('fr', '框架自反', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
               h('input', {
                 type: 'checkbox',
@@ -901,6 +973,22 @@ window.__ModuleLoader__.load({
               h('input', { type: 'checkbox', checked: cfg.outGame !== false, onChange: (e) => edit({ outGame: e.target.checked }) }),
               '读书、看报、刷视频、听音乐、游戏',
             ), '判据：能不能停、谁在选下一个'),
+            field('oint', '整合', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.outIntegrate !== false,
+                onChange: (e) => edit({ outIntegrate: e.target.checked }),
+              }),
+              '多块拼成一个：人格、记忆、身体各自散着，接到一处',
+            ), '接口：framework_program op=impl + 编号（02 整合人格／11 整合记忆／23 整合身体）；拼的时候要留残余，别填平'),
+            field('orf', '反思', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
+              h('input', {
+                type: 'checkbox',
+                checked: cfg.outReflect !== false,
+                onChange: (e) => edit({ outReflect: e.target.checked }),
+              }),
+              '回读：那次交的今天还认吗；框架、记忆、人格三样都归它',
+            ), '接口：framework_program op=reflect / persona_view / memory_recall。不认就再交一条，旧的留着当脚印'),
             field('oi', '闲暇', h('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 } },
               h('input', { type: 'checkbox', checked: cfg.outIdle !== false, onChange: (e) => edit({ outIdle: e.target.checked }) }),
               '空下来：发呆、白日梦、放松、装饰、清理',

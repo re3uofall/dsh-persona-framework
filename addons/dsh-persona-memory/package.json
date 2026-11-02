@@ -1,0 +1,27 @@
+{
+  "name": "dsh-persona-memory",
+  "version": "1.2.2",
+  "private": true,
+  "description": "记忆池分层：流水不是记忆——按预算取、超期归档、流水压成一行（带指针可翻原文）。五个工具：看账／按预算取／提炼／归档／翻原文",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "README.md",
+    "cordis.patch.yml",
+    "icon.svg",
+    "index.js",
+    "lib",
+    "locale/*.json",
+    "selfcheck.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

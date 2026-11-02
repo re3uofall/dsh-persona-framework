@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Persona Memory">
+  <defs>
+    <linearGradient id="mg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9fd8ff"/>
+      <stop offset="1" stop-color="#1f5fa8"/>
+    </linearGradient>
+    <linearGradient id="thin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5fb4ff"/>
+      <stop offset="1" stop-color="#2a6fbd"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="13" fill="#0f1a2b"/>
+
+  <!-- 三层：下厚上薄。流水最厚、判断居中、归档最薄——分层不是平均切，是按「离现在多远」切 -->
+  <g>
+    <rect x="12" y="40" width="34" height="12" rx="2.6" fill="url(#mg)" opacity="0.42"/>
+    <rect x="12" y="26" width="34" height="11" rx="2.4" fill="url(#mg)" opacity="0.72"/>
+    <rect x="12" y="13" width="34" height="10" rx="2.2" fill="url(#thin)"/>
+  </g>
+
+  <!-- 预算线：右边那道竖杆。检索不是把三层全拿走，是按权重从这里往下量 -->
+  <line x1="51" y1="12" x2="51" y2="53" stroke="#bfe2ff" stroke-width="2.4" stroke-linecap="round" opacity="0.9"/>
+  <circle cx="51" cy="12" r="2.6" fill="#bfe2ff"/>
+
+  <!-- 每层伸出去的那一小截：够到预算线的才进上下文，够不到的留在池里 -->
+  <g fill="#bfe2ff" opacity="0.75">
+    <rect x="46.6" y="15.6" width="2.6" height="3" rx="0.8"/>
+    <rect x="46.6" y="29.6" width="2.6" height="3" rx="0.8"/>
+  </g>
+</svg>

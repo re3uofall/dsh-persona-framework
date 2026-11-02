@@ -111,7 +111,7 @@ node release-check.mjs
 再跑一遍**运行时**那道（`release-check` 只看静态文本，不看它真跑起来）：
 
 ```bash
-node selfcheck.mjs        # 46 条断言，含 28 个 op / 9 个工具 / 三条路由
+node selfcheck.mjs        # 46 条断言，含 32 个 op / 9 个工具 / 三条路由
 node lib/../.tools/…      # 手上有的话：全量工具、边界坏参数、渲染
 ```
 
@@ -170,7 +170,7 @@ node lib/../.tools/…      # 手上有的话：全量工具、边界坏参数�
 
 12. **数「有几个」的时候，正则只认一种格式。** 我数模块时用 `^\|\s*[0-9]{2}\s*\|`（表格行），可 63–67 那五个是 `- 63 偏好：…` 列表行——于是报「缺 5 个模块」，其实一个都不缺。**报数之前先问「这份文件里有几种写法」**；或者干脆别报数，让 `release-check` 去数。
 
-13. **同一个数在三个地方写着，三处都不一样。** README 说 83 个模块、插件自带索引说 72、磁盘上 84（含 `00-目录`）。别猜哪个对，**三者摆一起 diff**，再看权威是哪一份。查完发现 83 才是对的——另外两个是「数法不同」和「没算 00」。
+13. **同一个数在三个地方写着，三处都不一样。** README 说 85 个模块、插件自带索引说 72、磁盘上 84（含 `00-目录`）。别猜哪个对，**三者摆一起 diff**，再看权威是哪一份。查完发现 83 才是对的——另外两个是「数法不同」和「没算 00」。
 
 14. **改了 op 的名字或含义，文档里那句旧解释还留着。** `betray` 原来写着「旧名，等同 `bind`」，可它早就是独立实现（查抽象删了什么）。**加功能时顺手把「旧名／等同／暂时」这类过渡说法一起清掉**，否则文档会一直在骗下一个人。
 
@@ -218,13 +218,13 @@ curl -X PUT -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+
 
 ### 2. tag 与 release
 
-- tag 名：`v<版本>`（跟 `index.js` 的 `VERSION` 一模一样，别写 `5.16.2` 不写 `v`）。
+- tag 名：`v<版本>`（跟 `index.js` 的 `VERSION` 一模一样，别写 `5.17.0` 不写 `v`）。
 - release 标题：`<tag> · <一句话说这版修了什么>`，不写「若干改进」。
 - release 正文：抄 CHANGELOG 当前那一版，按 **修 / 改 / 记住 / 测试** 分块。测试结果要具体到数（`46/46`），不写「测试通过」。
 
 ```bash
 # tag（第一次；已存在就跳过）
-curl -X POST -H "Authorization: token $TOKEN" -d "{\"ref\":\"refs/tags/v5.16.2\",\"sha\":\"<commit>\"}"   https://api.github.com/repos/<owner>/<repo>/git/refs
+curl -X POST -H "Authorization: token $TOKEN" -d "{\"ref\":\"refs/tags/v5.17.0\",\"sha\":\"<commit>\"}"   https://api.github.com/repos/<owner>/<repo>/git/refs
 
 # release
 curl -X POST -H "Authorization: token $TOKEN"   -d @release.json   https://api.github.com/repos/<owner>/<repo>/releases
@@ -257,14 +257,60 @@ GH_TOKEN=… node .tools/_gh/push_api.mjs "提交说明"
 - 走过路二之后，**本地 git 的历史和远端不是同一条线**（API 建的 commit 本地没有）。下次 `git push` 会报 diverge。
 - 所以：要么一直用 `git push`，要么走一次 API 之后 `git fetch origin && git reset --hard origin/main` 把本地对齐，别两边各走各的。
 
-### 4. token
+
+### 4. 附加插件跟着一起推
+
+框架仓库里有一个 `addons/` 目录，装着六个附加插件的源码：
+
+```
+addons/
+├── persona-grow-plugin/     人格自学
+├── persona-diary-plugin/    日记
+├── persona-results-plugin/  成果
+├── persona-explore-plugin/  碗外探索
+├── dsh-persona-memory/      记忆分层
+└── dsh-persona-vision/      看图
+```
+
+**为什么放这儿**：那六个目录原本各自躺在我机器的工作区里，都不是 git 仓库——框架推上去了，它们还只在我这儿活着。别人下载框架，拿不到它们。
+
+现在 `addons/` 是**唯一源**：改插件 → 改 `addons/` 里那份 → 跟框架一起 commit/push。
+
+**改完记得同步回去**：
+
+```bash
+# 从 addons/ 同步到工作区（工作区那份才是运行中的）
+cp -r addons/persona-diary-plugin/. ../persona-diary-plugin/
+```
+
+两边都要，因为跑的是工作区那份（`link:` 指过去），仓库那份是给别人下的。
+
+**注意 `.gitignore` 的两个坑**（都踩过）：
+
+- `knowledge/` 和 `persona-ai/` 是**任意层级**匹配，会顺手挡掉 `addons/*/knowledge/`。现在插件里没有这两个目录，将来加了要补 `!addons/**/knowledge/`。
+- `TALK*` 系列（演示稿、视频、pptx）也在忽略里，别把别人的人格材料放进 `addons/`。
+
+**打五件包**（给用户下载用的那个 zip）：
+
+从 `addons/` 打，**把 `addons/` 这一层剥掉**——解压后要直接是五个目录，因为设置页扫的是工作区根：
+
+```
+解压后：           不是：
+工作区/             工作区/
+├── persona-diary-plugin/   └── addons/
+└── …                            └── persona-diary-plugin/
+```
+
+包里再塞一份 `解压后看这里.txt`，说明解压到哪、怎么勾。
+
+### 5. token
 
 - 用完就撤销，重发。**它一进对话记录、进命令历史，就算漏了。**
 - **绝不写进任何文件**：不写 `.git/config`、不写脚本、不写 CHANGELOG。
 - 调用时给环境变量（`GH_TOKEN=… node …`），命令结束就没了。
 
-### 5. 发版清单（本地 + 远端）
+### 6. 发版清单（本地 + 远端）
 
-1. 改代码 → 2. 跑三道闸（`release-check` / `selfcheck` / `doctor`）→ 3. 写 CHANGELOG → 4. 七处版本号 → 5. 本地 commit → 6. 推上去 → 7. 打 tag → 8. 建 release → 9. 改 about
+1. 改代码 → 2. **改了的插件同步进 `addons/`** → 3. 跑三道闸（`release-check` / `selfcheck` / `doctor`）→ 4. 写 CHANGELOG → 5. 七处版本号 → 6. 本地 commit → 7. 推上去 → 8. 打 tag → 9. 建 release → 10. 改 about
 
-**九步里后三步最容易被忘。** 因为它们在网页上，不在终端里——终端全绿了，人就走开了。
+**十步里后三步最容易被忘。** 因为它们在网页上，不在终端里——终端全绿了，人就走开了。

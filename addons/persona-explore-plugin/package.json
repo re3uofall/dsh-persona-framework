@@ -1,0 +1,27 @@
+{
+  "name": "dsh-persona-explore",
+  "version": "0.3.0",
+  "private": true,
+  "description": "主动探索：自己上网搜、读原文，把值得留的判断写进 knowledge/web，可按点自己出门",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "selfcheck.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

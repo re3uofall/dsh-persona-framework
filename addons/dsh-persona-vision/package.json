@@ -1,0 +1,27 @@
+{
+  "name": "dsh-persona-vision",
+  "version": "0.1.0",
+  "private": true,
+  "description": "会省钱的眼：定时抓几帧、只留变了的、拼成一张喂给视觉模型，看过的落一条带时间来源的记录（能 memory_source 翻回去）。两个工具：看一次／记一句",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "README.md",
+    "SPEC.md",
+    "cordis.patch.yml",
+    "index.js",
+    "lib",
+    "selfcheck-vision.mjs"
+  ],
+  "scripts": {
+    "selfcheck": "node selfcheck-vision.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

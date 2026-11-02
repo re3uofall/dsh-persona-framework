@@ -1,0 +1,54 @@
+# ============================================================================
+# dsh-persona-vision —— 插件自己带的挂载声明
+# ============================================================================
+# 装上之后 profile 只要把本包列进 `dsh.profile.bundles` 即生效。
+# 下面这些 config 都能改；改完重启 DSH 生效。
+#
+# 它不实现视觉模型，也不实现截屏以外的 UI 自动化：
+#   · 截屏 + 指纹 + 拼图   → 本包（PowerShell / .NET，零第三方依赖）
+#   · 认图                 → 默认交给你手上已装的 vision-router 的 vision_describe；
+#                           想让它自己认，填 vision.baseUrl（OpenAI 兼容端点）。
+#   · 落盘                 → persona-ai/knowledge/vision/，跟记忆池同构。
+# ============================================================================
+
+- insert:
+    - id: persona-vision
+      name: dsh-persona-vision
+      config:
+        # 工作区根。留空 = 用会话工作区。
+        # 这个工作区里会话工作区解析不到，由 profile 自己的 patch 覆盖，别写在这里——
+        # 写在这里会把我的路径随包发给别人。
+        root: ''
+
+        # 记录落在哪（相对工作区根）。跟记忆包同一个池子，所以 memory_recall 吃得到。
+        ledgerDir: 'persona-ai/knowledge/vision'
+
+        # 截图和拼图的临时落点（相对工作区根；会被 .gitignore 挡掉的那种目录）
+        frameDir: '.persona-framework/vframes'
+
+        # ── 看一次 ────────────────────────────────────────────────────
+        # 一次 vision_look 默认看几秒、每几秒抓一帧
+        durationSeconds: 3
+        intervalSeconds: 1
+
+        # 变化判据：相邻两帧指纹差的均值 > 这个数才算「变了」。
+        # 0.003 大约等于「屏幕上动了几个像素块」；静止画面会稳定判成没变。
+        threshold: 0.003
+
+        # 最多留几帧拼一张图（超了按差异大的优先留，不按时间）
+        maxFrames: 6
+
+        # 拼图每格宽度（像素）
+        tileWidth: 480
+
+        # ── 认图（可选）──────────────────────────────────────────────
+        # 不填 baseUrl 就等于「不自己认」：工具会把图路径交出去，
+        # 让你用手上已装的 vision_describe 去认。**不许假装看过。**
+        vision:
+          baseUrl: ''
+          model: ''
+          # 环境变量名；留空则不带 Authorization
+          apiKeyEnv: ''
+
+        # 往系统提示里加一段「怎么看」的说明
+        hint: true
