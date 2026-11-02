@@ -18,3 +18,6 @@ TALK.md
 # 不是插件的一部分。模板在 lib/workspace.mjs 的 SKELETON 里，不依赖这些文件。
 knowledge/
 persona-ai/
+
+# 工作笔记不随包发
+addons/*/TODO-*.md
