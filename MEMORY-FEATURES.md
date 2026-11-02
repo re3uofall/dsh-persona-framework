@@ -280,3 +280,25 @@
 | **长期记忆不自己进人格** | 攒在 `长期记忆/` 那一格，进人格要一次明确的点头——**记忆自己顶上去，人格就会被昨天顶掉今天** |
 | **都说得出「为什么」** | 忘要有由头、存着要有到期条件、对不上要有类；说不出的不算 |
 | **都不替人做主** | 该忘哪条、该信哪条、该压成什么——**给判断，不下决定** |
+
+---
+
+## 已经落地的那几件（写清在哪个文件，免得下次又重想一遍）
+
+代码在 `dsh-persona-memory`（另一个包），指南在这份文档。
+
+| 东西 | 落在哪 |
+| --- | --- |
+| 加固打分（时间性 + 主体线） | `lib/reinforce.mjs`；账在 `.persona-framework/加固.json` |
+| 两个库（临时／即时） | `lib/libraries.mjs`；刺激表在 `.persona-framework/刺激.json` |
+| 同层内按加固重排 | `lib/pools.mjs` 的 `recall()`：只在层内换先后，层与层一格不动 |
+| 注入三段 | `index.js` 的 `persona-memory:temp` / `persona-memory:now` 两个 systemPrompt 段，`interpolate: false`，每轮现读盘 |
+| 开的口子 | `memory_reinforce`（打分／落账）、`memory_stimulus`（挂钩子／看钩子） |
+| 配置键 | `longTermDir` `injectTemp` `injectNow` `injectOrder` `injectShortDays` `maxInjectChars` `subjectWords` `reinforce` |
+
+**验证过一次**：`selfcheck-memory.mjs` 在临时目录里跑，14 条全过——包括「加固确实改了同层内的先后」那一条。
+
+两处留下的对不上，不填平：
+
+- **加固只在被叫的时候重算。** 现在没有定时那一脚；分数会旧。故意的——定时重算要先有「谁该浮上来」的判据，不然就是替记忆做决定。
+- **这个插件目录被工作区 `.gitignore` 的 `/*` 挡在版本库外。** 所以上面这些文件只落在盘上，提交不到。要纳管，得先在工作区那侧把 `/*` 改成白名单——那一步没做。
