@@ -1235,7 +1235,7 @@ export function apply(ctx, config = {}) {
     parameters: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'functions', 'function', 'betrayCheck', 'trigger', 'autonomy', 'impl'], description: '跑哪个程序' },
+        op: { type: 'string', enum: ['persona', 'memory', 'body', 'identity', 'mediate', 'introspect', 'input', 'store', 'process', 'output', 'accumulate', 'dream', 'unconscious', 'transcend', 'polarize', 'preview', 'fetch', 'synonym', 'residue', 'internal', 'external', 'experience', 'theory', 'bind', 'betray', 'workspace', 'write', 'undo', 'selfRewrite', 'preferenceRewrite', 'reflect', 'frameworkLanguage', 'frameworkLanguageCheck', 'functions', 'function', 'betrayCheck', 'trigger', 'autonomy', 'impl'], description: '跑哪个程序' },
         file: { type: 'string', description: 'persona 用：人格文件路径；空 = 用设置页填的那份' },
         text: { type: 'string', description: 'betray 用：要查的那段话' },
         id: { type: 'string', description: 'impl 用：功能编号（21、24 …）' },
@@ -1640,11 +1640,53 @@ export function apply(ctx, config = {}) {
         }
 
         // output：出口几道，一次跑完
-        // ★ 第 0 道是**语言背叛必过**：它不通过，后面几道跑完也不许放行。
-        //   为什么排在最前：语言背叛查的是「这段话是不是语言自己在说话」——绝对化没划范围、
-        //   大词没锚、认领式误认。这三样不过，后面查结构、查出处都是在给幻觉做精修。
+        // ★ 第 0 道是**框架语言必过**（framelanguagecheck）：词有没有被钉死。
+        // ★ 第 0b 道是**语言背叛必过**（betrayCheck）：这段话是不是语言自己在说话。
+        //   两道都没过，后面几道跑完也不许放行——那几道是在给幻觉做精修。
+        const { frameworkLanguageCheck: flCheck } = await import(pathToFileURL(join(HERE, 'lib/framelang.mjs')).href)
         const { betrayCheck: bCheck } = await import(pathToFileURL(join(HERE, 'lib/betray.mjs')).href)
+        const flang = flCheck(text, { strict: cfg.framelangStrict === true })
         const betray = bCheck(text, { strict: cfg.betrayStrict === true })
+
+        // ── 框架语言闸 ──
+        // 这一道是**门**，不是提示。过了才放行；没过，出口关着。
+        // 为什么写盘：不写就只是一次性报告，「连续几轮没过」没人看得见；写了之后，
+        // 下一次谁都查得到这一轮是过了还是没过——这是它跟「注入里写一段话」的区别。
+        const gateOk = flang.ok && betray.ok
+        const gatePath = join(root0, '.persona-framework', '语言闸.json')
+        let prevGate = { streak: 0 }
+        try { prevGate = JSON.parse(readFileSync(gatePath, 'utf8')) || prevGate } catch { }
+        const gateStreak = gateOk ? 0 : Number(prevGate.streak || 0) + 1
+        try {
+          mkdirSync(dirname(gatePath), { recursive: true })
+          writeFileSync(gatePath, JSON.stringify({
+            at: new Date().toISOString(),
+            ok: gateOk,
+            streak: gateStreak,
+            framelang: { ok: flang.ok, fails: (flang.fails || []).map((f) => ({ kind: f.kind, hit: f.hit })) },
+            betray: { ok: betray.ok, fails: (betray.fails || []).map((f) => ({ kind: f.kind, hit: f.hit })) },
+          }, null, 2))
+        } catch { }
+
+        if (!gateOk) {
+          // 必过就是必过：这一道不过，**不给结论**，后面几道也不列——
+          // 列了会让人以为「查完了」，其实第一道就没过。
+          const rows = []
+          if (!flang.ok) {
+            rows.push('⛔ 出口关着：第 0 道（框架语言）没过——词被钉死了。')
+            rows.push(...(flang.fails || []).slice(0, 6).map((f) => `  · ${f.kind}「${f.hit}」——${f.fix}`))
+            if ((flang.fails || []).length > 6) rows.push(`  · 还有 ${flang.fails.length - 6} 处没列`)
+          }
+          if (!betray.ok) {
+            rows.push(`${flang.ok ? '⛔' : '⛔ 同时'}第 0b 道（语言背叛）没过。`)
+            rows.push(...(betray.fails || []).slice(0, 6).map((f) => `  · ${f.kind}「${f.hit}」——${f.fix}`))
+            if ((betray.fails || []).length > 6) rows.push(`  · 还有 ${betray.fails.length - 6} 处没列`)
+          }
+          rows.push(`连续第 ${gateStreak} 轮没过。`)
+          rows.push('改完再跑一遍；没过之前，后几道不跑。')
+          return rows.join('\n')
+        }
+
         const chk = checkText(text, { casual: false })
         const aud = auditStructure(text)
         const personaText = personaPath && existsSync(personaPath) ? readFileSync(personaPath, 'utf8') : ''
@@ -1671,17 +1713,14 @@ export function apply(ctx, config = {}) {
         const bad = betray.fails.length + chk.issues.length + aud.issues.length + b.noSource.length
         return [
           '输出程序：出口几道，按顺序过',
-          `  0 语言背叛（必过）：${betray.ok ? '过了' : `**没过，${betray.fails.length} 处**——${betray.fails.slice(0, 4).map((f) => `${f.kind}「${f.hit}」`).join('、')}`}`,
+          `  0 框架语言（必过）：过了——词没被钉死、没认领式、没拿判据量人`,
+          `  0b 语言背叛（必过）：过了`,
           `  1 形式（check）：${chk.issues.length ? `${chk.issues.length} 条疑似——${chk.issues.slice(0, 3).map((i) => i.label || i.rule).join('、')}` : '没抓到'}`,
           `  2 结构（audit）：${aud.issues.length ? `${aud.issues.length} 条——${aud.issues.slice(0, 3).map((i) => i.rule || i.id).join('、')}` : '没抓到'}`,
           `  3 出处（bind）：${b.landed.length} 句绑上｜${b.noSource.length} 句无出处${b.noSource.length ? `（${b.noSource.map((x) => x.reason).join('、')}）` : ''}`,
           `  4 残余（residue）：${res.count} 句语言残余——不算错，不填平`,
-          betray.ok
-            ? (bad ? `结论：${bad} 处要改，改完再跑一遍` : '结论：都过了，可以出口')
-            : '结论：**语言背叛没过，不许出口。** 先把那几处绝对化补范围、给大词加锚、把「我懂了」这类认领改掉；改完重跑。',
-          betray.ok ? '' : '',
-          betray.ok ? '' : '（第 0 道为什么排最前：它查的是「这段话是不是语言自己在说话」——那三样不过，后面查结构、查出处都是在给幻觉做精修。）',
-        ].filter((x, i, a) => x !== '' || a.slice(i + 1).some((y) => y !== '')).join('\n')
+          bad ? `结论：${bad} 处要改，改完再跑一遍` : '结论：都过了，可以出口',
+        ].join('\n')
       }
 
       if (op === 'selfRewrite') {
@@ -2477,6 +2516,24 @@ export function apply(ctx, config = {}) {
           '反例：把框架里某个词当成唯一的意思；用「我理解了这套框架」来认领它；',
           '      把它的判据当准绳去量别人。',
         ].join('\n')
+      }
+      if (op === 'frameworkLanguageCheck' || String(op || '').toLowerCase() === 'framelanguagecheck') {
+        // 框架语言检查：把上面那段「语言不固定」从**读得到的字**做成**过得了的门**。
+        // 为什么必须做成程序：那段话本身也是字；读过去点了头，下一句照样可能把「残余」钉死。
+        // 它查三种坏用法——固定名、认领式、量人式；过了才算过，没过就不是「建议」。
+        const { frameworkLanguageCheck: flCheck, renderFrameworkLanguage } = await import(pathToFileURL(join(HERE, 'lib/framelang.mjs')).href)
+        if (args.text != null && typeof args.text !== 'string') {
+          return `要过闸的得是文本（给的是 ${Array.isArray(args.text) ? '数组' : typeof args.text}）。一段话，别塞一串。`
+        }
+        const text = String(args.text || '').trim()
+        if (!text) {
+          return [
+            '框架语言检查：给一段要交付的话（text）。',
+            '它查三样：把一个框架词钉成唯一的意思、用「我理解了这套框架」认领、拿判据去量别人。',
+            '这三样任何一样在，话就先别出去——词是可换的占位，钉死了下一步就会拿它量人。',
+          ].join('\n')
+        }
+        return renderFrameworkLanguage(flCheck(text, { strict: cfg.framelangStrict === true }), text)
       }
       if (op === 'betrayCheck') {
         // 语言背叛的**必过程序**：每轮交付前跑一次。
