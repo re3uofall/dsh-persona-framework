@@ -56,7 +56,7 @@
 | 5 | **预处理**：长文进上下文之前先压一遍，省窗口 | `framework_digest`、`preprocess` |
 | 6 | **心情**：读出或记下当前状态（状态／来源／影响），非记忆，存工作区 | `framework_mood` |
 | 7 | **元协调**：跳过 → 语言背叛／语言诅咒 → 同一 → 语言残余 → **正文比索引重要** → 负面信息 → 框架正文；跳过最高 | `skipChance`、`languageBetray`、`languageCurse`、`negativeInfo`、`negativeTrauma` |
-| 8 | **模块库**：85 个模块各一份文档，索引随框架一起注入，可按编号取 | `framework/MODULES.md`、`framework_view` 的 `module` 参数 |
+| 8 | **模块库**：88 个模块各一份文档，**正文**按编号随框架一起注入，可按编号取 | `framework/modules/`、`framework_view` 的 `module` 参数 |
 | 9 | **现实中介**：池子先过一遍，能对应上唯一确定现实的标「现实存在」，算强出处；剩下的仍有语言确定性，算弱出处 | `framework_program` 的 `mediate` |
 | 10 | **自省**：把自己专属的东西一条条存下来，带时间戳与指纹 | `framework_program` 的 `introspect` |
 
@@ -112,7 +112,7 @@
 
 工作区里可以自己往后加模块，编号接着排（例如 63 偏好：世界排序——什么排前面、什么垫底、冲突时拿什么换）。插件自带的那 62 个不动。
 
-索引在 [`framework/MODULES.md`](framework/MODULES.md)（随框架一起注入，默认先压成一行一条）；完整正文在宿主工作区的 `persona-ai/modules/`。
+**正文在 [`framework/modules/`](framework/modules/)，按编号整篇随框架注入**（一篇装不下就整篇停，写明截到第几篇——不切半篇，半篇比没有更容易误读）。[`framework/MODULES.md`](framework/MODULES.md) 是同一批东西的**索引**，一行一条；只有 `includeModules: 'index'` 时才注入它。索引只说明「有这回事」，正文才是「怎么判断」——要下判断就取正文。
 
 几个例子，看格式就懂：
 
@@ -257,9 +257,9 @@ DeepSeek 的信息流有几处跟别家不一样，框架在这几处改口径�
 | `workspace` | 空 | 工作区绝对路径，程序靠它找 `knowledge/`；空 = 从 `frameworkFile` 所在目录推，再退到宿主 workingDirectory |
 | `mode` | `ai` | **`ai` 规则体（默认，AI 好读：一条规则一块「触发／动作／判据／反例」）**／`full` 整份散文（给人读的）／`compact` 只注入「是什么＋骨架＋判据」／`off` 不注入（工具仍可用） |
 | `maxChars` | `12000` | 注入正文上限，超了在段落处截断。默认值要够装下整份规则体（9901 字），装不下会从中间砍 |
-| `includeModules` | `index` | 注入里附不附模块索引：`off`／`index` |
-| `maxModulesChars` | `4000` | 模块索引注入上限；85 个模块压到 28 字时约 3800 字，写到 2600 会被逼到 20 字档 |
-| `preprocess` | `true` | 注入前把模块索引压成「编号 名字：一句话前 24 字」 |
+| `includeModules` | `body` | 注入里附什么：`off` 不附／`body` **正文**（默认，按编号整篇排）／`index` 只附索引（一行一条，只说明有这回事） |
+| `maxModulesChars` | `12000` | 模块正文注入上限；88 篇全正文装不下就整篇停、写明截到第几篇（不切半篇）。要全装下得自己往上调 |
+| `preprocess` | `true` | 只对 `index` 档生效：注入前把索引压成「编号 名字：一句话前 24 字」 |
 | `humanLike` | `false` | 可选：像人（五处来源，见下节） |
 | `temper` | `false` | 可选：有脾气（能说不，带理由和替代） |
 | `negativeTrauma` | `false` | 可选：负面创伤（对不上的三类按概率记成创伤，越与自己有关越易；轻的自愈，重的要解心结）；开了「负面信息」让位 |
