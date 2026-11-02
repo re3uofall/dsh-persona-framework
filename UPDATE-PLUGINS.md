@@ -76,7 +76,19 @@ git push origin main
 
 推不动先分三样，别反复重试：
 
-- **连不上**（`Failed to connect` / `Connection was reset`）：网络或代理，跟凭证无关。等网，别改 git 配置。
+- **连不上**（`Failed to connect` / `Connection was reset`，或 `curl https://github.com` 返回 `000`）：**代理没覆盖到 git**，跟凭证无关——别去清凭据、别换账号。先找本机代理端口：
+
+  ```bash
+  netstat -ano | grep LISTENING | grep -E ":(7890|7897|1080|10808)\b"
+  ```
+
+  查到端口后，**只给这一次**加代理，不动全局配置：
+
+  ```bash
+  git -c http.proxy=socks5h://127.0.0.1:1080 push origin main
+  ```
+
+  `curl --socks5-hostname 127.0.0.1:1080 -I https://github.com` 返回 200，就说明这条路通。要长期用再 `git config --global http.proxy socks5h://127.0.0.1:1080`。
 - **要用户名**（`could not read Username`）：`git config --global credential.helper manager`。
 - **认证失败**（`Invalid username or token`）：清掉旧凭据重来，别在弹窗里手输 token——那会把令牌留在记录里。
 
