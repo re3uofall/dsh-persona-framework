@@ -38,9 +38,15 @@ import {
   renderShortLibrary, renderTempLibrary, STIMULUS_FILE,
 } from './lib/libraries.mjs'
 import { findVerbatim, renderTrace } from './lib/trace.mjs'
-import { check as consistencyCheck } from './lib/consistency.mjs'
+import { check as consistencyCheck, renderConsistency } from './lib/consistency.mjs'
 import { record as auditRecord } from './lib/audit.mjs'
 import { mergeMemoryContexts } from './lib/merge.mjs'
+import { link as edgeLink, edgesOf, counterparts, renderEdges } from './lib/edges.mjs'
+import { reject as rejectClaim, renderRejected } from './lib/rejected.mjs'
+import { addAnchor, renderAnchors } from './lib/anchors.mjs'
+import { recordState, stateOf, renderState } from './lib/state.mjs'
+import { reflect as reflectOnce, renderReflect } from './lib/reflect.mjs'
+import { renderFlywheel } from './lib/flywheel.mjs'
 
 export const name = 'persona-memory'
 // systemPrompt 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
@@ -359,6 +365,93 @@ export function apply(ctx, config = {}) {
       execute: async (args = {}) => {
         const v = decideWrite({ path: args.path, reviewers: args.reviewers || [] })
         return { text: explainGate(v) }
+      },
+    },
+    {
+      name: 'memory_ledger',
+      description:
+        '记忆账的一个入口，十一个动作：link 连边、edges 查边、reject 记一条被证伪的假设、rejected 看负记忆、'
+        + 'anchor 钉锚点、anchors 看锚点、state 记状态变化、chain 看状态链、'
+        + 'reflect 回看盘上痕迹、flywheel 捞最近的改口现场、consistency 查有没有重犯旧错。',
+      parameters: {
+        type: 'object',
+        properties: {
+          op: {
+            type: 'string',
+            enum: ['link', 'edges', 'reject', 'rejected', 'anchor', 'anchors', 'state', 'chain', 'reflect', 'flywheel', 'consistency'],
+            description: '要干哪一件',
+          },
+          from: { type: 'string', description: 'link：从哪条（指针，如 chat/2026-11-03.md#2）' },
+          to: { type: 'string', description: 'link：到哪条' },
+          type: { type: 'string', enum: ['cites', 'refutes', 'refines', 'same', 'supersedes'], description: 'link：什么关系' },
+          node: { type: 'string', description: 'edges：查哪条的边（不给就列全部）' },
+          claim: { type: 'string', description: 'reject：哪条假设被证伪了' },
+          why: { type: 'string', description: 'link / reject / anchor：为什么' },
+          evidence: { type: 'string', description: 'reject / state：证据（原话、指针、路径）' },
+          text: { type: 'string', description: 'anchor：哪句话不能忘' },
+          source: { type: 'string', description: 'anchor：指回原文' },
+          subject: { type: 'string', description: 'state / chain：变化的主体' },
+          slot: { type: 'string', description: 'state：哪个槽（默认 default）' },
+          old: { type: 'string', description: 'state：旧值' },
+          next: { type: 'string', description: 'state：新值' },
+          kind: {
+            type: 'string',
+            enum: ['migration', 'retraction', 'enablement', 'acquisition', 'replacement'],
+            description: 'state：变化类型（不给就按 old/next 推；两个都空要显式给）',
+          },
+          days: { type: 'number', description: 'flywheel：看最近几天（默认 7）' },
+        },
+        required: ['op'],
+      },
+      output: textOutput,
+      execute: async (args = {}) => {
+        const root = need(await wd(ctx, cfg))
+        const op = String(args.op || '')
+        try {
+          switch (op) {
+            case 'link': {
+              const r = edgeLink(root, { from: args.from, to: args.to, type: args.type, why: args.why })
+              return { text: `连上了：${r.from} --${r.type}--> ${r.to}` }
+            }
+            case 'edges':
+              return { text: renderEdges(root, args.node) }
+            case 'reject': {
+              const r = rejectClaim(root, { claim: args.claim, why: args.why, evidence: args.evidence })
+              return { text: `记下了：${r.claim}（落在 ${r.file}）` }
+            }
+            case 'rejected':
+              return { text: renderRejected(root) }
+            case 'anchor': {
+              const r = addAnchor(root, { text: args.text, source: args.source, why: args.why })
+              return { text: r.added ? `钉住了：${r.text}（共 ${r.count} 条）` : r.note }
+            }
+            case 'anchors':
+              return { text: renderAnchors(root) }
+            case 'state': {
+              const r = recordState(root, {
+                subject: args.subject,
+                slot: args.slot,
+                old: args.old ?? null,
+                new: args.next ?? null,
+                kind: args.kind,
+                evidence: args.evidence,
+              })
+              return { text: `记下了：${r.subject} 第 ${r.seq} 次 · ${r.kind}` }
+            }
+            case 'chain':
+              return { text: renderState(root, args.subject) }
+            case 'reflect':
+              return { text: renderReflect(root) }
+            case 'flywheel':
+              return { text: renderFlywheel(root, { days: args.days }) }
+            case 'consistency':
+              return { text: renderConsistency(root) }
+            default:
+              return { text: `没有这个 op：${op}（可用：link / edges / reject / rejected / anchor / anchors / state / chain / reflect / flywheel / consistency）` }
+          }
+        } catch (error) {
+          return { text: `没成：${error?.message || error}` }
+        }
       },
     },
     {
@@ -742,6 +835,9 @@ ${seg}` }
   if (cfg.hooks !== false) {
     let lastAssembleAt = 0
     let consistencyNote = ''
+    let lastReflectDay = ''
+    let dailyNote = ''
+    let dailyPushed = false
     try {
       ctx.on('system-prompt/assemble', async (assembly, _c, next) => {
         try {
@@ -758,10 +854,33 @@ ${seg}` }
               ].join('\n')
               : ''
           }
+
+          // 每天第一次组装时回看一次。只报异常，正常一句不吭；报过就不再报。
+          // 这条是「记忆账七件套」里唯一够得上自动触发的：其余六样要我判断，自动不了。
+          const today = new Date().toISOString().slice(0, 10)
+          if (lastReflectDay !== today) {
+            lastReflectDay = today
+            dailyPushed = false
+            try {
+              const r = reflectOnce(root)
+              dailyNote = r.warns?.length
+                ? ['## 记忆回看（每天一次）', '', ...r.warns.map((w) => `- ${w}`)].join('\n')
+                : ''
+              if (dailyNote) {
+                auditRecord(root, { op: 'reflect', decision: 'allow', why: r.warns.join('；').slice(0, 300) })
+              }
+            } catch { dailyNote = '' }
+          }
           if (!Array.isArray(assembly?.contexts)) return next()
 
           if (consistencyNote) {
             assembly.contexts.push({ name: 'persona-memory:consistency', text: consistencyNote })
+          }
+
+          // 每日回看只推一次：推过就归零，不留常驻的提醒。
+          if (dailyNote && !dailyPushed) {
+            assembly.contexts.push({ name: 'persona-memory:reflect', text: dailyNote })
+            dailyPushed = true
           }
 
           // 合并去重 + 总预算：逻辑在 lib/merge.mjs，这里只负责删。
