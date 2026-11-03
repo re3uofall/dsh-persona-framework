@@ -942,7 +942,9 @@ export function apply(ctx, config = {}) {
         const noJudge = cues.filter((t) => !(Array.isArray(t.stimulus?.match) && t.stimulus.match.length))
         // 触发器有没有生效：每轮真跑一遍完整那趟——该响哪几条、过不过中介、过不了走哪、
         // 过了走哪个接口或哪个程序。只算个数那是统计，不是触发。
-        const pulse = runTriggers(list, { now: new Date(), turnsSince: 0, lastSaid: said, fired: {}, evidence: {}, gates: { languageBetray: cfg.languageBetray === true } })
+        // ws 要传进去：提醒的账落在工作区的 .persona-framework/提醒.json，
+        // 不传就没处记「哪天提过」，下一轮验收只能凭印象。
+        const pulse = runTriggers(list, { ws: ws0, now: new Date(), turnsSince: 0, lastSaid: said, fired: {}, evidence: {}, gates: { languageBetray: cfg.languageBetray === true } })
         const dueNow = pulse.due || []
         const firedNow = pulse.fired || []
         const condLine = said
