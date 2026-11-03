@@ -1,0 +1,28 @@
+{
+  "name": "dsh-persona-appear",
+  "version": "0.2.0",
+  "private": true,
+  "description": "人格出现：这一轮谁出场、排第几。人格本身（人格文件）与随人格的几部分（记忆、框架、日记、探索、成果）按插件开关；关掉不等于删掉，是这一轮她不在场",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "selfcheck.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

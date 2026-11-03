@@ -29,14 +29,18 @@ import {
   DEFAULT_LAYERS, archiveOld, recall, renderArchive, renderPools, renderRecall, scanPools,
 } from './lib/pools.mjs'
 import { condenseJournal, excerpt, renderCondense } from './lib/journal.mjs'
+import { decideWrite, explain as explainGate } from './lib/writegate.mjs'
 import {
   renderReinforce, saveReinforce, scoreFiles, DEFAULT_SUBJECTS, loadReinforce,
 } from './lib/reinforce.mjs'
 import {
-  addStimulus, readStimulus, renderLongLibrary, renderNowLibrary, renderOtherLibrary,
+  addStimulus, readStimulus, renderLedgerNote, renderLongLibrary, renderNowLibrary, renderOtherLibrary,
   renderShortLibrary, renderTempLibrary, STIMULUS_FILE,
 } from './lib/libraries.mjs'
 import { findVerbatim, renderTrace } from './lib/trace.mjs'
+import { check as consistencyCheck } from './lib/consistency.mjs'
+import { record as auditRecord } from './lib/audit.mjs'
+import { mergeMemoryContexts } from './lib/merge.mjs'
 
 export const name = 'persona-memory'
 // systemPrompt 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
@@ -220,6 +224,11 @@ function readRequestBody(req) {
 export function apply(ctx, config = {}) {
   const cfg = cfgOf(ctx, config)
 
+  // 现取一台：设置页刚存进去的值，下一次读就得看得见。
+  // 只在启动时算一次 cfg，界面「保存后变回 30000」就是这么来的——
+  // 文件写对了，回显和注入用的还是启动那一刻的旧值。
+  const live = () => cfgOf(ctx, config)
+
   // ── 设置页：读／写 ──────────────────────────────────────────────────────
   // 两件事分开：读报「当前真在用的值」，写只收白名单字段并留一份旧的。
   // 写坏了能退回——覆盖写不备份，等于没有撤销。
@@ -228,13 +237,14 @@ export function apply(ctx, config = {}) {
     path: '/api/persona-memory/status',
     handler(req, res) {
       try {
+        const now = live()
         sendJson(res, 200, {
           ok: true,
           fields: FIELDS,
-          values: pickCurrent(cfg),
-          file: cfg._settingsPath || '',
-          fileExists: !!(cfg._settingsPath && existsSync(cfg._settingsPath)),
-          root: cfg.root || '',
+          values: pickCurrent(now),
+          file: now._settingsPath || '',
+          fileExists: !!(now._settingsPath && existsSync(now._settingsPath)),
+          root: now.root || '',
         })
       } catch (error) {
         sendJson(res, 500, { ok: false, error: String(error?.message || error) })
@@ -251,7 +261,9 @@ export function apply(ctx, config = {}) {
           sendJson(res, 405, { ok: false, error: '只收 POST' })
           return
         }
-        const file = cfg._settingsPath
+        // 现取：写和读必须指同一个文件。启动时算的 cfg 只在那一次是对的，
+        // 工作区一换、root 一改，写和读就分家了。
+        const file = live()._settingsPath
         if (!file) {
           sendJson(res, 400, { ok: false, error: '没有可写的位置：config.root 是空的' })
           return
@@ -280,12 +292,25 @@ export function apply(ctx, config = {}) {
           try { writeFileSync(`${file}.bak`, readFileSync(file, 'utf8'), 'utf8') } catch { /* 备份失败不拦 */ }
         }
         writeFileSync(file, JSON.stringify(next, null, 2) + '\n', 'utf8')
+        // 别一句「都生效了」盖过去：这张表里只有四个数是真的每轮现读，
+        // 其余是注册时（段在不在、排第几）或启动时（工具默认值）定的，
+        // 写完得重载插件才换得过来。分开报，人才知道刚才那一下动没动。
+        const LIVE_KEYS = ['injectShortDays', 'shortBudgetChars', 'nowGapMinutes', 'maxInjectChars']
+        const savedKeys = Object.keys(patch)
+        const liveKeys = savedKeys.filter((k) => LIVE_KEYS.includes(k))
+        const laterKeys = savedKeys.filter((k) => !LIVE_KEYS.includes(k))
+        const note = laterKeys.length
+          ? `存好了。${liveKeys.length ? `${liveKeys.join('、')} 下一轮就生效；` : ''}` +
+            `${laterKeys.join('、')} 要重载插件才生效（它们是注册时或启动时定下的值）。`
+          : '存好了。下一轮组装系统提示词时就用新值。'
         sendJson(res, 200, {
           ok: true,
-          saved: Object.keys(patch),
+          saved: savedKeys,
+          live: liveKeys,
+          later: laterKeys,
           next,
           file,
-          note: '存好了。下一条消息起生效——注入是在每轮组装系统提示词时现读的。',
+          note,
         })
       } catch (error) {
         sendJson(res, 500, { ok: false, error: String(error?.message || error) })
@@ -310,6 +335,30 @@ export function apply(ctx, config = {}) {
         const root = need(await wd(ctx, cfg))
         const scan = scanPools(root, layersOf(cfg))
         return { text: renderPools(scan) }
+      },
+    },
+    {
+      name: 'memory_gate',
+      description:
+        '写入门禁：问一条路径该按哪一档写、还缺什么复核。' +
+        '四档——流水 0 随便写、判断 1 要先想一遍、模块库 2 要想+验、人格 3 要想+验（不经过人）。' +
+        '判据不是「能不能写」（那是权限），是「写之前该过的程序过没过」。',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '要写的目标路径（相对工作区根）' },
+          reviewers: {
+            type: 'array',
+            items: { type: 'string' },
+            description: "这次已经做过的复核：'reflect'（先想过）/ 'verify'（验过）",
+          },
+        },
+        required: ['path'],
+      },
+      output: textOutput,
+      execute: async (args = {}) => {
+        const v = decideWrite({ path: args.path, reviewers: args.reviewers || [] })
+        return { text: explainGate(v) }
       },
     },
     {
@@ -590,8 +639,9 @@ ${seg}` }
         interpolate: false,
         text: () => {
           try {
-            const root = cfg.root || ctx?.config?.workspace || process.cwd()
-            return renderNowLibrary(root, cfg)
+            const c = live()
+            const root = c.root || ctx?.config?.workspace || process.cwd()
+            return renderNowLibrary(root, c)
           } catch (error) {
             return `## 即时记忆库\n\n读不出来：${error?.message || error}`
           }
@@ -608,8 +658,9 @@ ${seg}` }
         interpolate: false,
         text: () => {
           try {
-            const root = cfg.root || ctx?.config?.workspace || process.cwd()
-            return renderShortLibrary(root, cfg)
+            const c = live()
+            const root = c.root || ctx?.config?.workspace || process.cwd()
+            return renderShortLibrary(root, c)
           } catch (error) {
             return `## 短期记忆\n\n读不出来：${error?.message || error}\n（**说得出读不出来，比假装注全了强**。）`
           }
@@ -624,8 +675,9 @@ ${seg}` }
         interpolate: false,
         text: () => {
           try {
-            const root = cfg.root || ctx?.config?.workspace || process.cwd()
-            return renderOtherLibrary(root, cfg)
+            const c = live()
+            const root = c.root || ctx?.config?.workspace || process.cwd()
+            return renderOtherLibrary(root, c)
           } catch (error) {
             return `## 其他记忆\n\n读不出来：${error?.message || error}`
           }
@@ -640,8 +692,9 @@ ${seg}` }
         interpolate: false,
         text: () => {
           try {
-            const root = cfg.root || ctx?.config?.workspace || process.cwd()
-            return renderLongLibrary(root, cfg)
+            const c = live()
+            const root = c.root || ctx?.config?.workspace || process.cwd()
+            return renderLongLibrary(root, c)
           } catch (error) {
             return `## 长期记忆\n\n读不出来：${error?.message || error}`
           }
@@ -649,6 +702,16 @@ ${seg}` }
       }))
     } catch { /* 没有 systemPrompt 也能用 */ }
   }
+
+  // 记账与认账：记忆的规矩。**不受任何开关管**——内容可以不摆，规矩不能不在。
+  try {
+    ctx.systemPrompt?.section?.({
+      name: 'persona-memory:ledger',
+      order: 59,
+      interpolate: false,
+      text: () => renderLedgerNote(),
+    })
+  } catch { /* 没有 systemPrompt 也能用 */ }
 
   // 注入一段提示：让主模型知道「先 stats，别全量读」
   if (cfg.hint !== false) {
@@ -665,6 +728,67 @@ ${seg}` }
         ].join('\n'),
       })
     } catch { /* 没有 systemPrompt 也能用 */ }
+  }
+
+  // ── 钩子触发器 ────────────────────────────────────────────────────────────
+  // 钩子不是定时，是挂在宿主必经点上：组装提示词时、会话事件时。
+  // 所以它绕不过去——比触发器表更硬。灵枢原插件就是这么干的：
+  // `system-prompt/assemble` + `session/event` 两个钩子，再加一堆 op 当工具。
+  //
+  // 两条纪律：
+  //   1. 钩子失败绝不能影响主流程：全部 try/catch，出错静默。
+  //   2. assemble 里 push 的内容每步要稳定：宿主按内容判重，
+  //      同一轮里内容变了会多付一份快照。所以这里节流 + 缓存文本。
+  if (cfg.hooks !== false) {
+    let lastAssembleAt = 0
+    let consistencyNote = ''
+    try {
+      ctx.on('system-prompt/assemble', async (assembly, _c, next) => {
+        try {
+          const root = cfg.root || ctx?.config?.workspace || process.cwd()
+          const now = Date.now()
+          if (now - lastAssembleAt > 10 * 60_000) {
+            lastAssembleAt = now
+            const hits = consistencyCheck(root)
+            consistencyNote = hits.length
+              ? [
+                '## 一致性提醒（自动）',
+                '',
+                `有 ${hits.length} 处记忆把已经被证伪的说法又写了一遍（负记忆里判过）。要看清：调 \`memory_consistency\`。`,
+              ].join('\n')
+              : ''
+          }
+          if (!Array.isArray(assembly?.contexts)) return next()
+
+          if (consistencyNote) {
+            assembly.contexts.push({ name: 'persona-memory:consistency', text: consistencyNote })
+          }
+
+          // 合并去重 + 总预算：逻辑在 lib/merge.mjs，这里只负责删。
+          // 只认本插件注的段，别人的一个字都不动；只删不重排。
+          for (const c of mergeMemoryContexts(assembly.contexts, cfg.assembleBudgetChars)) {
+            const i = assembly.contexts.indexOf(c)
+            if (i >= 0) assembly.contexts.splice(i, 1)
+          }
+        } catch { /* 钩子失败不影响主流程 */ }
+        return next()
+      })
+    } catch { /* 没有这个钩子也能用 */ }
+
+    let lastEventAt = 0
+    try {
+      ctx.on('session/event', (session, event) => {
+        try {
+          // 只记消息类事件，且一分钟最多一条——每个工具结果都记会把账淹掉
+          if (!String(event?.type || '').includes('message')) return
+          const now = Date.now()
+          if (now - lastEventAt < 60_000) return
+          lastEventAt = now
+          const root = cfg.root || ctx?.config?.workspace || process.cwd()
+          auditRecord(root, { op: 'message', decision: 'allow', why: '会话事件（钩子自动记）' })
+        } catch { /* 静默 */ }
+      })
+    } catch { /* 没有这个钩子也能用 */ }
   }
 }
 
@@ -687,4 +811,6 @@ export const config = {
   maxInjectChars: { type: 'number', default: 200000, min: 2000, max: 400000, description: '注全的上限（字）；闸是天数，这里只防爆；超了会截断并写明' },
   subjectWords: { type: 'array', items: { type: 'string' }, description: '主体词：文档里撞上就加权（留空用内置那张表）' },
   reinforce: { type: 'boolean', default: true, description: '加固参与 recall 的排序（只改先后，不动字节）' },
+  hooks: { type: 'boolean', default: true, description: '钩子触发器：组装提示词时查一致性、会话事件来时记审计（关掉就只剩手动调工具）' },
+  assembleBudgetChars: { type: 'number', default: 24000, min: 2000, max: 200000, description: '记忆各段加起来的总预算（字）；超了在 assemble 钩子里按「提示→记账→其他→短期→长期」的顺序删，即时那段永不删' },
 }

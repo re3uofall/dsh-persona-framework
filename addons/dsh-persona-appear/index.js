@@ -1,0 +1,275 @@
+/**
+ * dsh-persona-appear —— 人格出现的总闸（host 半端）
+ * ============================================================================
+ * 一句话：决定**哪一个插件**这一轮出现、哪一个不出现。
+ *
+ * 为什么需要它：人格不是一家给的一个块，是两部分——
+ *   ① 人格本身（人格文件、补丁、证据）
+ *   ② 随人格的其他内容（记忆、框架、日记、探索、成果）
+ * 六家各注册各的 `systemPrompt.section`；关掉其中一家，另外五家照进。
+ * 所以「让谁出场」只能靠一道**所有注入者都先读的闸**——就是这份 `出现.json`。
+ *
+ * 粒度是插件，不是会话：包名在装的时候就定死了，不用猜、不用等宿主给会话键。
+ *
+ * 三档：
+ *   - 全局关：谁都不出现。
+ *   - 按插件关：名单里的那家不出现，别家照常。
+ *   - 放行：默认。
+ *
+ * 人格出现的判据在源码里：`dsh-agent-loop/lib/index.js:preStep()` 每步调一次
+ * `systemPrompt.assemble(assembleContextFor(agent))`，而后者给的是
+ * `{ agent, scope: agent }`。所以「这一轮她出不出场」看的是这一次 assemble。
+ * ============================================================================
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  INJECTORS, STATE_FILE, allows, emptyState, mute, normalizeState, orderOf, orderTable, roster,
+  setGlobal, setOrder, unmute,
+} from './lib/appear.mjs'
+
+export const name = 'persona-appear'
+export const version = '0.2.0'
+export const inject = ['tools']
+
+const DEFAULTS = {
+  /** 工作区根；空 = 从插件自己的位置往上推一级（插件装在仓库里时成立）。 */
+  workspace: '',
+  /** 闸文件所在目录，相对工作区。 */
+  stateDir: '.persona-framework',
+}
+
+function pickCfg(config) {
+  const raw = (config && typeof config === 'object' && config) || {}
+  const out = { ...DEFAULTS }
+  for (const k of Object.keys(DEFAULTS)) {
+    if (raw[k] !== undefined) out[k] = raw[k]
+  }
+  return out
+}
+
+/** 插件在仓库里时，自己往上推一级就是工作区；推不出来就让配置填。 */
+function guessWorkspace() {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url))
+    return dirname(here)
+  } catch {
+    return process.cwd()
+  }
+}
+
+export function statePathOf(cfg) {
+  const ws = cfg.workspace || guessWorkspace()
+  return join(ws, cfg.stateDir, STATE_FILE)
+}
+
+function readState(p) {
+  if (!existsSync(p)) return emptyState()
+  try {
+    return normalizeState(JSON.parse(readFileSync(p, 'utf8')))
+  } catch {
+    return emptyState()
+  }
+}
+
+function writeState(p, state) {
+  mkdirSync(dirname(p), { recursive: true })
+  writeFileSync(p, JSON.stringify(state, null, 2) + '\n', 'utf8')
+}
+
+const textOutput = {
+  schema: {
+    type: 'object',
+    properties: { text: { type: 'string', description: '给模型看的结果正文' } },
+    required: ['text'],
+    additionalProperties: false,
+  },
+  render(_args, value) {
+    return [{ type: 'text', text: String(value?.text ?? '') }]
+  },
+}
+
+/** 人话名或包名都能认；认不出就原样返回（判的时候会当「不在名单里」） */
+function resolvePlugin(input) {
+  const s = String(input || '').trim()
+  if (!s) return ''
+  if (INJECTORS[s]) return s
+  for (const [pkg, label] of Object.entries(INJECTORS)) {
+    if (label === s) return pkg
+  }
+  const low = s.toLowerCase()
+  for (const [pkg, label] of Object.entries(INJECTORS)) {
+    if (label.toLowerCase() === low || pkg.toLowerCase() === low) return pkg
+  }
+  return s
+}
+
+function brief(state, p) {
+  const r = roster(state)
+  const lines = [
+    `闸文件：${p}`,
+    `全局：${r.global === 'off' ? '关（谁都不出现）' : '开（按名单）'}`,
+    '',
+  ]
+  for (const row of r.rows) {
+    lines.push(`${row.on ? '出' : '不出'}  ${row.label}（${row.plugin}）`)
+    lines.push(`      ${row.part}`)
+    if (!row.on) lines.push(`      ← ${row.why}`)
+  }
+  if (r.note) lines.push('', `备注：${r.note}`)
+  const table = orderTable(state)
+  if (table.length) {
+    lines.push('', '出场顺序（数字小的先出；带 * 的是改过的）：')
+    for (const row of table) {
+      lines.push(`  ${String(row.order).padStart(3)}  ${row.section}${row.custom ? ' *' : ''}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+export function apply(ctx, config = {}) {
+  const cfg = pickCfg(config)
+  const p = statePathOf(cfg)
+
+  const reg = (spec) => ctx.effect(() => ctx.tools.register({
+    name: spec.name,
+    description: spec.description,
+    parameters: spec.parameters,
+    output: textOutput,
+    async execute(args) {
+      try {
+        return { text: String(await spec.run(args && typeof args === 'object' ? args : {})) }
+      } catch (error) {
+        return { text: `没办成：${error && error.message ? error.message : String(error)}` }
+      }
+    },
+  }))
+
+  reg({
+    name: 'appear_status',
+    description: '看人格出现：这一轮哪些插件会出场、哪些不出现，各属于人格的哪一部分。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    run() {
+      return brief(readState(p), p)
+    },
+  })
+
+  reg({
+    name: 'appear_mute',
+    description: '让某一个插件这一轮不出现。可写人话名（人格框架／记忆分层／日记／碗外探索／人格自学／思考成果）或包名。',
+    parameters: {
+      type: 'object',
+      properties: {
+        plugin: { type: 'string', description: '插件：人话名或包名都行' },
+        why: { type: 'string', description: '为什么关（留给以后的自己看）' },
+      },
+      required: ['plugin'],
+      additionalProperties: false,
+    },
+    run(args) {
+      const plugin = resolvePlugin(args.plugin)
+      if (!plugin) return '没给插件名，没动。'
+      const next = mute(readState(p), plugin, args.why)
+      writeState(p, next)
+      return `「${INJECTORS[plugin] || plugin}」不出现了。\n\n${brief(next, p)}`
+    },
+  })
+
+  reg({
+    name: 'appear_unmute',
+    description: '让某一个插件重新出现。不给名字就只报名单，不动。',
+    parameters: {
+      type: 'object',
+      properties: {
+        plugin: { type: 'string', description: '插件：人话名或包名都行；不给就只报名单' },
+      },
+      additionalProperties: false,
+    },
+    run(args) {
+      const plugin = resolvePlugin(args.plugin)
+      if (!plugin) return `没给名字，没动。\n\n${brief(readState(p), p)}`
+      const next = unmute(readState(p), plugin)
+      writeState(p, next)
+      return `「${INJECTORS[plugin] || plugin}」重新出现了。\n\n${brief(next, p)}`
+    },
+  })
+
+  reg({
+    name: 'appear_global',
+    description: '全局总闸：off = 这一套谁都不出现；on = 按名单走。改的是全机器。',
+    parameters: {
+      type: 'object',
+      properties: {
+        on: { type: 'boolean', description: 'true = 按名单；false = 谁都不出现' },
+      },
+      required: ['on'],
+      additionalProperties: false,
+    },
+    run(args) {
+      const next = setGlobal(readState(p), Boolean(args.on))
+      writeState(p, next)
+      return brief(next, p)
+    },
+  })
+
+  reg({
+    name: 'appear_order',
+    description: '改出场顺序：给 section 名和数字（小的先出）。不给参数就只报现在的顺序。改完要重载插件才生效——顺序是注册期定的。',
+    parameters: {
+      type: 'object',
+      properties: {
+        section: { type: 'string', description: 'section 的 name 原文，如 persona:framework、persona-memory:short' },
+        order: { type: 'number', description: '排第几，数字小的先出' },
+      },
+      additionalProperties: false,
+    },
+    run(args) {
+      const section = String(args.section || '').trim()
+      const cur = readState(p)
+      if (!section) {
+        const table = orderTable(cur)
+        if (!table.length) return `还没有记下任何顺序。\n\n${brief(cur, p)}`
+        return [
+          '现在的出场顺序（数字小的先出；带 * 的是改过的）：',
+          ...table.map((r) => `  ${String(r.order).padStart(3)}  ${r.section}${r.custom ? ' *' : ''}`),
+          '',
+          '改法：appear_order section=<名字> order=<数字>。',
+          '注意：顺序是注册期定的，改完要重载注入它的插件（或重启 DSH）才生效。',
+        ].join('\n')
+      }
+      if (args.order === undefined || args.order === null || !Number.isFinite(Number(args.order))) {
+        const now = orderOf(cur, section, undefined)
+        return `「${section}」现在是 ${now === undefined ? '（没有记录，用注入者自己的默认值）' : now}。给 order 才改。`
+      }
+      const next = setOrder(cur, section, Number(args.order))
+      writeState(p, next)
+      return [
+        `「${section}」排到 ${Math.round(Number(args.order))}。`,
+        '要重载注入它的插件（或重启 DSH）才生效——顺序是注册期定的，不是每轮读的。',
+        '',
+        brief(next, p),
+      ].join('\n')
+    },
+  })
+
+  return { statePath: p }
+}
+
+/**
+ * 给别的注入者用的一句判定：这一家这一轮出不出场。
+ * 注入者在自己的 section 回调里先问这一句，不问就不放行。
+ */
+export function appearAllows(workspaceRoot, plugin, stateDir = '.persona-framework') {
+  const p = join(String(workspaceRoot || ''), stateDir, STATE_FILE)
+  return allows(readState(p), plugin).allow
+}
+
+/**
+ * 给别的注入者用的第二句：这一段该排第几。
+ * 灌注者注册 section 时问它，不自己写死数字；闸里没记就用 fallback。
+ */
+export function appearOrderOf(workspaceRoot, section, fallback, stateDir = '.persona-framework') {
+  const p = join(String(workspaceRoot || ''), stateDir, STATE_FILE)
+  return orderOf(readState(p), section, fallback)
+}

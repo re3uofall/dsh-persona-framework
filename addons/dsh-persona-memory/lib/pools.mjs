@@ -14,6 +14,7 @@
 
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, renameSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
+import { rank } from './bm25.mjs'
 
 /**
  * 默认分层。名字是通用的，谁都能改。
@@ -294,6 +295,41 @@ export function recall(root, opts = {}) {
     }
   }
 
+  /**
+   * ★ 有 query 就交给 BM25 排，不再用 `text.includes(q)`。
+   *
+   *   为什么换：原来的过滤要求整串连续出现，中文多个词一拼就永远命中不了；
+   *   而且命中之后层内还是按字数取，谁更相关根本看不出来。
+   *
+   *   守住的边界：**只排层内，不动层间**。层是按理由排的（判断在前、流水在后），
+   *   相关度再高也没资格把流水提到判断上面去。
+   *
+   *   先 reinforce、后 BM25：sort 是稳定的，同分时保留加固给的先后。
+   */
+  let scores = null
+  if (q) {
+    const docs = []
+    for (const p of scan.pools) {
+      for (const f of p.files) {
+        let text = ''
+        try { text = readFileSync(f.path, 'utf8') } catch { continue }
+        if (text) docs.push({ key: f.path, text })
+      }
+    }
+    scores = rank(q, docs)
+    if (scores.size === 0) {
+      // 一条都没命中（query 只剩标点，或池子里真没有）。
+      // 退回字面匹配——换了检索方式不能比原来更差。
+      scores = null
+    } else {
+      for (const p of scan.pools) {
+        p.files = p.files
+          .filter((f) => scores.has(f.path))
+          .sort((a, b) => (scores.get(b.path) ?? 0) - (scores.get(a.path) ?? 0))
+      }
+    }
+  }
+
   // 每层的预算 = 总预算 × 权重（再按该层实际字数封顶）；流水层最后一个拿
   const order = Object.keys(layers).sort((a, b) => layers[b].weight - layers[a].weight)
   const picked = []
@@ -316,7 +352,11 @@ export function recall(root, opts = {}) {
       }
       let text = ''
       try { text = readFileSync(f.path, 'utf8') } catch { continue }
-      if (q && !text.includes(q)) continue
+      // q 存在时上面已经按 BM25 过滤过；这里只兜一种情况：分词把它们全筛掉了
+      // （比如 query 只剩标点），那就退回字面匹配，别因为换了检索而一条都取不到。
+      if (q && !scores) {
+        if (!text.includes(q)) continue
+      }
       // 一个文件只取前 share 字（截断处按行退一格，免得半句话）
       const cut = Math.min(share, left, text.length)
       const body = cut >= text.length ? text : text.slice(0, cut).replace(/\n[^\n]*$/, '\n…')
@@ -325,11 +365,14 @@ export function recall(root, opts = {}) {
       share -= body.length
     }
   }
-  return { budget, used: budget - left, picked, skipped, scan }
+  const mode = q ? (scores ? 'bm25' : 'literal') : 'all'
+  return { budget, used: budget - left, picked, skipped, scan, mode }
 }
 
 export function renderRecall(r) {
-  const lines = [`按预算取记忆：给 ${r.budget} 字，用了 ${r.used} 字，${r.picked.length} 段`, '']
+  // 把「怎么找到的」写出来：同一句话，BM25 排的和按字面命中的，可信度不一样。
+  const how = r.mode === 'bm25' ? '按 BM25 排' : r.mode === 'literal' ? '按字面匹配' : '按层权重'
+  const lines = [`按预算取记忆：给 ${r.budget} 字，用了 ${r.used} 字，${r.picked.length} 段 · ${how}`, '']
   if (!r.picked.length) {
     lines.push('没取到。两种可能：池子是空的，或者 query 一个文件都没命中。')
     return lines.join('\n')

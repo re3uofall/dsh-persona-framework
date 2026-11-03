@@ -78,3 +78,8 @@ Invoke-RestMethod ($env:DSH_WEB_URL + '/api/persona-results')
 ## 卸载
 
 `plugin_manager` 里移除 `dsh-persona-results` 即可。`growth/成果/` 留在原地，不删也能继续当文档看。
+
+## 更新记录
+
+- 2026-11-02　1.2.0：一次只交一条；交过的别重复交；要改就交新的，旧的留着当脚印。
+- 之前　1.0.0：初版。

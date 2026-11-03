@@ -124,3 +124,8 @@ Invoke-RestMethod ($env:DSH_WEB_URL + '/api/persona-diary?privacy=公开')
 ## 卸载
 
 `plugin_manager` 里移除 `dsh-persona-diary` 即可。`growth/日记/` 留在原地，growth.py 照常读写。
+
+## 更新记录
+
+- 2026-11-02　1.3.1：日记分三本（公开／私密／记录）；按天摆、按类筛、按词找；插件自己带检索和触发器。
+- 之前　1.0.0：初版。

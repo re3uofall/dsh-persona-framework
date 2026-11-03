@@ -91,3 +91,8 @@ node selfcheck.mjs
 
 `plugin_manager` 里移除 `dsh-persona-grow` 即可。人格补丁留在原地，不删也能继续当文档看；
 想彻底回到原稿，删掉 `growth/人格补丁.md` 与 `growth/autolearn/` 两个路径就行。
+
+## 更新记录
+
+- 2026-11-02　1.2.0：人格补丁分「已采纳／待议」；待议每次由证据重算，手改会被覆盖。
+- 之前　1.0.0：初版。

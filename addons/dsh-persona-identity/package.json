@@ -1,0 +1,23 @@
+{
+  "name": "dsh-persona-identity",
+  "version": "0.2.0",
+  "private": true,
+  "description": "人格同一：只允许一份人格文件、一份记忆。现在只有指南，没有行为——先立规矩，再长功能",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./人格同一指南.md": "./人格同一指南.md"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "人格同一指南.md",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
