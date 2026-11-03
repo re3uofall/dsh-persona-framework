@@ -940,15 +940,28 @@ export function apply(ctx, config = {}) {
           return need.length > 0 && said && need.some((w) => said.includes(w))
         })
         const noJudge = cues.filter((t) => !(Array.isArray(t.stimulus?.match) && t.stimulus.match.length))
-        // 程序触发器有没有生效：按同一套 dueTriggers 真算一遍「现在该响哪几条」。
-        const dueNow = dueTriggers(list, { now: new Date(), turnsSince: 0, lastSaid: said, fired: {} })
+        // 触发器有没有生效：每轮真跑一遍完整那趟——该响哪几条、过不过中介、过不了走哪、
+        // 过了走哪个接口或哪个程序。只算个数那是统计，不是触发。
+        const pulse = runTriggers(list, { now: new Date(), turnsSince: 0, lastSaid: said, fired: {}, evidence: {} })
+        const dueNow = pulse.due || []
+        const firedNow = pulse.fired || []
         const condLine = said
           ? `条件触发：最后一句「${said.replace(/\s+/g, ' ').slice(0, 40)}」→ 命中 ${hit.length} / ${cues.length} 条`
             + `${hit.length ? `（${hit.slice(0, 4).map((t) => t.name).join('、')}${hit.length > 4 ? ' 等' : ''}）` : ''}；时钟 ${clocks.length} 条只看到点`
           : `条件触发：这一轮还没人说话 → 0 / ${cues.length} 条响；时钟 ${clocks.length} 条只看到点`
-        const dueLine = `对外接口触发器：按同一套判据现算 → 本轮该响 **${dueNow.length}** 条`
-          + `${dueNow.length ? `（${dueNow.slice(0, 5).map((t) => t.name).join('、')}${dueNow.length > 5 ? ' 等' : ''}）` : ''}；`
-          + `响≠动手，还要过中介`
+        const nameOf = (id) => (list.find((x) => x.id === id) || {}).name || id
+        const dueLine = firedNow.length
+          ? `对外接口触发器：本轮真跑到 **${firedNow.length}** 件——`
+            + firedNow.slice(0, 6).map((f) => {
+              const t = `**${nameOf(f.id)}**`
+              return f.kind === 'port' ? `${t}→走「${f.name}」`
+                : f.kind === 'tool' ? `${t}→跑工具 ${f.name}`
+                  : `${t}→跑程序 ${f.name}`
+            }).join('；')
+            + (firedNow.length > 6 ? ` 等 ${firedNow.length} 件` : '')
+            + (dueNow.length > firedNow.length ? `；另 ${dueNow.length - firedNow.length} 条响了没过中介` : '')
+          : `对外接口触发器：本轮 **0** 件该办`
+            + (dueNow.length ? `（${dueNow.length} 条响了，全卡在中介：手上没料就不办）` : '（没有到点、也没有信号命中）')
         const flangLine = !flang.ran
           ? `框架语言必过：**没跑成**（${flang.err || '检查器没起来'}）——这件事不装成「通过了」`
           : flang.ok
@@ -968,12 +981,13 @@ export function apply(ctx, config = {}) {
         ]
         for (const t of list) {
           const st = t.stimulus || {}
-          const when = st.kind === 'clock' ? `每天 ${st.daily}`
-            : st.kind === 'cue' ? `信号：${st.when || '（说不清）'}`
-              : st.kind === 'gap' ? `隔 ${st.every}`
-                : (st.kind || '（没说刺激）')
+          const when = st.kind === 'realtime' ? `**实时**：${st.when || '每一轮'}`
+            : st.kind === 'clock' ? `每天 ${st.daily}`
+              : st.kind === 'cue' ? `信号：${st.when || '（说不清）'}`
+                : st.kind === 'gap' ? `隔 ${st.every}`
+                  : (st.kind || '（没说刺激）')
           const ask = t.reaction?.ask ? String(t.reaction.ask).replace(/\s+/g, ' ').slice(0, 120) : ''
-          lines.push(`- **${t.name}**｜${when} → 走「${t.reaction?.port || '?'}」${ask ? `｜${ask}` : ''}`)
+          lines.push(`- ${firedNow.some((f) => f.id === t.id) ? '**★ ' : '**'}${t.name}**｜${when} → 走「${t.reaction?.port || '?'}」${ask ? `｜${ask}` : ''}`)
         }
         parts.push('', ...lines)
       } catch (error) {
