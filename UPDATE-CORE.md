@@ -115,11 +115,11 @@ ctx.effect(() => ctx.systemPrompt.section({
 4. **表和文档别手抄**。它的 op 全表由脚本生成、`check` 门禁守卫漂移。
    我这边对应：`PROGRAMS`、触发器条目、模块索引——凡是从代码里算得出来的，文档就该是生成物；跑一次 check 对不上就报，不靠人记得。
 
-### 记忆结构七件套：实现方式
+### 记忆结构八件套：实现方式
 
 2026-11-03 落在 `dsh-persona-memory/lib/`。抄的是位置和分工，不是代码行数——灵枢那边 `links.py` 676 行、`audit.py` 688 行，我这边每个模块 60–120 行。
 
-**放在哪**：一个底座 `lib/ledger.mjs` + 七个薄模块，结构文件统一存 `<工作区>/.persona-framework/记忆账/`。
+**放在哪**：一个底座 `lib/ledger.mjs` + 八个薄模块，结构文件统一存 `<工作区>/.persona-framework/记忆账/`。
 
 | 模块 | 管什么 | 存哪 |
 | --- | --- | --- |
@@ -131,6 +131,9 @@ ctx.effect(() => ctx.systemPrompt.section({
 | `anchors.mjs` | 锚点：不可遗忘的那几句（只钉索引） | `anchors.json` |
 | `reflect.mjs` | 元认知：看盘上留下的痕迹 | 只读 |
 | `flywheel.mjs` | 自我改进：把改口现场收集起来 | 只读 |
+| `state.mjs` | 状态台账：一个信念从什么变成什么 | `state_events.jsonl` |
+
+**状态台账跟审计的区别别搅**：审计记「做了什么动作」（write / deny / link），台账记「哪个信念从 A 变成 B」。前者回答「我干过什么」，后者回答「我现在凭什么相信这个、它改过几次」。
 
 **五条实现规矩**（每条都是踩出来的）：
 
