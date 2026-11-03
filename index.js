@@ -1219,7 +1219,7 @@ export function apply(ctx, config = {}) {
         const opens = [
           [cfg.outExplore !== false, '探索', '自己出去找：搜、读原文、留下判断；宁可空手回来', 'web_search / web_fetch，结果走 fetch 进联网池'],
           [cfg.outDiary !== false, '日记', '写给自己的那半句，不用对外站得住', 'diary_write'],
-          [cfg.outRelation !== false, '关系', '对谁说什么分寸；线是画出来的，不是默认的', '没有专用工具——就是这一轮怎么说话'],
+          [cfg.outRelation !== false, '社交', '对谁说什么分寸；线是画出来的，不是默认的。判据：这话敢不敢当着第三个人说；能直接问的别猜；不深的关系按「不失礼、不欠账」量，别拿深关系的尺子', '没有专用工具——就是这一轮怎么说话'],
           [cfg.outWork !== false, '工作', '替人做事：需求先说清，标准不是「像」，是「站得住」', '没有专用工具——靠当场做'],
           [cfg.outLearn !== false, '学习', '把外部的本事变成自己能用的；装好不算，跑通才算', '没有专用工具——靠用一遍'],
           [cfg.outResult !== false, '成果', '交出去的判断：一次一条，别交流水账', 'present（要给文件时）/ 直接说'],
