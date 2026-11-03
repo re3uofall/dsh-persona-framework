@@ -942,7 +942,7 @@ export function apply(ctx, config = {}) {
         const noJudge = cues.filter((t) => !(Array.isArray(t.stimulus?.match) && t.stimulus.match.length))
         // 触发器有没有生效：每轮真跑一遍完整那趟——该响哪几条、过不过中介、过不了走哪、
         // 过了走哪个接口或哪个程序。只算个数那是统计，不是触发。
-        const pulse = runTriggers(list, { now: new Date(), turnsSince: 0, lastSaid: said, fired: {}, evidence: {} })
+        const pulse = runTriggers(list, { now: new Date(), turnsSince: 0, lastSaid: said, fired: {}, evidence: {}, gates: { languageBetray: cfg.languageBetray === true } })
         const dueNow = pulse.due || []
         const firedNow = pulse.fired || []
         const condLine = said
@@ -2478,6 +2478,7 @@ export function apply(ctx, config = {}) {
             turnsSince: args.turns ? Number(args.turns) : 0,
             lastSaid: String(args.said || ''),
             evidence,
+            gates: { languageBetray: cfg.languageBetray === true },
           })
           return renderTriggers(res)
         }
