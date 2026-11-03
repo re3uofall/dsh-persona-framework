@@ -290,6 +290,41 @@ git status --short
 
 **第五条是提醒，另立一档、另配验收（见下一节），不进触发器覆盖率。** 把它算进去，数字就是虚的。
 
+### 同一程序的触发器怎么实现的
+
+**一条程序默认只有一条触发器，代码里就绑死了。**
+
+```
+PROGRAMS（每个 op 一行：kind / when / daily / every / ask / tool）
+   ↓ PROGRAMS.map(...)          ← 严格 1:1，一个 op 生一条
+PROGRAM_TRIGGERS（程序触发器）
+   ↓ 展开
+DEFAULT_TRIGGERS = 8 条手写 + ...PROGRAM_TRIGGERS = 47
+   ↓ loadTriggers()：盘上有 triggers.json 就整张表覆盖默认表
+dueTriggers(list, ctx)  判该不该响
+   ↓
+mediate(t, evidence)    判该不该动（过不了就空着，不降级）
+   ↓
+react(t)                这条反应走哪：工具 / 程序 / 对外接口
+   ↓
+runAction(t, ctx)       ← 插件自己在命中当场执行动作（真动手）
+   ↓
+markAsked(ws, ids)      落一笔「今天提过」到 .persona-framework/提醒.json
+```
+
+**要给同一个程序配第二条触发器，只有两条路：**
+
+1. **手写进 `DEFAULT_TRIGGERS`**：手动条目不走 `PROGRAM_TRIGGERS`，`reaction` 自己写，同一个 `reaction.program` 可以出现在两条上（比如一条 clock 一条 cue）。
+2. **写 `triggers.json`**：整张表覆盖默认表，想几条就几条。
+
+**不许做的那种**：在一个 op 的 `when` 里塞「满足 A 或 B 或 C」。那是把两条触发器挤进一行，第四条判据（条件过于严苛 / 过宽）当场失效，而且数命中次数时分不出来。
+
+**插件能真正动手到什么程度，说清边界：**
+
+- **自己能做的**：写文件、追加、跑子进程、发 HTTP。`runAction` 目前只实现了 `append`（追加一行到文件），这是最小可验证的一种。
+- **做不到的**：调宿主的工具（`read` / `web_search` / `memory_recall` 这些）。宿主执行工具要靠 agent loop 的 initiator（`ctx.agents.requireInitiator()`），插件在 section 回调里拿不到那个上下文。
+- 所以「必须自动调用工具」在插件这一层的落地形态是：**插件自己调它自己会的工具**（文件、命令、HTTP），不是去借宿主的手。这条边界写清，免得下次又把它当成「差不多就行」。
+
 ### 提醒：只给字的那种，不算触发器
 
 **只把一句话塞进上下文、不调工具、不落盘——这是提醒，不是触发器。**
