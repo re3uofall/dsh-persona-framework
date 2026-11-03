@@ -60,3 +60,48 @@ export function renderEdges(root, node) {
   }
   return lines.join('\n')
 }
+
+/**
+ * 沿边往外走：给一条记忆，走到它连着的、再连着的那几条。
+ *
+ * 抄 dsh-prime-memory 的两步检索里的第二步（`expand_graph_node`）：
+ * 它有「从节点扩到邻居」这个动作，我原来只存边、不会走路。
+ *
+ * 广度优先，一层一层走；同一个节点只出现一次（走回头路没意义）。
+ * 不排序、不打分——只把走到的摆出来，值不值得看是人判断。
+ */
+export function walk(root, node, { depth = 2, max = 30 } = {}) {
+  const start = String(node ?? '')
+  if (!start) return []
+  const seen = new Set([start])
+  const out = []
+  let frontier = [start]
+
+  for (let d = 1; d <= depth; d += 1) {
+    const next = []
+    for (const n of frontier) {
+      for (const e of edgesOf(root, n)) {
+        const other = e.from === n ? e.to : e.from
+        if (seen.has(other)) continue
+        seen.add(other)
+        out.push({ node: other, via: e.type, from: n, depth: d, why: e.why })
+        next.push(other)
+        if (out.length >= max) return out
+      }
+    }
+    frontier = next
+    if (!frontier.length) break
+  }
+  return out
+}
+
+export function renderWalk(root, node, opts = {}) {
+  const hits = walk(root, node, opts)
+  if (!hits.length) return `「${node}」没有连着的东西，走不出去。`
+  const d = opts.depth ?? 2
+  const lines = [`从「${node}」走 ${d} 层，走到 ${hits.length} 条：`, '']
+  for (const h of hits) {
+    lines.push(`${'  '.repeat(Math.max(0, h.depth - 1))}- [${h.via}] ${h.node}${h.why ? `（${h.why}）` : ''}`)
+  }
+  return lines.join('\n')
+}

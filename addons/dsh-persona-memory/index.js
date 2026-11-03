@@ -41,7 +41,7 @@ import { findVerbatim, renderTrace } from './lib/trace.mjs'
 import { check as consistencyCheck, renderConsistency } from './lib/consistency.mjs'
 import { record as auditRecord } from './lib/audit.mjs'
 import { mergeMemoryContexts } from './lib/merge.mjs'
-import { link as edgeLink, edgesOf, counterparts, renderEdges } from './lib/edges.mjs'
+import { link as edgeLink, edgesOf, counterparts, renderEdges, renderWalk } from './lib/edges.mjs'
 import { reject as rejectClaim, renderRejected } from './lib/rejected.mjs'
 import { addAnchor, renderAnchors } from './lib/anchors.mjs'
 import { recordState, stateOf, renderState } from './lib/state.mjs'
@@ -370,7 +370,7 @@ export function apply(ctx, config = {}) {
     {
       name: 'memory_ledger',
       description:
-        '记忆账的一个入口，十一个动作：link 连边、edges 查边、reject 记一条被证伪的假设、rejected 看负记忆、'
+        '记忆账的一个入口，十二个动作：link 连边、edges 查边、walk 沿边走几层、reject 记一条被证伪的假设、rejected 看负记忆、'
         + 'anchor 钉锚点、anchors 看锚点、state 记状态变化、chain 看状态链、'
         + 'reflect 回看盘上痕迹、flywheel 捞最近的改口现场、consistency 查有没有重犯旧错。',
       parameters: {
@@ -378,13 +378,13 @@ export function apply(ctx, config = {}) {
         properties: {
           op: {
             type: 'string',
-            enum: ['link', 'edges', 'reject', 'rejected', 'anchor', 'anchors', 'state', 'chain', 'reflect', 'flywheel', 'consistency'],
+            enum: ['link', 'edges', 'walk', 'reject', 'rejected', 'anchor', 'anchors', 'state', 'chain', 'reflect', 'flywheel', 'consistency'],
             description: '要干哪一件',
           },
           from: { type: 'string', description: 'link：从哪条（指针，如 chat/2026-11-03.md#2）' },
           to: { type: 'string', description: 'link：到哪条' },
           type: { type: 'string', enum: ['cites', 'refutes', 'refines', 'same', 'supersedes'], description: 'link：什么关系' },
-          node: { type: 'string', description: 'edges：查哪条的边（不给就列全部）' },
+          node: { type: 'string', description: 'edges 查哪条的边（不给就列全部）；walk 从哪条开始走' },
           claim: { type: 'string', description: 'reject：哪条假设被证伪了' },
           why: { type: 'string', description: 'link / reject / anchor：为什么' },
           evidence: { type: 'string', description: 'reject / state：证据（原话、指针、路径）' },
@@ -400,6 +400,8 @@ export function apply(ctx, config = {}) {
             description: 'state：变化类型（不给就按 old/next 推；两个都空要显式给）',
           },
           days: { type: 'number', description: 'flywheel：看最近几天（默认 7）' },
+          depth: { type: 'number', description: 'walk：走几层（默认 2）' },
+          max: { type: 'number', description: 'walk：最多走几条（默认 30）' },
         },
         required: ['op'],
       },
@@ -415,6 +417,8 @@ export function apply(ctx, config = {}) {
             }
             case 'edges':
               return { text: renderEdges(root, args.node) }
+            case 'walk':
+              return { text: renderWalk(root, args.node, { depth: args.depth, max: args.max }) }
             case 'reject': {
               const r = rejectClaim(root, { claim: args.claim, why: args.why, evidence: args.evidence })
               return { text: `记下了：${r.claim}（落在 ${r.file}）` }
