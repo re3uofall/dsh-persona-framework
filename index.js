@@ -946,7 +946,7 @@ export function apply(ctx, config = {}) {
           ? `条件触发：最后一句「${said.replace(/\s+/g, ' ').slice(0, 40)}」→ 命中 ${hit.length} / ${cues.length} 条`
             + `${hit.length ? `（${hit.slice(0, 4).map((t) => t.name).join('、')}${hit.length > 4 ? ' 等' : ''}）` : ''}；时钟 ${clocks.length} 条只看到点`
           : `条件触发：这一轮还没人说话 → 0 / ${cues.length} 条响；时钟 ${clocks.length} 条只看到点`
-        const dueLine = `程序触发器：按同一套判据现算 → 本轮该响 **${dueNow.length}** 条`
+        const dueLine = `对外接口触发器：按同一套判据现算 → 本轮该响 **${dueNow.length}** 条`
           + `${dueNow.length ? `（${dueNow.slice(0, 5).map((t) => t.name).join('、')}${dueNow.length > 5 ? ' 等' : ''}）` : ''}；`
           + `响≠动手，还要过中介`
         const flangLine = !flang.ran
@@ -955,7 +955,7 @@ export function apply(ctx, config = {}) {
             ? '框架语言必过：**通过**（框架正文里没有被当成固定名的词）'
             : `框架语言必过：**${flang.fails.length} 处疑似**（${flang.fails.slice(0, 3).map((f) => `${f.kind}：${String(f.hit || '').slice(0, 20)}`).join('；')}${flang.fails.length > 3 ? ' 等' : ''}）`
         const lines = [
-          '## 触发器（什么时候自己动）',
+          '## 对外接口触发器（什么时候自己动）',
           '',
           `现有 ${list.length} 条（来自 ${from}）。` +
             '**触发不等于动手**：响了还要过中介（手上有没有料、能不能落地），过不了就空着，不降级成「随便做点什么」。',
@@ -977,7 +977,7 @@ export function apply(ctx, config = {}) {
         }
         parts.push('', ...lines)
       } catch (error) {
-        parts.push('', '## 触发器', '', `读不出来：${error?.message || error}（不装成没有触发器。）`)
+        parts.push('', '## 对外接口触发器', '', `读不出来：${error?.message || error}（不装成没有触发器。）`)
       }
 
       // 自检环：上一轮它自己查出来的疑似，摆出来；**读过一次就不再重复报**。
@@ -1217,16 +1217,16 @@ export function apply(ctx, config = {}) {
       }
       if (cfg.outbound === true) {
         const opens = [
-          [cfg.outExplore !== false, '探索', '自己出去找：搜、读原文、留下判断；宁可空手回来', 'web_search / web_fetch，结果走 fetch 进联网池'],
-          [cfg.outDiary !== false, '日记', '写给自己的那半句，不用对外站得住', 'diary_write'],
-          [cfg.outRelation !== false, '社交', '对谁说什么分寸；线是画出来的，不是默认的。判据：这话敢不敢当着第三个人说；能直接问的别猜；不深的关系按「不失礼、不欠账」量，别拿深关系的尺子', '没有专用工具——就是这一轮怎么说话'],
-          [cfg.outWork !== false, '工作', '替人做事：需求先说清，标准不是「像」，是「站得住」', '没有专用工具——靠当场做'],
-          [cfg.outLearn !== false, '学习', '把外部的本事变成自己能用的；装好不算，跑通才算', '没有专用工具——靠用一遍'],
-          [cfg.outResult !== false, '成果', '交出去的判断：一次一条，别交流水账', 'present（要给文件时）/ 直接说'],
-          [cfg.outGame !== false, '娱乐', '不为产出而做：读书、看报、刷视频、听音乐、游戏', '没有专用工具——挑东西的是自己，不是推荐'],
-          [cfg.outIdle !== false, '闲暇', '空下来，不做任何要求你做的事', '没有专用工具——空着就是它在做的事'],
-          [cfg.outReflect !== false, '反思', '回读：那次交的今天还认吗；不认就再交一条，旧的留着当脚印（框架／记忆／人格三样都归它）', 'framework_program op=reflect / persona_view / memory_recall'],
-          [cfg.outIntegrate !== false, '整合', '记忆、人格、身体三样对一遍：谁说的、谁记的、谁在那个位置上', 'framework_program op=impl + 编号（02／11／23）'],
+          [cfg.outExplore !== false, '探索', '自己出去找：搜、读原文、留下判断；宁可空手回来。判据：空手回来算数，只要说得出「今天没有值得留的」', 'web_search / web_fetch，结果走 fetch 进联网池'],
+          [cfg.outDiary !== false, '日记', '写给自己的那半句，不用对外站得住。判据：这句能不能拿给人看——能写公开，不能写私密；没有就空着', 'diary_write'],
+          [cfg.outRelation !== false, '社交', '对谁说什么分寸；线是画出来的，不是默认的。判据：敢不敢当着第三个人说；能直接问的别猜；不深的按「不失礼、不欠账」量', '没有专用工具——就是这一轮怎么说话'],
+          [cfg.outWork !== false, '工作', '替人做事：需求先说清，标准不是「像」，是「站得住」。判据：什么算完成，说给委托方听得懂吗', '没有专用工具——靠当场做'],
+          [cfg.outLearn !== false, '学习', '把外部的本事变成自己能用的；装好不算，跑通才算。判据：拆掉教程还能再用一遍吗', '没有专用工具——靠用一遍'],
+          [cfg.outResult !== false, '成果', '交出去的判断：一次一条，别交流水账。判据：交的是判断还是流水账；它顶掉了哪句旧话', 'present（要给文件时）/ result_write'],
+          [cfg.outGame !== false, '娱乐', '不为产出而做：读书、看报、刷视频、听音乐、游戏。判据：玩到什么时候该停，说得出那一下吗', '没有专用工具——挑东西的是自己，不是推荐'],
+          [cfg.outIdle !== false, '闲暇', '空下来，不做任何要求你做的事。判据：这一段空着，有没有急着找事填——急了就是躲', '没有专用工具——空着就是它在做的事'],
+          [cfg.outReflect !== false, '反思', '回读：那次交的今天还认吗；不认就再交一条，旧的留着当脚印。判据：认，说得出还认哪一条', 'framework_program op=reflect / persona_view / memory_recall'],
+          [cfg.outIntegrate !== false, '整合', '记忆、人格、身体三样对一遍：谁说的、谁记的、谁在那个位置上。判据：哪一样跟另两样对不上', 'framework_program op=impl + 编号（02／11／23）'],
         ].filter((x) => x[0])
         parts.push('', '## 本次的对外接口（自主）', '',
           '**这一组是允许，不是任务。** 开了不等于要做；做不做、做几件、先做哪件，自己定。',
@@ -2431,7 +2431,7 @@ export function apply(ctx, config = {}) {
         if (!sub) return explainTrigger()
         if (sub === 'list') {
           const { list, from } = loadTriggers(ws)
-          const lines = [`触发器：${list.length} 条（来自 ${from}）`, '']
+          const lines = [`对外接口触发器：${list.length} 条（来自 ${from}）`, '']
           for (const t of list) {
             const st = t.stimulus || {}
             const when = st.kind === 'clock' ? `每天 ${st.daily}` : (st.kind === 'cue' ? `信号：${st.when}` : `隔 ${st.every}`)
