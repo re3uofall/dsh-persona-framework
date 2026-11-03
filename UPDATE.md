@@ -325,6 +325,46 @@ markAsked(ws, ids)      落一笔「今天提过」到 .persona-framework/提醒
 - **做不到的**：调宿主的工具（`read` / `web_search` / `memory_recall` 这些）。宿主执行工具要靠 agent loop 的 initiator（`ctx.agents.requireInitiator()`），插件在 section 回调里拿不到那个上下文。
 - 所以「必须自动调用工具」在插件这一层的落地形态是：**插件自己调它自己会的工具**（文件、命令、HTTP），不是去借宿主的手。这条边界写清，免得下次又把它当成「差不多就行」。
 
+### 盘点：39 个程序，几个真符合触发器定义
+
+程序（`framework_program` 的 op）一共 **39 个**。加手写的 8 条，触发表 **47 条**。
+
+按「命中当场自己动手了吗」这条数：
+
+| 项 | 数 | 说明 |
+| --- | --- | --- |
+| 程序 op | 39 | 全部要人喊才跑，一个都不自己动 |
+| 手写触发器 | 8 | 只有 `evening` 带 `reaction.action` |
+| **真符合触发器定义的** | **1** | 就是 `evening`：到点自己往盘上追一行 |
+| 只是提醒的 | 46 | 注入里给一行字，跑不跑看谁去调 |
+
+**所以答案是 1 / 47。** 39 个程序本身**一个都不算触发器**——它们是「能被触发器调用的工具」，不是触发器。这个数以后每改一次都要重数，不能凭印象。
+
+### 判据：要不要调工具，先看效果落在哪
+
+一个触发器命中之后，效果只有三种落点。落在哪，决定它必须怎么做：
+
+| 效果落在哪 | 必须怎么做 | 例子 |
+| --- | --- | --- |
+| **盘上**（文件、账、状态） | **必须调工具**。不写盘就等于没发生 | `write`、`store`、`accumulate`、`memory` |
+| **上下文里**（让人看见一段话） | 可以只给字，**但必须能验收**：说得出「看到什么算它对」 | `output`、`betray`、`introspect` |
+| **判断里**（改一条结论、退一条旧话） | **必须调工具**把结论落下来，否则下一轮找不到 | `selfRewrite`、`preferenceRewrite` |
+
+**三条铁律：**
+
+1. **需要调用工具才能有效果的，必须调用工具。** 停在「建议你去跑」上，就是没效果。
+2. **本身不调用工具的，分两条路**：给字的，要能给验收（什么算它成立）；不给字的，要真有效果（不落盘也得改到上下文里的某个东西，比如把一条旧话顶掉）。
+3. **不给字又不给效果的不算触发器**，那是空转。
+
+**怎么判断一个程序属哪类**：看它跑完之后，**盘上多没多东西、上下文变没变**。两样都没变，它就只是个说法。
+
+**39 个程序按这条分（当前实现）：**
+
+- **必须调工具才有果（27 个）**：`framework_check` `framework_audit` `persona` `identity` `body` `workspace` `memory` `store` `bind` `residue` `mediate` `input` `process` `accumulate` `internal` `external` `experience` `theory` `fetch` `write` `undo` `selfRewrite` `preferenceRewrite` `synonym` `functions` `function` `impl`
+- **可以只给字、但要有验收（12 个）**：`output` `betray` `betrayCheck` `frameworkLanguage` `frameworkLanguageCheck` `introspect` `dream` `unconscious` `transcend` `polarize` `preview` `trigger`
+
+**这 39 个现在全是「人喊才跑」**，所以它们作为程序没问题，作为触发器是 0 个。要让它们变成触发器，每条都得补一个 `reaction.action`——把「跑完之后盘上该多出什么」写死。
+
 ### 提醒：只给字的那种，不算触发器
 
 **只把一句话塞进上下文、不调工具、不落盘——这是提醒，不是触发器。**
