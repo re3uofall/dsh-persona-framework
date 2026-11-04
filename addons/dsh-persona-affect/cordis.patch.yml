@@ -1,0 +1,22 @@
+- insert:
+    - id: persona-affect
+      name: dsh-persona-affect
+      config:
+        # 工作区根。留空 = 用会话工作区。
+        root: ''
+
+        # 状态文件（相对工作区根）。心情会自己退，但不会自己回来，所以要落盘。
+        stateFile: '.persona-framework/情绪.json'
+
+        # 底色：愉悦 / 唤醒 / 支配。不是「中立」，是「她平时是什么样」——
+        # 平静时的落点是它，不是零。零是白纸，鱼不是白纸。
+        pad:
+          pleasure: 0.1
+          arousal: 0.3
+          dominance: 0.1
+
+        # 每轮那一段的 order。排在模块库之后。
+        order: 100
+
+        # 低于这个强度就不单独报情绪，只说心境。
+        minIntensity: 0.12

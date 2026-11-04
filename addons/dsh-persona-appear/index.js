@@ -28,10 +28,13 @@ import {
   INJECTORS, STATE_FILE, allows, emptyState, mute, normalizeState, orderOf, orderTable, roster,
   setGlobal, setOrder, unmute,
 } from './lib/appear.mjs'
+import {
+  LIVE_FILE, WINDOW_MS, addLive, emptyLive, readLive, renderLive, writeLive,
+} from './lib/live.mjs'
 
 export const name = 'persona-appear'
-export const version = '0.2.0'
-export const inject = ['tools']
+export const version = '0.3.0'
+export const inject = ['tools', 'systemPrompt']
 
 const DEFAULTS = {
   /** 工作区根；空 = 从插件自己的位置往上推一级（插件装在仓库里时成立）。 */
@@ -250,6 +253,84 @@ export function apply(ctx, config = {}) {
         '',
         brief(next, p),
       ].join('\n')
+    },
+  })
+
+
+  // ── 实时注入：这一轮临时摆一段进去，过期自己撤 ──────────────────────
+  // 跟「出场闸」分开：闸管长期（谁出不出场），这里管临时（往里加一段）。
+  const livePath = join(dirname(p), LIVE_FILE)
+
+  try {
+    ctx.effect(() => ctx.systemPrompt.section({
+      name: 'persona-appear:live',
+      order: 6,
+      interpolate: false,
+      text: () => {
+        try {
+          return renderLive(readLive(livePath))
+        } catch (error) {
+          return `## 实时注入\n\n读不出来：${error?.message || error}`
+        }
+      },
+    }))
+  } catch { /* 没有 systemPrompt 也能用 */ }
+
+  reg({
+    name: 'appear_inject',
+    description: '往下一轮临时摆一段字（实时注入）。默认 30 分钟后自己过期；它不是记忆，不进账，说完就撤。',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: '要摆进去的那段字（1200 字以内）' },
+        minutes: { type: 'number', description: '活多久，分钟（默认 30）' },
+      },
+      required: ['text'],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const text = String(args.text || '').trim()
+      if (!text) return '没给 text，什么都没写。'
+      const minutes = Math.max(1, Number(args.minutes) || 30)
+      const turns = Math.max(1, Math.ceil(minutes / 30))
+      const next = addLive(readLive(livePath), { text, turns, from: 'appear_inject' })
+      writeLive(livePath, next)
+      return [
+        `摆了 ${next.items.length} 条，这条活 ${minutes} 分钟。`,
+        `文件：${livePath}`,
+        '下一次 assemble 就会带上它；过期自己撤，不用谁记着来删。',
+      ].join('\n')
+    },
+  })
+
+  reg({
+    name: 'appear_inject_list',
+    description: '看现在摆了哪几段实时注入，各还剩多少分钟过期。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    async run() {
+      const cur = readLive(livePath)
+      if (!cur.items.length) return '现在没摆任何实时注入。'
+      const now = Date.now()
+      const lines = ['## 现在摆着的', '']
+      for (const it of cur.items) {
+        const at = Date.parse(it.at)
+        const left = Number.isFinite(at)
+          ? Math.max(0, Math.round((at + it.turns * WINDOW_MS - now) / 60000))
+          : -1
+        lines.push(`- [${left < 0 ? '没有时间戳' : left + ' 分钟后过期'}] ${it.text}`)
+      }
+      return lines.join('\n')
+    },
+  })
+
+  reg({
+    name: 'appear_inject_clear',
+    description: '把实时注入全撤掉。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    async run() {
+      const n = readLive(livePath).items.length
+      writeLive(livePath, emptyLive())
+      return n ? `撤了 ${n} 条。` : '本来就没有。'
     },
   })
 
