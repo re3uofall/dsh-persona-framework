@@ -812,7 +812,9 @@ export function apply(ctx, config = {}) {
         } catch { /* 读不到目录就不加这一段 */ }
         // 固定注入的那几篇不进轮转：环境（00）、插件清单（83）、元协调（53）。
         // 放进轮转，轮到的那些轮会把同一篇注两遍——同一个东西说两次，比少说一次更坏。
-        const isFixed = (f) => /^00-环境/.test(f) || /^83-/.test(f) || /^53-/.test(f)
+        // 固定注入只有 00-注入 一篇（它不在编号 01–88 里，轮转本来也收不到）。
+        // 环境（00）、插件清单（83）、元协调（53）回到轮转——每天读一次就够，不必每轮摆。
+        const isFixed = (f) => /^00-注入/.test(f)
         const rot = all.filter((f) => !isFixed(f))
         if (all.length) {
           const bare = (s) => s.replace(/\.md$/, '')
@@ -876,13 +878,12 @@ export function apply(ctx, config = {}) {
               } catch { /* 单篇读不到就跳过，不拿别的顶替 */ }
             }
           }
-          // 环境（00）、插件清单（83）与元协调（53）：固定最先，不占轮转。
-          // 一个说「这一刻你身上有哪些部件在动」，一个说「这些部件是从哪借的」，
-          // 一个说「这一轮还用不用这套框架」——都在正文之前，每轮都在。
+          // 00-注入：固定最先，不占轮转。环境、清单、元协调的摘要都在这一篇里；
+          // 那三篇回轮转，全文照读，只是不再每轮都摆。
           const fixedModules = []
           try {
             const names = readdirSync(dir)
-            for (const pat of [/^00-环境\.md$/, /^83-.*\.md$/, /^53-.*\.md$/]) {
+            for (const pat of [/^00-注入\.md$/]) {
               const hit = names.find((f) => pat.test(f))
               if (hit) fixedModules.push(hit)
             }
@@ -890,10 +891,7 @@ export function apply(ctx, config = {}) {
           for (const f of fixedModules) {
             try {
               const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
-              const label = /^00-环境/.test(f)
-                ? '## 环境（固定）'
-                : (/^83-/.test(f) ? '## 插件清单（固定）' : '## 模块库（正文·元协调固定）')
-              parts.push('', label, '', raw)
+              parts.push('', '## 注入（固定）', '', raw)
             } catch { /* 单篇读不到就跳过，不拿别的顶 */ }
           }
           // 索引：一行一篇，**全量、不轮转**。它和正文一起注——索引负责「有哪些」，
@@ -901,7 +899,7 @@ export function apply(ctx, config = {}) {
           // 只有索引等于没读（正文比索引重要）。
           parts.push('', '## 模块库（索引）', '')
           parts.push(all.map((f) => `- ${bare(f)}`).join('\n'))
-          parts.push('', `（轮转 ${total} 篇；另有三篇固定每轮都在、不进轮转：00-环境、83-插件清单、53-元协调。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
+          parts.push('', `（轮转 ${total} 篇；00-注入 固定在外，不进轮转。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
             + '这条不占轮转，也不改下一轮从哪儿接着读。）')
           if (got.length) {
             const advance = (next + got.length) % total
