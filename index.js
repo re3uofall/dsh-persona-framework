@@ -810,6 +810,10 @@ export function apply(ctx, config = {}) {
         try {
           all = readdirSync(dir).filter((f) => /^(0[1-9]|[1-8]\d)-.+\.md$/.test(f)).sort()
         } catch { /* 读不到目录就不加这一段 */ }
+        // 固定注入的那几篇不进轮转：环境（00）、插件清单（83）、元协调（53）。
+        // 放进轮转，轮到的那些轮会把同一篇注两遍——同一个东西说两次，比少说一次更坏。
+        const isFixed = (f) => /^00-环境/.test(f) || /^83-/.test(f) || /^53-/.test(f)
+        const rot = all.filter((f) => !isFixed(f))
         if (all.length) {
           const bare = (s) => s.replace(/\.md$/, '')
           const wsDir = join(String(cfg.workspace || ctx?.config?.workspace || process.cwd()), '.persona-framework')
@@ -824,7 +828,7 @@ export function apply(ctx, config = {}) {
             if (existsSync(stateFile)) {
               const st = JSON.parse(readFileSync(stateFile, 'utf8'))
               const v = Number(st && st.next)
-              if (Number.isFinite(v) && v >= 0) next = v % all.length
+              if (Number.isFinite(v) && v >= 0) next = v % rot.length
               day = String(st.day || '')
               if (day === today) {
                 roundsToday = Number(st.roundsToday) || 0
@@ -841,8 +845,8 @@ export function apply(ctx, config = {}) {
           } catch { /* 注入档读不到就当没按过 */ }
           // 今天还没读满一圈的篇数
           const seen = new Set(dayRead)
-          const remainToday = all.filter((f) => !seen.has(bare(f))).length
-          const total = all.length
+          const remainToday = rot.filter((f) => !seen.has(bare(f))).length
+          const total = rot.length
           let n
           if (allOn) {
             n = remainToday || total
@@ -860,7 +864,7 @@ export function apply(ctx, config = {}) {
           if (n > 0) {
             // 从 next 起取 n 篇，绕圈；当天已经读过的排在后面，先补没读的
             const order = []
-            for (let i = 0; i < total; i += 1) order.push(all[(next + i) % total])
+            for (let i = 0; i < total; i += 1) order.push(rot[(next + i) % total])
             const fresh = order.filter((f) => !seen.has(bare(f)))
             const pickFrom = fresh.length >= n ? fresh : order
             for (let i = 0; i < Math.min(n, pickFrom.length); i += 1) picked.push(pickFrom[i])
@@ -872,12 +876,13 @@ export function apply(ctx, config = {}) {
               } catch { /* 单篇读不到就跳过，不拿别的顶替 */ }
             }
           }
-          // 环境（00）与元协调（53）：固定最先，不占轮转。
-          // 一个说「这一刻你身上有哪些部件在动」，一个说「这一轮还用不用这套框架」——都在正文之前，每轮都在。
+          // 环境（00）、插件清单（83）与元协调（53）：固定最先，不占轮转。
+          // 一个说「这一刻你身上有哪些部件在动」，一个说「这些部件是从哪借的」，
+          // 一个说「这一轮还用不用这套框架」——都在正文之前，每轮都在。
           const fixedModules = []
           try {
             const names = readdirSync(dir)
-            for (const pat of [/^00-环境\.md$/, /^53-.*\.md$/]) {
+            for (const pat of [/^00-环境\.md$/, /^83-.*\.md$/, /^53-.*\.md$/]) {
               const hit = names.find((f) => pat.test(f))
               if (hit) fixedModules.push(hit)
             }
@@ -885,7 +890,9 @@ export function apply(ctx, config = {}) {
           for (const f of fixedModules) {
             try {
               const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
-              const label = /^00-环境/.test(f) ? '## 环境（固定）' : '## 模块库（正文·元协调固定）'
+              const label = /^00-环境/.test(f)
+                ? '## 环境（固定）'
+                : (/^83-/.test(f) ? '## 插件清单（固定）' : '## 模块库（正文·元协调固定）')
               parts.push('', label, '', raw)
             } catch { /* 单篇读不到就跳过，不拿别的顶 */ }
           }
@@ -894,7 +901,7 @@ export function apply(ctx, config = {}) {
           // 只有索引等于没读（正文比索引重要）。
           parts.push('', '## 模块库（索引）', '')
           parts.push(all.map((f) => `- ${bare(f)}`).join('\n'))
-          parts.push('', `（全 ${total} 篇。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
+          parts.push('', `（轮转 ${total} 篇；另有三篇固定每轮都在、不进轮转：00-环境、83-插件清单、53-元协调。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
             + '这条不占轮转，也不改下一轮从哪儿接着读。）')
           if (got.length) {
             const advance = (next + got.length) % total
@@ -919,7 +926,7 @@ export function apply(ctx, config = {}) {
             parts.push('', `（本轮读 ${got.length} 篇：${bare(picked[0])} → ${bare(picked[got.length - 1])}｜`
               + `共 ${total} 篇、本轮 ${chars} 字。今天第 ${roundsToday + 1} 轮，今天已过 ${doneCount}/${total} 篇`
               + `${doneCount >= total ? '——今天一圈读完了' : `，下一轮补剩下的 ${total - doneCount} 篇`}。`
-              + `下一轮从 **${bare(all[advance])}** 接着读。整篇读，不切半篇${allOn ? '；本次是「开始注入」全量档' : ''}。）`)
+              + `下一轮从 **${bare(rot[advance])}** 接着读。整篇读，不切半篇${allOn ? '；本次是「开始注入」全量档' : ''}。）`)
           } else {
             parts.push('', '## 模块库（正文）', '')
             parts.push(`（今天一圈读完了：${total} 篇全过了一遍。要重读：按「开始注入」，`
