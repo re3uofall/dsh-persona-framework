@@ -872,13 +872,22 @@ export function apply(ctx, config = {}) {
               } catch { /* 单篇读不到就跳过，不拿别的顶替 */ }
             }
           }
-          // 元协调：固定最先，不占轮转
-          const metaFile = all.find((f) => /^53-/.test(f))
-          if (metaFile) {
+          // 环境（00）与元协调（53）：固定最先，不占轮转。
+          // 一个说「这一刻你身上有哪些部件在动」，一个说「这一轮还用不用这套框架」——都在正文之前，每轮都在。
+          const fixedModules = []
+          try {
+            const names = readdirSync(dir)
+            for (const pat of [/^00-环境\.md$/, /^53-.*\.md$/]) {
+              const hit = names.find((f) => pat.test(f))
+              if (hit) fixedModules.push(hit)
+            }
+          } catch { /* 读不到目录就不加这一段 */ }
+          for (const f of fixedModules) {
             try {
-              const raw = readFileSync(join(dir, metaFile), 'utf8').replace(/\r\n/g, '\n')
-              parts.push('', '## 模块库（正文·元协调固定）', '', raw)
-            } catch { /* 读不到就算了，不拿别的顶 */ }
+              const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
+              const label = /^00-环境/.test(f) ? '## 环境（固定）' : '## 模块库（正文·元协调固定）'
+              parts.push('', label, '', raw)
+            } catch { /* 单篇读不到就跳过，不拿别的顶 */ }
           }
           // 索引：一行一篇，**全量、不轮转**。它和正文一起注——索引负责「有哪些」，
           // 正文负责「那一篇到底怎么判断」。少哪一样都不对：只有正文不知道还有别的，
