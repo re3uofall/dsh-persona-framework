@@ -1026,12 +1026,13 @@ window.__ModuleLoader__.load({
             : null,
         ].filter(Boolean)),
 
-        section('s8', '附加插件', '随框架一起装的那几个；装不装你说了算。已装的会变灰——那是「已经装好了」，不是坏了；要卸得去插件管理器',
+        section('s8', '附加插件', '随框架一起装的那几个；装不装你说了算。已装的会变灰——那是「已经装好了」，不是坏了；要卸得去插件管理器。人格出现／人格电量各有自己的一页（插件 → 设置），这一栏只管装没装',
           h('div', {},
             optErr ? h('div', { style: T.note }, `读不到附加插件状态：${optErr}`) : null,
             !opt ? h('div', { style: T.note }, '正在读…')
               : h('div', {},
                 h('div', { style: T.note }, `当前配置档：${(opt.profiles || []).filter((x) => x.active).map((x) => x.profile).join('、') || '还没认出来'}`),
+                h('div', { style: T.note }, `已装 ${(opt.rows || []).filter((r) => r.installed).length} / 共 ${(opt.rows || []).length} 个。装好不等于打开——开不开在「插件」那一页，一栏管一件事。`),
                 ...(opt.rows || []).map((row) => h('label', {
                   key: row.key,
                   style: { display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 16px', borderTop: '1px solid var(--dsw-alias-border-l1)' },

@@ -122,6 +122,34 @@ export function apply(ctx, config = {}) {
     return (at > max * 0.6 ? cut.slice(0, at) : cut) + '\n\n（……余下略，完整见人格文件。）'
   }
 
+  // ── 注入配额（电源模式写，这里只读）────────────────────────────────────
+  // 工作区不能靠 process.cwd()（那是 profile 目录），也不能从插件位置往上推；
+  // 只认会话头里的 cwd，拿不到就退回旧行为——全量摆。
+  let sessionWs = ''
+  const quotaPath = () => {
+    const root = sessionWs || String(cfg.workspace || '').trim()
+    return root ? join(root, '.persona-framework', '注入配额.json') : ''
+  }
+  const personalityCap = () => {
+    try {
+      const file = quotaPath()
+      if (!file || !existsSync(file)) return 0
+      const j = JSON.parse(readFileSync(file, 'utf8'))
+      const v = j?.caps?.personality
+      return typeof v === 'number' && Number.isFinite(v) ? v : 0
+    } catch { return 0 }
+  }
+
+  try {
+    ctx.effect(() => ctx.on('agent/pre-step', (payload, next) => {
+      try {
+        const cwd = payload?.agent?.session?.header?.cwd
+        if (typeof cwd === 'string' && cwd) sessionWs = cwd
+      } catch { /* 拿不到就用旧的 */ }
+      return next()
+    }))
+  } catch { /* 没有这个钩子也能用，只是配额读不到 */ }
+
   const buildPersonaText = () => {
     if (!p || cfg.mode === 'off') return ''
     const sig = signature()
@@ -144,8 +172,11 @@ export function apply(ctx, config = {}) {
         ].join('\n'))
       }
       if (cfg.guide) parts.push(GUIDE)
-      const text = parts.join('\n\n').trim()
-      cache = { sig, text }
+      let text = parts.join('\n\n').trim()
+      const cap = personalityCap()
+      if (cap < 0) text = ''
+      else if (cap > 0) text = truncate(text, cap)
+      cache = { sig: sig + '|cap:' + cap, text }
       return text
     } catch (error) {
       warn(error)

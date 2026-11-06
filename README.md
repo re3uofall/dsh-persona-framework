@@ -2,7 +2,7 @@
 
 > 这套框架只回答「该怎么想」，不回答「你是谁」。问法可以换，答案只归本人；它只保证一件事——别把自己砌成一块不会错的碑。
 
-版本 5.18.0 · MIT · 88 个模块 · 装进任何一份人格文件旁边，不覆盖它。
+版本 5.19.0 · MIT · 88 个模块 · 十二个附加插件 · 装进任何一份人格文件旁边，不覆盖它。
 
 ## 它不会碰什么
 
@@ -78,6 +78,22 @@
 | 9 | **现实中介**：池子先过一遍，能对应上唯一确定现实的标「现实存在」，算强出处；剩下的仍有语言确定性，算弱出处 | `framework_program` 的 `mediate` |
 | 10 | **自省**：把自己专属的东西一条条存下来，带时间戳与指纹 | `framework_program` 的 `introspect` |
 | 11 | **出口闸**：两道**必过**检查——框架语言（占位词被当成固定名／认领式／量人式）与语言背叛（绝对化没划范围／大词没锚），**两个都过才放行**；没过是关门，不是提醒。每轮结果写 `.persona-framework/语言闸.json`，连续第几轮没过可查 | `output` 的第 0 道、`frameworkLanguageCheck`、`betrayCheck` |
+
+
+## 附加插件：谁上场、各摆多少（v5.19.0）
+
+十二个附加插件都在 `addons/` 里，各带 `环境提示词.md` 与自己的设置页。
+
+管「谁上场、第几个上场」的是 **人格出现**（`dsh-persona-appear`）：`appear_status()` 看、`appear_mute`／`appear_unmute` 开关、`appear_order(section, 数)` 排先后、`appear_inject(文字, 分钟)` 临时摆一段。实时环境那一行固定带着这几个名字，不用翻文档。
+
+管「每样摆多少」的是 **人格电量**（`dsh-persona-energy`）：照电脑那套分 `high` 高性能／`balanced` 平衡／`saver` 节能／`ultra` 超长续航，`auto` 跟着电量档自己换（full→high、normal→balanced、slim→saver、minimal→ultra）。换档用 `energy_mode("saver")`，只查用 `energy_mode()`。
+
+两边不互相 import，只共用两份文件：
+
+- `.persona-framework/注入配额.json`（energy 写）：`{mode, effective, level, caps:{personality, framework, moduleIndex, moduleBody, memoryShort, memoryLong, live}}`，`0` = 不限、负数 = 这一份不摆、正数 = 最多多少字。
+- 读它的是框架插件（框架正文／模块索引／模块正文）、记忆插件（短期／长期／实时）、人格自学（人格文件）。
+
+读不到就全量，谁也不许因此坏掉——这是「防止耦合」那条的具体做法：文件当契约，不当依赖。
 
 ## 模块 → 功能（正在写）
 
@@ -485,3 +501,5 @@ node make-manifest.mjs
 
 - 2026-11-03　5.18.0：更新指南补三节——写程序的四条外部规矩、记忆结构八件套的实现方式、钩子触发器（总指南「三之二」加了第五档）。只改文档，不抬号。
 - 2026-11-02　5.18.0：模块库统一格式；触发器分档（调用／定时／事件／实时）；框架语言必过检查每次注入都跑；设置页附加插件那一栏改成扫 `addons/`，不写死个数。
+
+- 2026-11-06　5.19.0：新增 `dsh-persona-energy`（电源四档 + token 真账 + 五条不许省）与 `dsh-persona-gradient`（四项指标报数）、`dsh-persona-freedom`（固定事／弹性事／免打扰）。框架正文、模块索引、模块正文、短期／长期／实时记忆、人格文件都开始读 `.persona-framework/注入配额.json`——读不到就全量。附加插件补 `locale/en.json`（只有 zh 时设置页会退回裸包名）。

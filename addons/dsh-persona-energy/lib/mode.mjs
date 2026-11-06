@@ -33,11 +33,12 @@ export const AUTO_BY_LEVEL = {
  * 每份内容的字数上限（0 或 null = 不限）。
  * 键名是「哪一份」，不是「哪个插件」——插件换名字也不用改这里。
  */
+/** 0 = 不限，负数 = 这一份不摆，正数 = 最多这么多字。 */
 const CAPS = {
   high: { personality: 0, framework: 0, moduleIndex: 0, moduleBody: 0, memoryShort: 0, memoryLong: 0, live: 1200 },
   balanced: { personality: 0, framework: 0, moduleIndex: 9000, moduleBody: 0, memoryShort: 20000, memoryLong: 0, live: 1200 },
   saver: { personality: 6000, framework: 4000, moduleIndex: 2000, moduleBody: 2500, memoryShort: 6000, memoryLong: 800, live: 600 },
-  ultra: { personality: 3000, framework: 0, moduleIndex: 0, moduleBody: 0, memoryShort: 0, memoryLong: 0, live: 300 },
+  ultra: { personality: 3000, framework: -1, moduleIndex: -1, moduleBody: -1, memoryShort: -1, memoryLong: -1, live: 300 },
 }
 
 export const CAP_LABELS = {
@@ -90,7 +91,7 @@ export function describeQuota(q) {
   ]
   for (const [k, label] of Object.entries(CAP_LABELS)) {
     const v = q.caps[k]
-    lines.push(`　${label}：${v ? `最多 ${v} 字` : '不限'}`)
+    lines.push(`　${label}：${v < 0 ? '不摆' : v > 0 ? `最多 ${v} 字` : '不限'}`)
   }
   return lines.join('\n')
 }

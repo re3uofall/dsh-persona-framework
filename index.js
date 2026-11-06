@@ -50,7 +50,7 @@ import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from
 import { IMPLS } from './lib/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '5.18.0'
+const VERSION = '5.19.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 // 插件自带的模块**正文**（85 个）。
 // 原来只有 BUNDLED_MODULES（索引），别人装了插件只能看见目录、取不到内容——
@@ -431,6 +431,29 @@ export function apply(ctx, config = {}) {
   const wsRoot = () => String(cfg.workspace || '').trim() || CFG_WORKSPACE || (() => {
     try { return ctx?.get?.('workingDirectory')?.defaultDirectory || process.cwd() } catch { return process.cwd() }
   })()
+
+  // ── 注入配额：只看一份文件，不认哪个插件写的 ──────────────────────────
+  // 由 dsh-persona-energy 的电源模式写：{caps:{personality, framework, moduleIndex, moduleBody, ...}}
+  // 0 = 不限，负数 = 不摆，正数 = 最多这么多字。读不到就当没这回事，全量照旧。
+  const quotaCaps = () => {
+    try {
+      const file = join(wsRoot(), '.persona-framework', '注入配额.json')
+      if (!existsSync(file)) return {}
+      const j = JSON.parse(readFileSync(file, 'utf8'))
+      return (j && typeof j === 'object' && j.caps && typeof j.caps === 'object') ? j.caps : {}
+    } catch { return {} }
+  }
+  const capOf = (key) => {
+    const v = quotaCaps()[key]
+    return typeof v === 'number' && Number.isFinite(v) ? v : 0
+  }
+  /** 按配额裁一段；负数是「不摆」，返回空串。 */
+  const applyCap = (text, key, fallback) => {
+    const v = capOf(key)
+    if (v < 0) return ''
+    const limit = v > 0 ? (fallback > 0 ? Math.min(fallback, v) : v) : fallback
+    return limit > 0 ? truncate(text, limit) : text
+  }
   let skeletonDone = null
   try {
     skeletonDone = ensureWorkspace(wsRoot(), { personalityFile: cfg.personalityFile, warn })
@@ -784,7 +807,8 @@ export function apply(ctx, config = {}) {
         const aiText = loadAi()
         if (aiText) body = aiText
       }
-      body = truncate(body, cfg.maxChars)
+      body = applyCap(body, 'framework', cfg.maxChars)
+      if (!body) return meta
       const parts = [
         '## 人格框架',
         '',
@@ -798,7 +822,8 @@ export function apply(ctx, config = {}) {
         const mod = loadModules()
         if (mod) {
           const shaped = cfg.preprocess ? compactIndex(mod, cfg.maxModulesChars) : mod
-          parts.push('', '## 模块库（索引）', '', truncate(shaped, cfg.maxModulesChars))
+          const idx = applyCap(shaped, 'moduleIndex', cfg.maxModulesChars)
+          if (idx) parts.push('', '## 模块库（索引）', '', idx)
         }
       } else if (cfg.includeModules === 'body') {
         // 正文注入：**整篇整篇地读**，一次读几篇由「今天还剩多少篇」定，不按字数。
@@ -925,8 +950,15 @@ export function apply(ctx, config = {}) {
               try { writeFileSync(doseFile, JSON.stringify({ all: false, at: new Date().toISOString() }, null, 2), 'utf8') }
               catch { /* 清不掉标记就下一轮再清；只会多读一遍，不会漏 */ }
             }
-            parts.push('', '## 模块库（正文）', '')
-            parts.push(got.join('\n\n'))
+            const bodyCap = capOf('moduleBody')
+            const bodyText = bodyCap < 0
+              ? ''
+              : (bodyCap > 0 ? got.map((t) => truncate(t, bodyCap)).join('\n\n') : got.join('\n\n'))
+            if (bodyText) {
+              parts.push('', '## 模块库（正文）', '')
+              parts.push(bodyText)
+              if (bodyCap > 0) parts.push('', `（电源模式把每篇截到 ${bodyCap} 字。要全文：\`framework_view module=编号\`。）`)
+            }
             const doneCount = nextDayRead.length
             parts.push('', `（本轮读 ${got.length} 篇：${bare(picked[0])} → ${bare(picked[got.length - 1])}｜`
               + `共 ${total} 篇、本轮 ${chars} 字。今天第 ${roundsToday + 1} 轮，今天已过 ${doneCount}/${total} 篇`
