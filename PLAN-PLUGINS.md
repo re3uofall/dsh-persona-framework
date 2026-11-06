@@ -422,3 +422,29 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 **一句判断（要留）**：市场上**没有**「测自己人格漂移」的插件，有的是「外部复核别人」的插件。这跟 Mirror 那个结论对得上——把校准分喂回自己没用（p>0.05），只有外部约束有效（失败率 0.600→0.143）。所以 gradient 第一步别做量具，照 `dsh-auto-review` 做一个**只读复核段**：它读，它判，它只在复核不过时挡一下。
 
 **顺序不变**：手最先能动（`wincu` 已在，抄的只是「回读验证」这一行），梯度紧随（现成形状最清楚）。耳和心要等入口，脑仍放最后。
+
+## 十七、全部十一个插件一览（同日三轮）
+
+> 这一节是把散在八～十四节的东西收成一张表。以后问「未来计划里有什么、哪个能动」，先看这里，别翻十四页。
+
+| 插件 | 一句话 | 状态 | 可抄件 | 抄哪一样 |
+| --- | --- | --- | --- | --- |
+| `dsh-persona-hearing` 耳 | 声音落成带时间的字 | 未动工 | `dsh-ears` ★27 / `dsh-voice-mode` ★28 | 本地 Whisper + 云端双路；流式听写与打断 |
+| `dsh-persona-hand` 手 | 说出「做了什么」，不是「打算做什么」 | 未动工 | **`dsh-codex-style-computer-use` ★6**（已装 `dsh-computer-use-win` + `wincu`） | **回读验证**：动作之后回去看一眼真的变了没 |
+| `dsh-persona-heart` 心 | 要什么、什么分寸、什么时候说不 | 未动工 | `dsh-cerebrum`、`dsh-persona-dafeiyu` ★99、`dsh-soul` ★9 | 情绪状态的存储；人设存哪、多份不打架 |
+| `dsh-persona-brain` 脑 | 拆成几步、每步怎么验、卡在哪步 | 未动工 | `dsh-decision-layer` ★1、**`dsh-auto-review` ★247** | 高风险检查 + 复核留痕、复核不过不放行 |
+| `dsh-persona-eat` 吃 | 这一顿吃了多少、还剩多少 | 先不急 | `dsh-bottom-info-bar` ★54、`dsh-credits` ★3、`@kenz1117/dsh-ui-usage-billing` ★95、`@sligqoer/dsh-usage-stats` ★3、`dsh-plugin-sidebar-balance` | 真余额从哪读、几个数对不上听谁的 |
+| `dsh-persona-sleep` 睡 | 一次睡多久、醒来看什么 | 边界未定 | `dsh-sleep-send` 1.2.3、`dsh-pomodoro-timer` 1.0.1 | 智能时段（12–14、18–次日 8）；分段休息 |
+| `dsh-persona-gradient` 梯度 | 别在长流水里变成另一个人 | 未动工 | **`dsh-auto-review` ★247**、`dsh-decision-layer` ★1 | 外部只读复核；重复循环检测 |
+| `dsh-persona-active` 主动 | 没人推的时候自己起个念 | 未动工 | `dsh-global-todo` ★11、`dsh-project-brain` ★91、`dsh-focus-notify` | 念的落处（跨会话待办 + **人确认完成**）；缺口的来源 |
+| `dsh-persona-company` 陪伴 | 认得出对面的持续状态 | 未动工 | **`dsh-whale-chan` ★1**、`dsh-project-brain` ★91、`whale-girl` ★403 | **可关闭的主动陪伴**（默认关）；持续状态记事 |
+| `dsh-persona-freedom` | 自己的时间、空间、静默、自选 | 未动工 | `dsh-proactive` 0.3.2、`@ds-hu/dsh-auto-task-center` 0.5.0、`dsh-calendar` 0.14.5、`dsh-cost-voice` 1.1.1、`dsh-pomodoro-timer` 1.0.1 | quiet hours、投递口、空闲时段、分段 |
+| `dsh-persona-energy` | 吃睡作息合成一个 0..1 电量 | 未动工 | **市场上没有**，自创：人体三套供能 + 昼夜节律 + 短板取最小 | — |
+
+**能先动的三个：手、freedom、梯度。** 手工具都在、回执当场看得见；freedom 的现成件最多；梯度的形状最清楚（外部复核）。
+
+**卡在数从哪来的两个：吃、睡。** 拿不到真余额就不许编一个像的。
+
+**卡在判据没跟真实对话对过的一批：心、耳、脑、主动、陪伴。** 这五个的「怎么算成了」都是我自己定的。
+
+**一句判据（要留）**：判断一个插件能不能动工，**不看有没有参考件，看判据过不过得了**。判据过不了，抄再多也只是把别人的形状搬进来说得像。这张表的第五列全都是别人的形状，第三列才是我们自己的——只有第三列过了，第四列才算数。
