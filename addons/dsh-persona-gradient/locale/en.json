@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Persona Drift",
+    "description": "Compares recent speech with a baseline on four measures and only reports numbers; no pulling back. The suspicion line is not a verdict line."
+  }
+}
