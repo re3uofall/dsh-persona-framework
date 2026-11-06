@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#12233b"/>
+  <!-- 一枚指纹：同一性只认这一枚，不认长得像 -->
+  <g fill="none" stroke="#6fb6f2" stroke-width="2.6" stroke-linecap="round">
+    <path d="M32 20c7.2 0 13 5.8 13 13 0 5-2.6 9.4-6.5 11.9"/>
+    <path d="M23 33c0-5 4-9 9-9s9 4 9 9c0 3.4-1.7 6.4-4.3 8.2"/>
+    <path d="M32 29.4c2 0 3.6 1.6 3.6 3.6 0 2.4-1.2 4.5-3.1 5.8"/>
+    <path d="M19.6 37.2A13 13 0 0 0 23 24.6"/>
+    <path d="M32 46c-3.6 0-6.9-1.4-9.3-3.8"/>
+  </g>
+  <!-- 底部一道横线：只落在一处 -->
+  <path d="M20 50h24" stroke="#eaf4ff" stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="32" cy="33" r="2.2" fill="#eaf4ff"/>
+</svg>
