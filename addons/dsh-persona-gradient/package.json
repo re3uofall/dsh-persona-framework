@@ -1,0 +1,32 @@
+{
+  "name": "dsh-persona-gradient",
+  "version": "0.1.0",
+  "private": true,
+  "description": "人格漂移的量具：量句长、语气词、动作括号、认领与底线词，跟基线比，只报数不拉回",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "环境提示词.md",
+    "selfcheck.mjs"
+  ],
+  "scripts": {
+    "selfcheck": "node selfcheck.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
