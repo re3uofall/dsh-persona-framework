@@ -191,7 +191,7 @@ export function apply(ctx, config = {}) {
   if (p) {
     ctx.effect(() => ctx.systemPrompt.section({
       name: '实时环境:grow',
-      order: 10,
+      order: 20,  // 20：原来是 10，和 persona-memory:now 撞号，靠注册顺序才排在后面
       interpolate: false,   // 人格里写了 `{{` 也不该把整个提示词炸掉
       text: buildPersonaText,
     }))
