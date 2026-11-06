@@ -13,8 +13,8 @@ import {
 } from './lib/store.mjs'
 import { extractCandidates } from './lib/learn.mjs'
 import {
-  analyze, duplicateLines, parseSections, pickSection, pointerFor, rebuildDigest, removeSection,
-  renderReport, replaceOnce,
+  analyze, appendSection, diffSummary, duplicateLines, parseSections, pickSection, pointerFor,
+  rebuildDigest, removeSection, renameSection, renderDiff, renderReport, replaceOnce, splitSection,
 } from './lib/tidy.mjs'
 
 const cfg = { autoAdopt: true, promoteAfter: 2, maxTraits: 40 }
@@ -178,6 +178,32 @@ ok('renderReport 会说出「只搬不删」', () => {
 })
 ok('pointerFor 说明去了哪，不假装没发生过', () => {
   assert.ok(pointerFor('二、旧', 'characters/_archive/x.md').includes('_archive/x.md'))
+})
+
+
+ok('appendSection 在末尾加一段，不用经过补丁', () => {
+  const r = appendSection(SAMPLE, '四、新加的', '这一段的正文。')
+  assert.ok(r.text.endsWith('## 四、新加的\n\n这一段的正文。\n'))
+  assert.ok(analyze(r.text).sections.length === 4)
+  assert.ok(appendSection(SAMPLE, '', 'x').error)
+})
+ok('renameSection 改标题，重名不改', () => {
+  const r = renameSection(SAMPLE, '三层', '四层')
+  assert.ok(r.text.includes('## 四层'))
+  assert.ok(renameSection(SAMPLE, '三层', '一、说话').error)
+  assert.ok(renameSection(SAMPLE, '没有这段', 'x').error)
+})
+ok('splitSection 按某句切开，切点找不到就不动', () => {
+  const r = splitSection(SAMPLE, '三层', '劲闸标嘴。', '三之二、四层')
+  assert.ok(r.text.includes('## 三之二、四层'))
+  assert.ok(r.error === undefined)
+  assert.ok(splitSection(SAMPLE, '三层', '找不到这句', 'x').error)
+})
+ok('diffSummary 只报数，不印全文', () => {
+  const d = diffSummary('a\nb\nc', 'a\nc\nd')
+  assert.equal(d.added, 1)
+  assert.equal(d.removed, 1)
+  assert.ok(renderDiff(d).includes('+1 / -1'))
 })
 
 try {

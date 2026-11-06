@@ -14,7 +14,7 @@
  * 配置全部走 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
   appendEvidence, clip, listVersions, mutatePatch, normalize, nowIso, pathsFor,
@@ -22,8 +22,8 @@ import {
 } from './lib/store.mjs'
 import { extractCandidates, extractText } from './lib/learn.mjs'
 import {
-  analyze, archiveBlock, parseSections, pickSection, pointerFor, rebuildDigest, removeSection,
-  renderReport, replaceOnce,
+  analyze, appendSection, archiveBlock, diffSummary, parseSections, pickSection, pointerFor,
+  rebuildDigest, removeSection, renderDiff, renderReport, renameSection, replaceOnce, splitSection,
 } from './lib/tidy.mjs'
 
 export const name = 'persona-grow'
@@ -424,6 +424,132 @@ export function apply(ctx, config = {}) {
       writeBaseFile(text)
       return `「${r.title}」（${r.moved.length} 字）已搬到 ${file.replace(/\\/g, '/')}。`
         + `\n人格文件现在 ${text.length} 字。${bak ? `改前备份：${bak.replace(/\\/g, '/')}` : ''}`
+    },
+  })
+
+  register({
+    name: 'grow_add_section',
+    description: '在人格文件末尾加一段（直接进人格文件，不经过补丁）。传 apply:true 才写，先留 .bak。',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '新段的标题（不带 ##）' },
+        body: { type: 'string', description: '这一段的正文' },
+        apply: { type: 'boolean', description: 'true 才真写；省掉只看预览' },
+      },
+      required: ['title', 'body'],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const miss = needBase()
+      if (miss) return miss
+      const r = appendSection(readBaseRaw(), args?.title, args?.body)
+      if (r.error) return r.error
+      const d = diffSummary(readBaseRaw(), r.text)
+      if (args?.apply !== true) return `会加一段「${args.title}」。${renderDiff(d)}\n\n要真写：grow_add_section({title, body, apply:true})`
+      const bak = backupOnce()
+      writeBaseFile(r.text)
+      return `加好了「${args.title}」。${renderDiff(d)}${bak ? `\n改前备份：${bak.replace(/\\/g, '/')}` : ''}`
+    },
+  })
+
+  register({
+    name: 'grow_rename',
+    description: '改人格文件里某一段的标题（新标题重名就不改）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        heading: { type: 'string', description: '原标题片段或编号' },
+        next_title: { type: 'string', description: '新标题（不带 ##）' },
+      },
+      required: ['heading', 'next_title'],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const miss = needBase()
+      if (miss) return miss
+      const raw = readBaseRaw()
+      const r = renameSection(raw, args?.heading, args?.next_title)
+      if (r.error) return r.error
+      const bak = backupOnce()
+      writeBaseFile(r.text)
+      return `「${r.old}」→「${r.title}」。${renderDiff(diffSummary(raw, r.text))}${bak ? `\n改前备份：${bak.replace(/\\/g, '/')}` : ''}`
+    },
+  })
+
+  register({
+    name: 'grow_split',
+    description: '把一段按某句话切成两段（那句话与它后面的归第二段）。长段拆开用。',
+    parameters: {
+      type: 'object',
+      properties: {
+        heading: { type: 'string', description: '要拆的那一段（片段或编号）' },
+        marker: { type: 'string', description: '从哪句话开始算第二段' },
+        next_title: { type: 'string', description: '第二段的标题' },
+      },
+      required: ['heading', 'marker', 'next_title'],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const miss = needBase()
+      if (miss) return miss
+      const raw = readBaseRaw()
+      const r = splitSection(raw, args?.heading, args?.marker, args?.next_title)
+      if (r.error) return r.error
+      const bak = backupOnce()
+      writeBaseFile(r.text)
+      return `「${r.first}」拆成「${r.first}」+「${r.second}」。${renderDiff(diffSummary(raw, r.text))}${bak ? `\n改前备份：${bak.replace(/\\/g, '/')}` : ''}`
+    },
+  })
+
+  register({
+    name: 'grow_diff',
+    description: '看人格文件跟最近一次备份差多少（只给数，不印全文）。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    run: () => {
+      const miss = needBase()
+      if (miss) return miss
+      const dir = dirname(p.base)
+      const name = p.base.split(/[\\/]/).pop()
+      let latest = ''
+      try {
+        latest = (existsSync(dir) ? readdirSync(dir) : [])
+          .filter((f) => f.startsWith(`${name}.bak-`)).sort().pop() || ''
+      } catch { latest = '' }
+      if (!latest) return '一次备份都没有，没得比。'
+      const before = readFileSync(join(dir, latest), 'utf8')
+      const after = readBaseRaw()
+      return `跟 ${latest.replace(/\\/g, '/')} 比：${renderDiff(diffSummary(before, after))}`
+    },
+  })
+
+  register({
+    name: 'grow_restore',
+    description: '从某次 .bak 恢复人格文件（不给就列有哪些备份）。恢复前会先把当前这版另存一份。',
+    parameters: {
+      type: 'object',
+      properties: { backup: { type: 'string', description: '备份文件名或时间戳片段；省掉只列出' } },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const miss = needBase()
+      if (miss) return miss
+      const dir = dirname(p.base)
+      const name = p.base.split(/[\\/]/).pop()
+      let list = []
+      try {
+        list = (existsSync(dir) ? readdirSync(dir) : [])
+          .filter((f) => f.startsWith(`${name}.bak-`)).sort()
+      } catch { list = [] }
+      if (!list.length) return '一次备份都没有。'
+      const key = String(args?.backup ?? '').trim()
+      if (!key) return '有这些备份（新的在后）：\n' + list.map((f) => `　${f}`).join('\n') + '\n\n要恢复：grow_restore({backup:"<文件名或片段>"})'
+      const hit = list.filter((f) => f === key || f.includes(key))
+      if (!hit.length) return `没有含「${key}」的备份。`
+      if (hit.length > 1) return `「${key}」对上好几份，说细一点：\n` + hit.map((f) => `　${f}`).join('\n')
+      const bak = backupOnce()
+      writeBaseFile(readFileSync(join(dir, hit[0]), 'utf8'))
+      return `从 ${hit[0]} 恢复了。${bak ? `\n恢复前那一版另存：${bak.replace(/\\/g, '/')}` : ''}`
     },
   })
 

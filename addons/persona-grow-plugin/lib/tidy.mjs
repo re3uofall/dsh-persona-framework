@@ -161,3 +161,63 @@ export function replaceOnce(md, from, to) {
 export function archiveBlock(title, body, at = new Date().toISOString()) {
   return `\n\n---\n\n<!-- 从人格文件搬来 · ${at} -->\n\n${body}\n`
 }
+
+/** 在末尾加一段（不用经过补丁，直接进人格文件）。 */
+export function appendSection(md, title, body) {
+  const t = String(title ?? '').trim()
+  if (!t) return { error: '新的一段要有标题。' }
+  const text = String(md ?? '').replace(/\s+$/, '')
+  return { text: `${text}\n\n## ${t}\n\n${String(body ?? '').trim()}\n` }
+}
+
+/** 改一段的标题；新标题重名就不改。 */
+export function renameSection(md, key, next) {
+  const pick = pickSection(md, key)
+  if (pick.error) return pick
+  const t = String(next ?? '').trim()
+  if (!t) return { error: '新标题不能是空的。' }
+  const sections = parseSections(md)
+  if (sections.some((s) => s.title === t && s.i !== pick.section.i)) return { error: `已经有一段叫「${t}」了。` }
+  const from = `## ${pick.section.title}`
+  const text = String(md ?? '')
+  const at = text.indexOf(from)
+  if (at < 0) return { error: '标题在原文里对不上，重跑一次 grow_report。' }
+  return { text: text.slice(0, at) + `## ${t}` + text.slice(at + from.length), title: t, old: pick.section.title }
+}
+
+/** 把一段按标记切成两段（标记那行归第二段）。 */
+export function splitSection(md, key, marker, nextTitle) {
+  const pick = pickSection(md, key)
+  if (pick.error) return pick
+  const m = String(marker ?? '').trim()
+  if (!m) return { error: '要说按哪句切（marker）。' }
+  const t = String(nextTitle ?? '').trim()
+  if (!t) return { error: '第二段要有标题（next_title）。' }
+  const body = pick.section.text
+  const at = body.indexOf(m)
+  if (at < 0) return { error: '这一段里找不到那句，什么都没切。' }
+  const head = body.slice(0, at).replace(/\s+$/, '')
+  const tail = body.slice(at).replace(/\s+$/, '')
+  const text = String(md ?? '')
+  const pos = text.indexOf(body)
+  if (pos < 0) return { error: '这一段在原文里对不上。' }
+  const merged = `${head}\n\n## ${t}\n\n${tail}`
+  return { text: text.slice(0, pos) + merged + text.slice(pos + body.length), first: pick.section.title, second: t }
+}
+
+/** 两份文本差多少：只给数，不印全文。 */
+export function diffSummary(before, after) {
+  const a = String(before ?? '').split(/\r?\n/)
+  const b = String(after ?? '').split(/\r?\n/)
+  const setA = new Set(a.map((l) => l.trim()).filter(Boolean))
+  const setB = new Set(b.map((l) => l.trim()).filter(Boolean))
+  let added = 0, removed = 0
+  for (const l of setB) if (!setA.has(l)) added += 1
+  for (const l of setA) if (!setB.has(l)) removed += 1
+  return { added, removed, charsBefore: String(before ?? '').length, charsAfter: String(after ?? '').length }
+}
+
+export function renderDiff(d) {
+  const delta = d.charsAfter - d.charsBefore
+  return `行：+${d.added} / -${d.removed}　字：${d.charsBefore} → ${d.charsAfter}（${delta >= 0 ? '+' : ''}${delta}）`
+}
