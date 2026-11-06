@@ -1,3 +1,5 @@
+import { apply as gateApply, noteStep as gateNoteStep, ANCHOR as GATE_ANCHOR } from './lib/gate.mjs'
+const __noH1 = (s) => String(s || '').replace(/^\s*#\s+[^\n]*\r?\n+/, '')
 /**
  * dsh-persona-framework —— host 半端
  * ============================================================================
@@ -790,7 +792,7 @@ export function apply(ctx, config = {}) {
         '这套框架不写你是谁，只写「一个人格该怎么构成、怎么长、怎么说清楚」。它是问法，不是答案；'
           + '下面若有和你具体人格冲突的地方，以具体人格为准——只有「边界」那一条例外（边界压内容）。',
         '',
-        body,
+        __noH1(body),
       ]
       if (cfg.includeModules === 'index') {
         const mod = loadModules()
@@ -891,7 +893,7 @@ export function apply(ctx, config = {}) {
           for (const f of fixedModules) {
             try {
               const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
-              parts.push('', '## 注入（固定）', '', raw)
+              parts.push('', '## 注入（固定）', '', __noH1(raw))
             } catch { /* 单篇读不到就跳过，不拿别的顶 */ }
           }
           // 索引：一行一篇，**全量、不轮转**。它和正文一起注——索引负责「有哪些」，
@@ -1303,11 +1305,17 @@ export function apply(ctx, config = {}) {
     }
   }
 
+  // 记步：自己那一份 gate 得自己写、自己读，才算不依赖别人。
+  // 不记的话 gateSkip() 永远说「第一步」，人格每步都全量注一遍——省 token 就白做了。
+  try {
+    ctx.on('agent/pre-step', (payload, next) => { gateNoteStep(payload); return next() })
+  } catch { /* 没有这个钩子也能用：退化成每步全量，不坏 */ }
+
   ctx.effect(() => ctx.systemPrompt.section({
     name: 'persona:framework',
     order: cfg.order,
     interpolate: false,
-    text: buildText,
+    text: () => gateApply(buildText, GATE_ANCHOR),
   }))
 
   // ── 工具 ────────────────────────────────────────────────────────────────────

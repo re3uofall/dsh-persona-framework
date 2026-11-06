@@ -1,3 +1,4 @@
+import { noteStep, snapshot } from './lib/gate.mjs'
 /**
  * dsh-persona-appear —— 人格出现的总闸（host 半端）
  * ============================================================================
@@ -33,7 +34,7 @@ import {
 } from './lib/live.mjs'
 
 export const name = 'persona-appear'
-export const version = '0.3.0'
+export const version = '0.4.0'
 export const inject = ['tools', 'systemPrompt']
 
 const DEFAULTS = {
@@ -333,6 +334,9 @@ export function apply(ctx, config = {}) {
       return n ? `撤了 ${n} 条。` : '本来就没有。'
     },
   })
+
+  // 记「这一轮第几步」——全量注入只在第一步，后面只留锚点
+  ctx.on('agent/pre-step', (payload, next) => { noteStep(payload); return next() })
 
   return { statePath: p }
 }
