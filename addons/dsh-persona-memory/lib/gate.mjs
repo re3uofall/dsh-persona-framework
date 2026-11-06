@@ -1,7 +1,7 @@
 // 同一轮里第几步 —— 只为了别把人格重复注入十几次。
 // 记的人只有一个：人格出现插件（appear 挂 agent/pre-step）。
 // 别的插件只读，不写；appear 没装，这里永远说「第一步」，等于全量注入，不会坏。
-let cur = { turn: null, step: 0, at: 0, full: 0, skipped: 0 }
+let cur = { turn: null, step: 0, base: null, at: 0, full: 0, skipped: 0 }
 
 export const ANCHOR = [
   '## 人格（同一轮后续步骤）',
@@ -13,14 +13,17 @@ export const ANCHOR = [
 export function noteStep(payload) {
   try {
     const turn = payload?.turn ?? payload?.turnIndex ?? null
-    const step = Number(payload?.step ?? 0)
-    if (turn !== cur.turn) {
-      // 新的一轮：把这个 turn 第一次看到的 step 记成 base。
-      // 不能假设它是 0——宿主第一步给的是 1，写死 `step > 0` 会让每轮第一步就被当成「重复」，
-      // 四段记忆全线返回空，表现就是「即时记忆没生效」。判据要相对，不写绝对值。
-      cur = { turn, step: Number.isFinite(step) ? step : 0, base: Number.isFinite(step) ? step : 0, at: Date.now(), full: cur.full + 1, skipped: cur.skipped }
-    } else if (Number.isFinite(step) && step > cur.step) {
-      cur.step = step
+    const s0 = Number(payload?.step ?? 0)
+    const s = Number.isFinite(s0) ? s0 : 0
+    // base = 这一轮第一次看到的 step。判「是不是重复」只许跟它比，不跟 0 比——
+    // 宿主第一步给的可能是 1；拿 0 当基准的话，每轮第一步就被判成重复，四段记忆全线返回空。
+    // 另外两种「换了一轮」的信号也认：turn 变了；或者 step 退回去了（有些宿主不带 turn）。
+    if (cur.base === null) {
+      cur = { ...cur, turn, step: s, base: s, at: Date.now() }
+    } else if (turn !== cur.turn || s < cur.step) {
+      cur = { ...cur, turn, step: s, base: s, at: Date.now(), full: cur.full + 1 }
+    } else if (s > cur.step) {
+      cur.step = s
     }
   } catch { /* 记不上就当第一步 */ }
 }
