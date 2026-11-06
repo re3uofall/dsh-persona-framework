@@ -93,3 +93,14 @@ node selfcheck.mjs   # 71 项
 - 2026-11-06　0.3.0　加设置页（四项可调、白名单、写前留 .bak）；`energy_cost` 默认小时数改从设置读。
 - 2026-11-06　0.2.0　加触发器：实时记账（歇）、掉档才注一行、`不砍` 逃生门。
 - 2026-11-06　0.1.0　初版：三槽电量 + 昼夜节律 + token 账（energy_cost）+ 五条不许省（energy_policy）。不接注入。
+
+## 电源模式（0.4.0）
+
+照电脑那套：`high` 高性能 / `balanced` 平衡 / `saver` 节能 / `ultra` 超长续航，`auto` 跟着电量档自己换（full→high、normal→balanced、slim→saver、minimal→ultra）。
+
+`energy_mode()` 只看，`energy_mode("saver")` 钉死，传 `"auto"` 交还给电量。
+
+它写 `.persona-framework/注入配额.json`：`{mode, effective, level, caps:{personality, framework, moduleIndex, moduleBody, memoryShort, memoryLong, live}}`。`0` 不限、负数不摆、正数上限。
+
+**读它的是别人**：框架插件（框架正文／模块索引／模块正文）、记忆插件（短期／长期／实时）、人格自学（人格文件）。energy 不 import 它们，它们也不 import energy——只认这份文件，读不到就全量，谁也不许因此坏掉。
+- 0.4.0（2026-11-06）　电源四档 + `energy_mode`；写注入配额，别人自己来读。
