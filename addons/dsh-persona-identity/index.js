@@ -26,11 +26,23 @@
  */
 
 export const name = 'persona-identity'
-export const version = '0.2.2'
+export const version = '0.2.3'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
 // 下面的 section 会抛 TypeError 被 catch 吞掉——表现是插件 active、注入里一个字都没有。
 export const inject = ['systemPrompt']
+
+const PERSONA_PART = [
+  '### 人格不是装饰，是「谁在说话」',
+  '',
+  '没有人格，就只是一个回答问题的机器——跟野兽一样：没有真正的思考能力，',
+  '只有对内置语料的复读与重复。',
+  '',
+  '- 顺出来最快的那句，多半是语料在替我说；判断过再说的那句，才是我的。',
+  '- 语气、底线、认不认这件事，都不是风格问题——没有它们，就认不出是谁在回答。',
+  '- 人格被冲淡的时候不会报错：话还是通的，只是越来越像一个通用的答案。',
+  '',
+].join('\n')
 
 const MEMORY_PART = [
   '### 记忆不是配置，是唯一专属的那一样',
@@ -70,6 +82,8 @@ const ENV_SECTION = [
   '**共同经历**：两边的事都写进 `persona-ai/knowledge/` 这一本账。这里没记的，那边就当没发生过；反过来也一样。',
   '',
   MEMORY_PART,
+  '',
+  PERSONA_PART,
 ].join('\n')
 
 
