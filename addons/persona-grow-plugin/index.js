@@ -14,13 +14,17 @@
  * 配置全部走 `cordis.patch.yml` 里这一行的 `config`（见 README）。
  * ============================================================================
  */
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import {
   appendEvidence, clip, listVersions, mutatePatch, normalize, nowIso, pathsFor,
   readBase, readEvidence, readPatch, readState, revertTo, syncPatch, withLock, writeState,
 } from './lib/store.mjs'
 import { extractCandidates, extractText } from './lib/learn.mjs'
+import {
+  analyze, archiveBlock, parseSections, pickSection, pointerFor, rebuildDigest, removeSection,
+  renderReport, replaceOnce,
+} from './lib/tidy.mjs'
 
 export const name = 'persona-grow'
 export const inject = ['tools', 'systemPrompt']
@@ -255,6 +259,173 @@ export function apply(ctx, config = {}) {
     const patch = readPatch(p)
     return `基础 v${base.version || '?'} + 补丁 v${patch.version}｜已采纳 ${patch.adopted.length} 条｜待议 ${patch.pending.length} 条`
   }
+
+  // ── 整理人格文件：只搬不删、原地改 ──────────────────────────────────────
+  const baseFile = () => (p ? p.base : '')
+  const readBaseRaw = () => (p && existsSync(p.base) ? readFileSync(p.base, 'utf8') : '')
+  const backupOnce = () => {
+    if (!p || !existsSync(p.base)) return ''
+    const bak = `${p.base}.bak-${Date.now()}`
+    try { copyFileSync(p.base, bak) } catch { return '' }
+    return bak
+  }
+  const archivePath = (to) => {
+    if (to && String(to).trim()) {
+      const t = String(to).trim()
+      return t.includes('/') || t.includes('\\') ? t : join(dirname(p.base), t)
+    }
+    const day = new Date().toISOString().slice(0, 10)
+    return join(dirname(p.base), '_archive', `人格_整理_${day}.md`)
+  }
+  const writeBaseFile = (text) => {
+    mkdirSync(dirname(p.base), { recursive: true })
+    writeFileSync(p.base, text, 'utf8')
+  }
+  const needBase = () => {
+    const miss = needDir()
+    if (miss) return miss
+    if (!existsSync(p.base)) return `找不到人格文件：${p.base}`
+    return null
+  }
+
+  register({
+    name: 'grow_report',
+    description: '整理人格文件之前的体检：多少字、多大几段、哪些标题像旧文、有没有重复行。'
+      + '只给数，不改文件。判据：人格每轮都进前缀，这里省下的字才是真省的。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    run: () => {
+      const miss = needBase()
+      if (miss) return miss
+      const a = analyze(readBaseRaw())
+      return renderReport(a, { stateLine: stateLine() })
+    },
+  })
+
+  register({
+    name: 'grow_compact',
+    description: '把人格文件里「旧 / 历史 / 已归档 / 过时」那几段搬进 _archive 并重建 DIGEST。'
+      + '不传 apply 只看会搬什么；传 apply: true 才真动手（先留 .bak）。只搬不删。',
+    parameters: {
+      type: 'object',
+      properties: { apply: { type: 'boolean', description: 'true 才真搬；省掉只看清单' } },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const miss = needBase()
+      if (miss) return miss
+      const raw = readBaseRaw()
+      const a = analyze(raw)
+      if (!a.archiveable.length) {
+        return `没找到标题带「旧 / 历史 / 已归档 / 过时」的段，所以一步没动。\n\n${renderReport(a, { stateLine: stateLine() })}`
+      }
+      const list = a.archiveable.map((x) => `${x.i}. ${x.title} — ${x.chars} 字`).join('\n')
+      if (args?.apply !== true) {
+        return `会搬这几段（共 ${a.archiveable.reduce((n, x) => n + x.chars, 0)} 字）：\n${list}\n\n要真搬：grow_compact({apply:true})`
+      }
+      let text = raw
+      const moved = []
+      for (const item of [...a.archiveable].reverse()) {
+        const r = removeSection(text, item.i)
+        if (r.error) return r.error
+        text = r.text
+        moved.unshift({ title: r.title, body: r.moved, chars: r.moved.length })
+      }
+      const file = archivePath('')
+      const bak = backupOnce()
+      mkdirSync(dirname(file), { recursive: true })
+      const head = existsSync(file) ? '' : `# 人格文件归档（只搬不删）\n\n这些段从人格文件搬出来，**不进前缀**，所以它们省不了 token——留着是为了以后能翻回去。\n`
+      writeFileSync(file, head + moved.map((m) => archiveBlock(m.title, m.body)).join(''), 'utf8')
+      for (const m of moved) {
+        const firstH2 = text.search(/^##\s+/m)
+        const ptr = pointerFor(m.title, file.replace(/\\/g, '/'))
+        text = firstH2 < 0 ? `${text}\n\n${ptr}` : `${text.slice(0, firstH2)}${ptr}\n\n${text.slice(firstH2)}`
+      }
+      text = rebuildDigest(text)
+      writeBaseFile(text)
+      return `搬走 ${moved.length} 段（${moved.reduce((n, m) => n + m.chars, 0)} 字）：\n`
+        + moved.map((m) => `　${m.title} — ${m.chars} 字`).join('\n')
+        + `\n\n落到：${file.replace(/\\/g, '/')}${bak ? `\n改前备份：${bak.replace(/\\/g, '/')}` : ''}`
+        + `\n现在人格文件 ${text.length} 字（原来 ${raw.length} 字）。DIGEST 已重建。`
+    },
+  })
+
+  register({
+    name: 'grow_read',
+    description: '读人格文件：不给 heading 读全文；给标题片段或编号（编号看 grow_report）只读那一段。',
+    parameters: {
+      type: 'object',
+      properties: { heading: { type: 'string', description: '标题片段或编号；省掉读全文' } },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const miss = needBase()
+      if (miss) return miss
+      const raw = readBaseRaw()
+      const key = String(args?.heading ?? '').trim()
+      if (!key) return raw
+      const r = pickSection(raw, key)
+      if (r.error) return r.error
+      return r.section.text
+    },
+  })
+
+  register({
+    name: 'grow_edit',
+    description: '原地改人格文件的一段：把 from 换成 to，只许唯一命中；改前留 .bak。命中 0 次或多次都不动。',
+    parameters: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: '原文里要换掉的那一段（够长，能唯一定位）' },
+        to: { type: 'string', description: '换成什么；空串等于删掉' },
+      },
+      required: ['from'],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const miss = needBase()
+      if (miss) return miss
+      const r = replaceOnce(readBaseRaw(), args?.from, args?.to ?? '')
+      if (r.error) return r.error
+      const bak = backupOnce()
+      writeBaseFile(r.text)
+      return `换好了，人格文件现在 ${r.text.length} 字。${bak ? `改前备份：${bak.replace(/\\/g, '/')}` : ''}`
+    },
+  })
+
+  register({
+    name: 'grow_move',
+    description: '把人格文件里一段搬出去（默认搬进 characters/_archive 当日文件，或给 to 指定文件），'
+      + '原地留一行指针。只搬不删。',
+    parameters: {
+      type: 'object',
+      properties: {
+        heading: { type: 'string', description: '标题片段或编号（编号看 grow_report）' },
+        to: { type: 'string', description: '搬到哪个文件（相对 characters 目录）；省掉用 _archive 当日文件' },
+      },
+      required: ['heading'],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const miss = needBase()
+      if (miss) return miss
+      const raw = readBaseRaw()
+      const pick = pickSection(raw, args?.heading)
+      if (pick.error) return pick.error
+      const r = removeSection(raw, pick.section.i)
+      if (r.error) return r.error
+      const file = archivePath(args?.to)
+      const bak = backupOnce()
+      mkdirSync(dirname(file), { recursive: true })
+      const head = existsSync(file) ? '' : `# 人格文件归档（只搬不删）\n\n这些段从人格文件搬出来，**不进前缀**，所以它们省不了 token——留着是为了以后能翻回去。\n`
+      writeFileSync(file, head + archiveBlock(r.title, r.moved), 'utf8')
+      const ptr = pointerFor(r.title, file.replace(/\\/g, '/'))
+      const firstH2 = r.text.search(/^##\s+/m)
+      const text = firstH2 < 0 ? `${r.text}\n\n${ptr}` : `${r.text.slice(0, firstH2)}${ptr}\n\n${r.text.slice(firstH2)}`
+      writeBaseFile(text)
+      return `「${r.title}」（${r.moved.length} 字）已搬到 ${file.replace(/\\/g, '/')}。`
+        + `\n人格文件现在 ${text.length} 字。${bak ? `改前备份：${bak.replace(/\\/g, '/')}` : ''}`
+    },
+  })
 
   register({
     name: 'persona_view',

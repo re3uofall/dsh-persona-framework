@@ -12,6 +12,10 @@ import {
   revertTo, syncPatch, writeState, readState,
 } from './lib/store.mjs'
 import { extractCandidates } from './lib/learn.mjs'
+import {
+  analyze, duplicateLines, parseSections, pickSection, pointerFor, rebuildDigest, removeSection,
+  renderReport, replaceOnce,
+} from './lib/tidy.mjs'
 
 const cfg = { autoAdopt: true, promoteAfter: 2, maxTraits: 40 }
 const dir = mkdtempSync(join(tmpdir(), 'persona-grow-'))
@@ -114,6 +118,66 @@ ok('从人话里挑候选：只认冲着「你」的长期要求', () => {
   assert.equal(extractCandidates('我喜欢吃鱼').length, 0, '没冲着你，不算')
   assert.equal(extractCandidates('别紧张，我随便看看').length, 0)
   assert.equal(extractCandidates('可以帮我看看这个报错吗').length, 0)
+})
+
+
+// ── tidy：整理人格文件（只搬不删、唯一命中才改） ─────────────────────────────
+const SAMPLE = `# 人格 v1.0
+
+> 说明
+
+## 一、说话
+短句。
+
+## 二、旧的写法（已过时）
+这一整段都该搬走。
+还有第二行。
+
+## 三、三层
+劲闸标嘴。
+`
+ok('parseSections 按 ## 切，且带上 ### 与正文', () => {
+  const secs = parseSections(SAMPLE)
+  assert.equal(secs.length, 3)
+  assert.equal(secs[0].title, '一、说话')
+  assert.ok(secs[1].text.includes('还有第二行'))
+})
+ok('analyze 认得出「已过时」那段可以归档', () => {
+  const a = analyze(SAMPLE)
+  assert.equal(a.archiveable.length, 1)
+  assert.equal(a.archiveable[0].title, '二、旧的写法（已过时）')
+})
+ok('pickSection 按编号／片段都找得到，模糊给候选', () => {
+  assert.equal(pickSection(SAMPLE, '1').section.title, '二、旧的写法（已过时）')
+  assert.equal(pickSection(SAMPLE, '三层').section.i, 2)
+  assert.ok(pickSection(SAMPLE, '旧').section)
+  assert.ok(pickSection(SAMPLE, '没有这段').error)
+})
+ok('removeSection 搬走后留下的是原文的其余部分', () => {
+  const r = removeSection(SAMPLE, 1)
+  assert.ok(!r.text.includes('这一整段都该搬走'))
+  assert.ok(r.text.includes('三层'))
+  assert.ok(r.moved.includes('还有第二行'))
+})
+ok('replaceOnce 只在唯一命中时改', () => {
+  assert.ok(replaceOnce(SAMPLE, '短句。', '短句，别长。').text.includes('短句，别长。'))
+  assert.ok(replaceOnce(SAMPLE, '不存在', 'x').error)
+  assert.ok(replaceOnce('a a', 'a', 'b').error)
+})
+ok('rebuildDigest 只列标题、再跑一次不叠加', () => {
+  const once = rebuildDigest(SAMPLE, '2026-11-06')
+  assert.ok(once.includes('一、说话｜二、旧的写法（已过时）｜三、三层'))
+  assert.equal(rebuildDigest(once, '2026-11-06'), once)
+})
+ok('duplicateLines 只认够长的重复行', () => {
+  const long = '这一行足够长足够长足够长足够长足够长足够长足够长足够长足够长足够长足够长足够长足够长足够长足够长'
+  assert.equal(duplicateLines(`${long}\n${long}\n- 短\n- 短`).length, 1)
+})
+ok('renderReport 会说出「只搬不删」', () => {
+  assert.ok(renderReport(analyze(SAMPLE)).includes('只搬不删'))
+})
+ok('pointerFor 说明去了哪，不假装没发生过', () => {
+  assert.ok(pointerFor('二、旧', 'characters/_archive/x.md').includes('_archive/x.md'))
 })
 
 try {
