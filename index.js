@@ -1,4 +1,4 @@
-import { apply as gateApply, noteStep as gateNoteStep, ANCHOR as GATE_ANCHOR } from './lib/gate.mjs'
+import { apply as gateApply, noteStep as gateNoteStep, ANCHOR as GATE_ANCHOR } from './lib/stepgate.mjs'
 const __noH1 = (s) => String(s || '').replace(/^\s*#\s+[^\n]*\r?\n+/, '')
 /**
  * dsh-persona-framework —— host 半端
