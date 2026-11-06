@@ -892,12 +892,13 @@ export function apply(ctx, config = {}) {
               if (hit) fixedModules.push(hit)
             }
           } catch { /* 读不到目录就不加这一段 */ }
+          if (fixedModules.length) parts.push('', '## 注入（固定）')
           for (const f of fixedModules) {
             try {
               const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
               // 每篇自带 H1（『# 00 · 注入』『# 00 · 实时环境』），去掉 H1 留正文；
               // 外层统一挂在 ## 注入（固定）下面，两篇都看得见各自的名字。
-              parts.push('', '## 注入（固定）', '', __noH1(raw))
+              parts.push('', __noH1(raw))
             } catch { /* 单篇读不到就跳过，不拿别的顶 */ }
           }
           // 索引：一行一篇，**全量、不轮转**。它和正文一起注——索引负责「有哪些」，
