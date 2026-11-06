@@ -1,0 +1,32 @@
+{
+  "name": "dsh-persona-freedom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "自己给自己划时间：固定事与弹性事、自己划线挪钟点、DND 安静时段；到点才提一句，弹性事不催不记连续",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "环境提示词.md",
+    "selfcheck.mjs"
+  ],
+  "scripts": {
+    "selfcheck": "node selfcheck.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

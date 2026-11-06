@@ -39,12 +39,20 @@ const DEFAULTS = {
   stateDir: '.persona-framework',
 }
 
+/**
+ * 会话的工作区从 pre-step 的 `agent.session.header.cwd` 拿——那才是工作区。
+ * 进程 cwd 是 profile 目录，插件目录往上推只能推到 addons/；两个都错，踩过。
+ * 拿不到才退进程 cwd。
+ */
+let sessionWs = ''
+
+function noteSessionWorkspace(payload) {
+  const cwd = payload?.agent?.session?.header?.cwd
+  if (typeof cwd === 'string' && cwd) sessionWs = cwd
+}
+
 function guessWorkspace() {
-  try {
-    return dirname(dirname(fileURLToPath(import.meta.url)))
-  } catch {
-    return process.cwd()
-  }
+  return sessionWs || process.cwd()
 }
 
 function pickCfg(config) {
@@ -151,6 +159,7 @@ export function apply(ctx, config) {
 
   try {
     ctx.on('agent/pre-step', (payload, next) => {
+      try { noteSessionWorkspace(payload) } catch { /* 拿不到就继续用旧的 */ }
       try { autoRest(); refresh() } catch { /* 触发器坏了不许拦路 */ }
       return next()
     })
