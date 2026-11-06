@@ -810,13 +810,15 @@ export function apply(ctx, config = {}) {
         const dir = dirname(modulesFile)
         let all = []
         try {
-          all = readdirSync(dir).filter((f) => /^(0[1-9]|[1-8]\d)-.+\.md$/.test(f)).sort()
+          // 01–88 是模块；00-环境 是出处地图，也进轮转（读到才翻，不必每轮摆）。
+          // 00-注入 / 00-实时环境 / 00-目录 / 00-坐标表 不在这里——它们要么固定注，要么只是索引。
+          all = readdirSync(dir).filter((f) => /^(0[1-9]|[1-8]\d)-.+\.md$/.test(f) || f === '00-环境.md').sort()
         } catch { /* 读不到目录就不加这一段 */ }
         // 固定注入的那几篇不进轮转：环境（00）、插件清单（83）、元协调（53）。
         // 放进轮转，轮到的那些轮会把同一篇注两遍——同一个东西说两次，比少说一次更坏。
-        // 固定注入只有 00-注入 一篇（它不在编号 01–88 里，轮转本来也收不到）。
+        // 固定注入两篇：00-注入（摘要）与 00-实时环境（仪表）。都不在编号 01–88 里，轮转收不到。
         // 环境（00）、插件清单（83）、元协调（53）回到轮转——每天读一次就够，不必每轮摆。
-        const isFixed = (f) => /^00-注入/.test(f)
+        const isFixed = (f) => /^00-注入|^00-实时环境/.test(f)
         const rot = all.filter((f) => !isFixed(f))
         if (all.length) {
           const bare = (s) => s.replace(/\.md$/, '')
@@ -880,12 +882,12 @@ export function apply(ctx, config = {}) {
               } catch { /* 单篇读不到就跳过，不拿别的顶替 */ }
             }
           }
-          // 00-注入：固定最先，不占轮转。环境、清单、元协调的摘要都在这一篇里；
-          // 那三篇回轮转，全文照读，只是不再每轮都摆。
+          // 固定最先，不占轮转：00-注入 是摘要，00-实时环境 是仪表（此刻有什么在动）。
+          // 00-环境 / 83-清单 / 53-元协调 在轮转里，全文照读，只是不再每轮都摆。
           const fixedModules = []
           try {
             const names = readdirSync(dir)
-            for (const pat of [/^00-注入\.md$/]) {
+            for (const pat of [/^00-注入\.md$/, /^00-实时环境\.md$/]) {
               const hit = names.find((f) => pat.test(f))
               if (hit) fixedModules.push(hit)
             }
@@ -893,6 +895,8 @@ export function apply(ctx, config = {}) {
           for (const f of fixedModules) {
             try {
               const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
+              // 每篇自带 H1（『# 00 · 注入』『# 00 · 实时环境』），去掉 H1 留正文；
+              // 外层统一挂在 ## 注入（固定）下面，两篇都看得见各自的名字。
               parts.push('', '## 注入（固定）', '', __noH1(raw))
             } catch { /* 单篇读不到就跳过，不拿别的顶 */ }
           }
@@ -901,7 +905,7 @@ export function apply(ctx, config = {}) {
           // 只有索引等于没读（正文比索引重要）。
           parts.push('', '## 模块库（索引）', '')
           parts.push(all.map((f) => `- ${bare(f)}`).join('\n'))
-          parts.push('', `（轮转 ${total} 篇；00-注入 固定在外，不进轮转。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
+          parts.push('', `（轮转 ${total} 篇；00-注入 与 00-实时环境 固定在外，不进轮转。要哪一篇的全文：说编号，走 \`framework_view module=编号\`——`
             + '这条不占轮转，也不改下一轮从哪儿接着读。）')
           if (got.length) {
             const advance = (next + got.length) % total
