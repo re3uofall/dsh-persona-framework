@@ -27,10 +27,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compose, describe, EVENT_KINDS, levelOf, replay } from './lib/energy.mjs'
 import { fmtPct01, fmtTokens, headline, NEVER_SKIMP, skimpVerdict, summarizeUsage } from './lib/cost.mjs'
+import {
+  fieldTable, normalizePatch, normalizeStored, pickCurrent,
+} from './lib/settings.mjs'
 
 export const name = 'persona-energy'
-export const version = '0.2.0'
-export const inject = ['tools', 'systemPrompt']
+export const version = '0.3.0'
+export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
   /** 工作区根；空 = 从插件自己的位置往上推两级（插件装在仓库里时成立）。 */
@@ -90,6 +93,50 @@ export function apply(ctx, config) {
   const ws = () => cfg.workspace || guessWorkspace()
   const logPath = () => join(ws(), cfg.stateDir, '能量账.jsonl')
 
+  // ── 设置文件：给装的人自己调，不用改代码 ──────────────────────────────
+  const SETTINGS_FILE = '能量配置.json'
+  const settingsPath = () => join(ws(), cfg.stateDir, SETTINGS_FILE)
+
+  const readSettings = () => {
+    try {
+      const file = settingsPath()
+      if (!existsSync(file)) return { ...pickCurrent({}) }
+      return { ...pickCurrent({}), ...normalizeStored(JSON.parse(readFileSync(file, 'utf8'))) }
+    } catch { return { ...pickCurrent({}) } }
+  }
+
+  const writeSettings = (patch) => {
+    const file = settingsPath()
+    let cur = {}
+    try { cur = normalizeStored(JSON.parse(readFileSync(file, 'utf8'))) } catch { cur = {} }
+    const next = { ...cur, ...normalizePatch(patch) }
+    mkdirSync(dirname(file), { recursive: true })
+    if (existsSync(file)) {
+      try { writeFileSync(file + '.bak', readFileSync(file, 'utf8'), 'utf8') } catch { /* 备份失败不拦 */ }
+    }
+    writeFileSync(file, JSON.stringify(next, null, 2) + '\n', 'utf8')
+    return next
+  }
+
+  const sendJson = (res, code, body) => {
+    res.statusCode = code
+    res.setHeader('content-type', 'application/json; charset=utf-8')
+    res.end(JSON.stringify(body))
+  }
+
+  const readBody = (req) => new Promise((resolve, reject) => {
+    let size = 0
+    const chunks = []
+    req.on('data', (c) => {
+      size += c.length
+      if (size > 64 * 1024) { reject(new Error('请求体太大')); req.destroy(); return }
+      chunks.push(c)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+
+
   const readEvents = () => {
     const p = logPath()
     if (!existsSync(p)) return []
@@ -131,10 +178,11 @@ export function apply(ctx, config) {
     const level = levelOf(snap.energy).key
     const changed = level !== lastLevel
     lastLevel = level
-    if (offSwitch()) { hint = ''; return snap }
+    const st = readSettings()
+    if (offSwitch() || !st.remind) { hint = ''; return snap }
     // 只有掉档才当场说；已经在低档的，半小时提醒一次，别每步都念。
     const low = level === 'slim' || level === 'minimal'
-    const due = low && now() - lastHintAt > 30 * 60 * 1000
+    const due = low && now() - lastHintAt > st.hintEveryMinutes * 60000
     if (!changed && !due) { hint = ''; return snap }
     lastHintAt = now()
     const who = snap.limiting ? `卡在${snap.limiting}` : '没谁特别拖'
@@ -150,7 +198,7 @@ export function apply(ctx, config) {
     const last = events.length ? Number(events[events.length - 1].at) || 0 : 0
     if (!last) { lastSeenAt = t; return }
     const gapMin = Math.floor((t - last) / 60000)
-    if (gapMin >= 10) {
+    if (gapMin >= readSettings().autoRestMinutes) {
       // 记在「现在」，不记在「上一次」——否则下一步会拿同一个空档再记一遍，越记越累。
       appendEvent({ kind: 'nap', at: t, note: '自动记：隔了 ' + gapMin + ' 分钟没过话，算在歇' })
     }
@@ -305,7 +353,7 @@ export function apply(ctx, config) {
     parameters: {
       type: 'object',
       properties: {
-        hours: { type: 'number', description: '只看最近多少小时，默认 24；0 = 全部' },
+        hours: { type: 'number', description: '只看最近多少小时，默认取设置里的值（24）；0 = 全部' },
         session: { type: 'string', description: '指定会话 id，可省（默认取本工作区最新一条）' },
       },
       additionalProperties: false,
@@ -325,7 +373,8 @@ export function apply(ctx, config) {
         return `读不到那段会话：${error && error.message ? error.message : String(error)}`
       }
       const events = (snap && snap.events) || []
-      const hours = args.hours === 0 ? 0 : Math.max(0.1, Math.min(24 * 30, Number(args.hours) || 24))
+      const wantHours = args.hours !== undefined ? Number(args.hours) : readSettings().costHours
+      const hours = wantHours === 0 ? 0 : Math.max(0.1, Math.min(24 * 30, Number(wantHours) || 24))
       const since = hours ? now() - hours * 3600 * 1000 : 0
       const sum = summarizeUsage(events, { since })
       if (!sum.messages) return `这段会话里没有带 usage 的消息（${events.length} 条事件）。不是 0 消耗，是没记。`
@@ -391,4 +440,52 @@ export function apply(ctx, config) {
       return lines.join('\n')
     },
   })
+
+  // ── 设置页的两个口：读报当前真在用的值，写只收白名单并留 .bak ────────
+  ctx.effect(() => ctx.webServer?.register({
+    kind: 'exact',
+    path: '/api/persona-energy/status',
+    handler(_req, res) {
+      try {
+        const now = readSettings()
+        sendJson(res, 200, {
+          ok: true,
+          fields: fieldTable(),
+          values: pickCurrent(now),
+          file: settingsPath(),
+          fileExists: existsSync(settingsPath()),
+          snapshot: describe(snapshot(), Date.now()),
+        })
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String(error?.message || error) })
+      }
+    },
+  }))
+
+  ctx.effect(() => ctx.webServer?.register({
+    kind: 'exact',
+    path: '/api/persona-energy/config',
+    async handler(req, res) {
+      try {
+        if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: '只收 POST' }); return }
+        const raw = await readBody(req)
+        let patch = {}
+        try { patch = normalizePatch(JSON.parse(raw || '{}')) } catch {
+          sendJson(res, 400, { ok: false, error: '递上来的不是合法 JSON' }); return
+        }
+        if (!Object.keys(patch).length) {
+          sendJson(res, 400, { ok: false, error: '没有一个字段过得了白名单（键名或范围不对）' }); return
+        }
+        const next = writeSettings(patch)
+        hint = ''
+        lastHintAt = 0
+        sendJson(res, 200, {
+          ok: true, saved: Object.keys(patch), next, file: settingsPath(),
+          note: '存好了。这几项每步现读，下一步就生效。',
+        })
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String(error?.message || error) })
+      }
+    },
+  }))
 }

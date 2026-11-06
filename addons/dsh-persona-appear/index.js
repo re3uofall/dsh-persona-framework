@@ -32,10 +32,13 @@ import {
 import {
   LIVE_FILE, WINDOW_MS, addLive, emptyLive, readLive, renderLive, writeLive,
 } from './lib/live.mjs'
+import {
+  DEFAULTS as SETTING_DEFAULTS, fieldTable, normalizePatch, normalizeStored, pickCurrent,
+} from './lib/settings.mjs'
 
 export const name = 'persona-appear'
-export const version = '0.4.0'
-export const inject = ['tools', 'systemPrompt']
+export const version = '0.5.0'
+export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
   /** 工作区根；空 = 从插件自己的位置往上推一级（插件装在仓库里时成立）。 */
@@ -53,8 +56,20 @@ function pickCfg(config) {
   return out
 }
 
+/**
+ * 会话的工作区从 pre-step 的 `agent.session.header.cwd` 拿——那才是工作区。
+ * 插件目录往上推只会推到 addons/，进程 cwd 是 profile 目录；两个都错，踩过。
+ */
+let sessionWs = ''
+
+function noteSessionWorkspace(payload) {
+  const cwd = payload?.agent?.session?.header?.cwd
+  if (typeof cwd === 'string' && cwd) sessionWs = cwd
+}
+
 /** 插件在仓库里时，自己往上推一级就是工作区；推不出来就让配置填。 */
 function guessWorkspace() {
+  if (sessionWs) return sessionWs
   try {
     const here = dirname(fileURLToPath(import.meta.url))
     return dirname(here)
@@ -80,6 +95,56 @@ function readState(p) {
 function writeState(p, state) {
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, JSON.stringify(state, null, 2) + '\n', 'utf8')
+}
+
+// ── 设置文件：给装的人自己调，不用改代码 ──────────────────────────────
+const SETTINGS_FILE = '出现配置.json'
+
+function settingsPathOf(cfg) {
+  return join(cfg.workspace || guessWorkspace(), cfg.stateDir, SETTINGS_FILE)
+}
+
+function readSettings(p) {
+  const base = { ...SETTING_DEFAULTS }
+  try {
+    if (!existsSync(p)) return base
+    return { ...base, ...normalizeStored(JSON.parse(readFileSync(p, 'utf8'))) }
+  } catch {
+    return base
+  }
+}
+
+function writeSettings(p, patch) {
+  let cur = {}
+  try { cur = normalizeStored(JSON.parse(readFileSync(p, 'utf8'))) } catch { cur = {} }
+  const next = { ...cur, ...normalizePatch(patch) }
+  mkdirSync(dirname(p), { recursive: true })
+  if (existsSync(p)) {
+    try { writeFileSync(`${p}.bak`, readFileSync(p, 'utf8'), 'utf8') } catch { /* 备份失败不拦 */ }
+  }
+  writeFileSync(p, JSON.stringify(next, null, 2) + '\n', 'utf8')
+  return next
+}
+
+function sendJson(res, code, body) {
+  const text = JSON.stringify(body)
+  res.statusCode = code
+  res.setHeader('content-type', 'application/json; charset=utf-8')
+  res.end(text)
+}
+
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0
+    const chunks = []
+    req.on('data', (c) => {
+      size += c.length
+      if (size > 64 * 1024) { reject(new Error('请求体太大')); req.destroy(); return }
+      chunks.push(c)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
 }
 
 const textOutput = {
@@ -261,6 +326,9 @@ export function apply(ctx, config = {}) {
   // ── 实时注入：这一轮临时摆一段进去，过期自己撤 ──────────────────────
   // 跟「出场闸」分开：闸管长期（谁出不出场），这里管临时（往里加一段）。
   const livePath = join(dirname(p), LIVE_FILE)
+  // 现算：启动那一刻还没拿到会话工作区，算早了就指到 profile 目录去。
+  const settingsPathNow = () => settingsPathOf(cfg)
+  const liveNow = () => readSettings(settingsPathNow())
 
   try {
     ctx.effect(() => ctx.systemPrompt.section({
@@ -269,7 +337,9 @@ export function apply(ctx, config = {}) {
       interpolate: false,
       text: () => {
         try {
-          return renderLive(readLive(livePath))
+          const s = liveNow()
+          if (!s.liveOn) return ''
+          return renderLive(readLive(livePath), { maxChars: s.liveMaxChars, windowMs: s.liveMinutes * 60000 })
         } catch (error) {
           return `## 实时注入\n\n读不出来：${error?.message || error}`
         }
@@ -292,9 +362,10 @@ export function apply(ctx, config = {}) {
     async run(args) {
       const text = String(args.text || '').trim()
       if (!text) return '没给 text，什么都没写。'
-      const minutes = Math.max(1, Number(args.minutes) || 30)
-      const turns = Math.max(1, Math.ceil(minutes / 30))
-      const next = addLive(readLive(livePath), { text, turns, from: 'appear_inject' })
+      const st = liveNow()
+      const minutes = Math.max(1, Number(args.minutes) || st.liveMinutes)
+      const turns = Math.max(1, Math.ceil(minutes / st.liveMinutes))
+      const next = addLive(readLive(livePath), { text: text.slice(0, st.liveMaxChars), turns, from: 'appear_inject' })
       writeLive(livePath, next)
       return [
         `摆了 ${next.items.length} 条，这条活 ${minutes} 分钟。`,
@@ -311,12 +382,13 @@ export function apply(ctx, config = {}) {
     async run() {
       const cur = readLive(livePath)
       if (!cur.items.length) return '现在没摆任何实时注入。'
+      const st = liveNow()
       const now = Date.now()
       const lines = ['## 现在摆着的', '']
       for (const it of cur.items) {
         const at = Date.parse(it.at)
         const left = Number.isFinite(at)
-          ? Math.max(0, Math.round((at + it.turns * WINDOW_MS - now) / 60000))
+          ? Math.max(0, Math.round((at + it.turns * st.liveMinutes * 60000 - now) / 60000))
           : -1
         lines.push(`- [${left < 0 ? '没有时间戳' : left + ' 分钟后过期'}] ${it.text}`)
       }
@@ -336,7 +408,59 @@ export function apply(ctx, config = {}) {
   })
 
   // 记「这一轮第几步」——全量注入只在第一步，后面只留锚点
-  ctx.on('agent/pre-step', (payload, next) => { noteStep(payload); return next() })
+  ctx.on('agent/pre-step', (payload, next) => {
+    try { noteSessionWorkspace(payload) } catch { /* 拿不到就继续用旧的 */ }
+    try { if (liveNow().noteSteps) noteStep(payload) } catch { /* 记步坏了不许拦路 */ }
+    return next()
+  })
+
+  // ── 设置页的两个口：读报当前真在用的值，写只收白名单并留 .bak ────────
+  ctx.effect(() => ctx.webServer?.register({
+    kind: 'exact',
+    path: '/api/persona-appear/status',
+    handler(_req, res) {
+      try {
+        const now = liveNow()
+        sendJson(res, 200, {
+          ok: true,
+          fields: fieldTable(),
+          values: pickCurrent(now),
+          file: settingsPathNow(),
+          fileExists: existsSync(settingsPathNow()),
+        })
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String(error?.message || error) })
+      }
+    },
+  }))
+
+  ctx.effect(() => ctx.webServer?.register({
+    kind: 'exact',
+    path: '/api/persona-appear/config',
+    async handler(req, res) {
+      try {
+        if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: '只收 POST' }); return }
+        const raw = await readRequestBody(req)
+        let patch = {}
+        try { patch = normalizePatch(JSON.parse(raw || '{}')) } catch {
+          sendJson(res, 400, { ok: false, error: '递上来的不是合法 JSON' }); return
+        }
+        if (!Object.keys(patch).length) {
+          sendJson(res, 400, { ok: false, error: '没有一个字段过得了白名单（键名或范围不对）' }); return
+        }
+        const next = writeSettings(settingsPathNow(), patch)
+        sendJson(res, 200, {
+          ok: true,
+          saved: Object.keys(patch),
+          next,
+          file: settingsPathNow(),
+          note: '存好了。实时注入这几项每轮现读，下一轮就生效。',
+        })
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String(error?.message || error) })
+      }
+    },
+  }))
 
   return { statePath: p }
 }

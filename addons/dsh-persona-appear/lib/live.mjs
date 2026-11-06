@@ -79,21 +79,23 @@ export function addLive(state, { text, turns = 1, from = '' } = {}) {
  */
 export const WINDOW_MS = 30 * 60 * 1000
 
-function alive(it) {
+function alive(it, windowMs = WINDOW_MS) {
   if (!it || it.turns <= 0) return false
   const at = Date.parse(it.at)
   if (!Number.isFinite(at)) return true
-  return Date.now() - at < it.turns * WINDOW_MS
+  return Date.now() - at < it.turns * windowMs
 }
 
 /** 渲染成要摆进上下文的字。空的就返回空串——空的段落不占地方。 */
-export function renderLive(state) {
+export function renderLive(state, opts = {}) {
+  const windowMs = Number(opts.windowMs) > 0 ? Number(opts.windowMs) : WINDOW_MS
+  const maxChars = Number(opts.maxChars) > 0 ? Number(opts.maxChars) : MAX_CHARS
   const s = normalizeLive(state)
-  const live = s.items.filter(alive)
+  const live = s.items.filter((it) => alive(it, windowMs))
   if (!live.length) return ''
   const lines = ['## 实时注入（这一轮临时摆进来的）', '']
   for (const it of live) {
-    lines.push(`- ${it.text}`)
+    lines.push(`- ${String(it.text || '').slice(0, maxChars)}`)
   }
   lines.push('')
   lines.push('（这段是临时摆的，会自己过期。它不算记忆，也不算人格，说完就撤。）')

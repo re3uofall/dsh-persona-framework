@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-appear",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "private": true,
   "description": "人格出现：这一轮谁出场、排第几。人格本身（人格文件）与随人格的几部分（记忆、框架、日记、探索、成果）按插件开关；关掉不等于删掉，是这一轮她不在场",
   "type": "module",
@@ -9,7 +9,8 @@
     ".": "./index.js",
     "./lib/*": "./lib/*",
     "./icon": "./icon.svg",
-    "./locale/*.json": "./locale/*.json"
+    "./locale/*.json": "./locale/*.json",
+    "./client": "./client.js"
   },
   "files": [
     "index.js",
@@ -18,11 +19,20 @@
     "icon.svg",
     "cordis.patch.yml",
     "README.md",
-    "selfcheck.mjs"
+    "selfcheck.mjs",
+    "client.js",
+    "环境提示词.md"
   ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
   }
 }
