@@ -30,9 +30,12 @@ import { fmtPct01, fmtTokens, headline, NEVER_SKIMP, skimpVerdict, summarizeUsag
 import {
   fieldTable, normalizePatch, normalizeStored, pickCurrent,
 } from './lib/settings.mjs'
+import {
+  briefQuota, buildQuota, capsOf, describeQuota, effectiveMode, modeLabel, MODES, normalizeMode,
+} from './lib/mode.mjs'
 
 export const name = 'persona-energy'
-export const version = '0.3.0'
+export const version = '0.4.0'
 export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
@@ -118,6 +121,26 @@ export function apply(ctx, config) {
     return next
   }
 
+  const quotaPath = () => join(ws(), cfg.stateDir, '注入配额.json')
+
+  const readQuota = () => {
+    try {
+      const file = quotaPath()
+      if (!existsSync(file)) return null
+      const j = JSON.parse(readFileSync(file, 'utf8'))
+      return j && typeof j === 'object' ? j : null
+    } catch { return null }
+  }
+
+  const writeQuota = (q) => {
+    try {
+      const file = quotaPath()
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, JSON.stringify(q, null, 2) + '\n', 'utf8')
+      return true
+    } catch { return false }
+  }
+
   const sendJson = (res, code, body) => {
     res.statusCode = code
     res.setHeader('content-type', 'application/json; charset=utf-8')
@@ -168,6 +191,7 @@ export function apply(ctx, config) {
   let lastLevel = ''
   let lastHintAt = 0
   let lastSeenAt = 0
+  let lastQuotaEff = ''
 
   const offSwitch = () => existsSync(join(ws(), cfg.stateDir, '不砍'))
 
@@ -179,14 +203,26 @@ export function apply(ctx, config) {
     const changed = level !== lastLevel
     lastLevel = level
     const st = readSettings()
-    if (offSwitch() || !st.remind) { hint = ''; return snap }
+    // 配额每步对一遍：档位真变了才落盘，省得每步都写文件。
+    const pinned = normalizeMode(readQuota()?.mode) || 'auto'
+    const eff = effectiveMode(pinned, level)
+    if (eff !== lastQuotaEff || !existsSync(quotaPath())) {
+      lastQuotaEff = eff
+      writeQuota(buildQuota({ mode: pinned, level, at: new Date().toISOString() }))
+    }
+    if (offSwitch()) { hint = ''; return snap }
+    const brief = `电源 ${pinned === 'auto' ? '自动→' : ''}${modeLabel(eff)}｜换档 energy_mode("saver")`
     // 只有掉档才当场说；已经在低档的，半小时提醒一次，别每步都念。
     const low = level === 'slim' || level === 'minimal'
     const due = low && now() - lastHintAt > st.hintEveryMinutes * 60000
-    if (!changed && !due) { hint = ''; return snap }
+    if (!st.remind || (!changed && !due)) {
+      // 不报警也要留一句「现在哪一档、怎么换」——不然想换档时找不到名字。
+      hint = brief
+      return snap
+    }
     lastHintAt = now()
     const who = snap.limiting ? `卡在${snap.limiting}` : '没谁特别拖'
-    hint = `电量 ${Number(snap.energy).toFixed(2)}（${level}，${who}）：这一步先做要紧的，模块与短期记忆不必全摆。`
+    hint = `电量 ${Number(snap.energy).toFixed(2)}（${level}，${who}）：这一步先做要紧的，模块与短期记忆不必全摆。\n${brief}`
     return snap
   }
 
@@ -283,6 +319,46 @@ export function apply(ctx, config) {
         ? `账里 ${events.length} 笔，最后一笔 ${String(events[events.length - 1].at).slice(0, 16).replace('T', ' ')}`
         : '账还是空的：一次都没记过。下面按默认值算（一口气 60%、糖原 60%、储备 80%），不衰减——空账是「没记过」，不是「累坏了」。'
       return [head, '', ...d.lines].join('\n')
+    },
+  })
+
+  reg({
+    name: 'energy_mode',
+    description: '电脑那套电源模式：high 高性能／balanced 平衡／saver 节能／ultra 超长续航／auto 跟着电量自己换。不传参只看现在哪一档；传了就钉死（写进注入配额，别的插件自己来读）。',
+    parameters: {
+      type: 'object',
+      properties: { mode: { type: 'string', description: 'high / balanced / saver / ultra / auto，不传只看' } },
+      additionalProperties: false,
+    },
+    run(args) {
+      const want = normalizeMode(args.mode)
+      if (!args.mode) {
+        const q = readQuota()
+        const snap = compose(replay(readEvents(), now()), now())
+        const level = levelOf(snap.energy).key
+        const pinned = normalizeMode(q?.mode) || 'auto'
+        const eff = effectiveMode(pinned, level)
+        return [
+          `现在：${pinned === 'auto' ? `跟随电量 → ${modeLabel(eff)}` : `${modeLabel(eff)}（钉死）`}；电量档 ${level}`,
+          '',
+          describeQuota(q || buildQuota({ mode: pinned, level, at: new Date().toISOString() })),
+          '',
+          '换档：energy_mode("high" | "balanced" | "saver" | "ultra" | "auto")',
+          '四档的意思：' + MODES.map((m) => `${m.key}=${m.label}（${m.hint}）`).join('；'),
+        ].join('\n')
+      }
+      if (!want) return `不认这个档：${args.mode}。能用的是 auto / ${MODES.map((m) => m.key).join(' / ')}。`
+      const snap = compose(replay(readEvents(), now()), now())
+      const level = levelOf(snap.energy).key
+      const q = buildQuota({ mode: want, level, at: new Date().toISOString() })
+      const ok = writeQuota(q)
+      return [
+        ok ? `换成 ${modeLabel(effectiveMode(want, level))}${want === 'auto' ? '（跟随电量）' : '（钉死）'}` : '没写成：配额文件落不下去。',
+        '',
+        describeQuota(q),
+        '',
+        '谁读这份配额：框架插件、记忆插件。它们读不到就按全量摆，所以写失败不会把注入搞坏。',
+      ].join('\n')
     },
   })
 

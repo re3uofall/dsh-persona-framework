@@ -37,7 +37,7 @@ import {
 } from './lib/settings.mjs'
 
 export const name = 'persona-appear'
-export const version = '0.5.0'
+export const version = '0.6.0'
 export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
@@ -336,12 +336,15 @@ export function apply(ctx, config = {}) {
       order: 6,
       interpolate: false,
       text: () => {
+        // 这一行是「开关板的手柄」：不写出来，想调的时候就得翻文档。
+        const panel = '调控：appear_status() 看谁在场｜appear_mute(插件) 关｜appear_unmute 再开｜appear_order(段名, 数) 排先后｜appear_inject(文字, 分钟) 临时摆一段'
         try {
           const s = liveNow()
-          if (!s.liveOn) return ''
-          return renderLive(readLive(livePath), { maxChars: s.liveMaxChars, windowMs: s.liveMinutes * 60000 })
+          if (!s.liveOn) return panel
+          const body = renderLive(readLive(livePath), { maxChars: s.liveMaxChars, windowMs: s.liveMinutes * 60000 })
+          return body ? body + '\n\n' + panel : panel
         } catch (error) {
-          return `## 实时注入\n\n读不出来：${error?.message || error}`
+          return `实时注入读不出来：${error?.message || error}\n${panel}`
         }
       },
     }))
