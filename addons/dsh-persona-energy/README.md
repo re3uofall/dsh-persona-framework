@@ -100,7 +100,19 @@ node selfcheck.mjs   # 71 项
 
 `energy_mode()` 只看，`energy_mode("saver")` 钉死，传 `"auto"` 交还给电量。
 
-它写 `.persona-framework/注入配额.json`：`{mode, effective, level, caps:{personality, framework, moduleIndex, moduleBody, memoryShort, memoryLong, live}}`。`0` 不限、负数不摆、正数上限。
+它写 `.persona-framework/注入配额.json`：`{mode, effective, level, caps:{personality, framework, moduleIndex, moduleBody, memoryJournal, memoryExternal, memoryTheory, memoryJudgment, memoryLong, live}}`。`0` 不限、负数不摆、正数上限。
+
+记忆那几份按**记忆插件自己的分层**分，不是笼统的「短期/长期」：
+
+| 键 | 管哪一格 | 砍的先后 |
+| --- | --- | --- |
+| `memoryJournal` | 流水（`session/`，一天若干轮原话） | 最先砍 |
+| `memoryExternal` | 外部（`web/` `human/` `.persona-framework/net`） | 其次 |
+| `memoryTheory` | 理论（`world/` `lexicon/`） | 再次 |
+| `memoryJudgment` | 判断（`chat/`，我看懂了什么） | **不许整段砍** |
+| `memoryLong` | 长期记忆 | **不许整段砍** |
+
+`memoryJudgment`、`memoryLong`、`personality` 三个在 `mode.mjs` 里是 `PROTECTED`：给负数会被按 0 处理——宁可多花钱，也不许把重要记忆砍成空。
 
 **读它的是别人**：框架插件（框架正文／模块索引／模块正文）、记忆插件（短期／长期／实时）、人格自学（人格文件）。energy 不 import 它们，它们也不 import energy——只认这份文件，读不到就全量，谁也不许因此坏掉。
 - 0.4.0（2026-11-06）　电源四档 + `energy_mode`；写注入配额，别人自己来读。

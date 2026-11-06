@@ -33,26 +33,54 @@ export const AUTO_BY_LEVEL = {
  * 每份内容的字数上限（0 或 null = 不限）。
  * 键名是「哪一份」，不是「哪个插件」——插件换名字也不用改这里。
  */
-/** 0 = 不限，负数 = 这一份不摆，正数 = 最多这么多字。 */
-const CAPS = {
-  high: { personality: 0, framework: 0, moduleIndex: 0, moduleBody: 0, memoryShort: 0, memoryLong: 0, live: 1200 },
-  balanced: { personality: 0, framework: 0, moduleIndex: 9000, moduleBody: 0, memoryShort: 20000, memoryLong: 0, live: 1200 },
-  saver: { personality: 6000, framework: 4000, moduleIndex: 2000, moduleBody: 2500, memoryShort: 6000, memoryLong: 800, live: 600 },
-  ultra: { personality: 3000, framework: -1, moduleIndex: -1, moduleBody: -1, memoryShort: -1, memoryLong: -1, live: 300 },
+/**
+ * 0 = 不限，负数 = 这一份不摆，正数 = 最多这么多字。
+ *
+ * 记忆按**记忆插件自己的分层**分，不按「短期/长期」这种粗话分：
+ *   memoryJournal   流水（session，按天若干轮原话）——最先砍
+ *   memoryExternal  外部（web / human / .persona-framework/net）——其次
+ *   memoryTheory    理论（world / lexicon）——再次
+ *   memoryJudgment  判断（chat，我自己看懂了什么）——不许整段砍
+ *   memoryLong      长期记忆——不许整段砍
+ * 后两个进了 PROTECTED：负数会被按 0 处理，宁可多花钱也不许把重要记忆砍成空。
+ */
+export const CAPS = {
+  high: { personality: 0, framework: 0, moduleIndex: 0, moduleBody: 0, memoryJournal: 0, memoryExternal: 0, memoryTheory: 0, memoryJudgment: 0, memoryLong: 0, live: 1200 },
+  balanced: { personality: 0, framework: 0, moduleIndex: 9000, moduleBody: 0, memoryJournal: 20000, memoryExternal: 0, memoryTheory: 0, memoryJudgment: 0, memoryLong: 0, live: 1200 },
+  saver: { personality: 6000, framework: 4000, moduleIndex: 2000, moduleBody: 2500, memoryJournal: 6000, memoryExternal: 3000, memoryTheory: 4000, memoryJudgment: 3000, memoryLong: 1500, live: 600 },
+  ultra: { personality: 3000, framework: -1, moduleIndex: -1, moduleBody: -1, memoryJournal: -1, memoryExternal: -1, memoryTheory: 1500, memoryJudgment: 3000, memoryLong: 2000, live: 300 },
 }
+
+/** 这几份永远不许被「不摆」：砍到半截可以，砍成空不行。 */
+export const PROTECTED = ['personality', 'memoryJudgment', 'memoryLong']
 
 export const CAP_LABELS = {
   personality: '人格文件',
   framework: '框架正文',
   moduleIndex: '模块索引',
   moduleBody: '模块正文',
-  memoryShort: '短期记忆',
+  memoryJournal: '流水（session）',
+  memoryExternal: '外部（web/human/net）',
+  memoryTheory: '理论（world/lexicon）',
+  memoryJudgment: '判断（chat）',
   memoryLong: '长期记忆',
   live: '实时注入',
 }
 
 export function capsOf(mode) {
-  return { ...(CAPS[mode] || CAPS.balanced) }
+  const raw = { ...(CAPS[mode] || CAPS.balanced) }
+  for (const k of PROTECTED) if (typeof raw[k] === 'number' && raw[k] < 0) raw[k] = 0
+  // 旧名字还认：谁之前只认 memoryShort，就给它流水那一份
+  if (raw.memoryShort === undefined) raw.memoryShort = raw.memoryJournal
+  return raw
+}
+
+/** 取某一份的上限；不认识的键返回 0（不限），别猜。 */
+export function capOf(quota, key) {
+  const caps = quota?.caps || {}
+  const k = key === 'memoryShort' ? 'memoryJournal' : key
+  const v = caps[k]
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
 export function modeLabel(mode) {
