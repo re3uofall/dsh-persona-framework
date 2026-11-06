@@ -15,14 +15,17 @@ export function noteStep(payload) {
     const turn = payload?.turn ?? payload?.turnIndex ?? null
     const step = Number(payload?.step ?? 0)
     if (turn !== cur.turn) {
-      cur = { turn, step: Number.isFinite(step) ? step : 0, at: Date.now(), full: cur.full + 1, skipped: cur.skipped }
+      // 新的一轮：把这个 turn 第一次看到的 step 记成 base。
+      // 不能假设它是 0——宿主第一步给的是 1，写死 `step > 0` 会让每轮第一步就被当成「重复」，
+      // 四段记忆全线返回空，表现就是「即时记忆没生效」。判据要相对，不写绝对值。
+      cur = { turn, step: Number.isFinite(step) ? step : 0, base: Number.isFinite(step) ? step : 0, at: Date.now(), full: cur.full + 1, skipped: cur.skipped }
     } else if (Number.isFinite(step) && step > cur.step) {
       cur.step = step
     }
   } catch { /* 记不上就当第一步 */ }
 }
 
-export function isRepeat() { return cur.step > 0 }
+export function isRepeat() { return cur.step > (cur.base ?? 0) }
 
 export function apply(fn, note = ANCHOR) {
   if (isRepeat()) { cur.skipped += 1; return note }

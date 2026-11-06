@@ -20,6 +20,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { recencyOf, recencyWeight, rehearseFactor } from './recency.mjs'
 import { dirname, join, relative } from 'node:path'
 
 /** 加固账落在哪（相对工作区根）。 */
@@ -47,10 +48,19 @@ function daysSince(at, now) {
   return Math.max(0, (now - t) / 86400_000)
 }
 
-/** 近的接近 1，远的趋近 0。 */
+/**
+ * 近的接近 1，远的**拖着长尾**，不是掉光。
+ *
+ * 旧的是指数 `0.5^(d/H)`：7 天一半，30 天剩 5%，60 天几乎归零——
+ * 「想不起来」不是因为它不重要，是因为它旧了。一刀切掉老记忆，等于只认得最近那几页。
+ *
+ * 换成幂律 `(1 + d/τ)^-0.5`，取 τ = H/3，保证 7 天仍是 0.5，
+ * 但 30 天还有 0.27、一年 0.08、十年 0.025——老的东西衰减很慢，被勾一下还能回来。
+ */
 export function timeScore(days) {
   if (days == null) return 0.3 // 时间不明：给一半的底，不当作 0 也不是满分
-  return 0.5 ** (days / HALF_LIFE_DAYS)
+  const tau = HALF_LIFE_DAYS / 3
+  return (1 + days / tau) ** -0.5
 }
 
 /** 撞词数折算成 0–1：撞满三回就算满，再多不加。 */
@@ -61,9 +71,10 @@ export function subjectScore(hits) {
 }
 
 /** 一条的分数。两条线加权，不合成总分以外的任何东西。 */
-export function scoreOf({ at, hits }, now = Date.now()) {
+export function scoreOf(item, now = Date.now()) {
+  const { at, hits } = item || {}
   const days = daysSince(at, now)
-  return W_TIME * timeScore(days) + W_SUBJECT * subjectScore(hits)
+  return (W_TIME * timeScore(days) + W_SUBJECT * subjectScore(hits)) * rehearseFactor(item || {})
 }
 
 export function reinforcePath(root) {
@@ -163,4 +174,16 @@ export function renderReinforce(r) {
     '**加分只在排序上动手，一个字节都不删。** 加固也不替人决定留不留——它只说「该先看到」。',
   )
   return lines.join('\n')
+}
+
+// —— 学自 coner13/dsh-hippocampus 的四件（算法重写，未搬代码）——
+export {
+  recencyOf, recencyWeight, rehearseFactor, strengthOf,
+  LOCATOR, hasLocator, THOUGHT_KINDS, KIND_LABEL, similarity, textHashOf,
+} from './recency.mjs'
+
+/** 一条记忆「还剩多少力气」：衰减（带显著性/情绪加成）× 复习因子 */
+export function richScoreOf(item = {}, now = Date.now()) {
+  const days = item && item.at ? (now - item.at) / 86400000 : null
+  return recencyOf(days, item && item.salience, item && item.emotion) * rehearseFactor(item || {})
 }

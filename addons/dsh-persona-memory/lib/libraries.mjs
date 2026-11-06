@@ -192,7 +192,7 @@ export function renderShortLibrary(root, cfg = {}) {
     }
     const dropped = newestFirst.length - picked.length
 
-    parts.push('### 短期记忆（这几天的流水，先进来的是缩过的）', '')
+    // 内层标题删掉：外层已有「## 短期记忆」
     parts.push(`（按字数切，不按条数：从最新往回摆 ${budget.toLocaleString()} 字，再早的不摆——拿指针翻。）`, '')
     for (const r of picked.reverse()) {
       parts.push(`- ${r.file.replace(/\.md$/, '').slice(-5)} [${r.seq}] ${r.line}`)
@@ -273,26 +273,48 @@ export function renderOtherLibrary(root, cfg = {}) {
   let names = []
   try { names = existsSync(base) ? readdirSync(base) : [] } catch { names = [] }
 
+  // 每一格属于哪一层——按记忆插件自己的分层来，不按「重不重要」拍脑袋。
+  const otherCaps = cfg.otherCaps || {}
+  const layerOfDir = (n) => {
+    if (n === 'chat') return 'memoryJudgment'
+    if (n === 'world' || n === 'lexicon') return 'memoryTheory'
+    if (n === 'web' || n === 'human' || n === 'net') return 'memoryExternal'
+    return ''
+  }
+
   for (const name of names.sort()) {
     if (skip.has(name)) continue
     const full = join(base, name)
     let st
     try { st = statSync(full) } catch { continue }
 
+    const layer = layerOfDir(name)
+    const cap = layer && typeof otherCaps[layer] === 'number' ? otherCaps[layer] : 0
+    // 负数 = 这一份不摆；判断与长期在 mode.mjs 里已被保护，到这里不会出现负数。
+    if (cap < 0) continue
+
+    const block = []
     if (st.isDirectory()) {
       const files = listMd(full).sort()
       if (!files.length) continue
-      lines.push(`**${name}** · ${files.length} 篇`)
+      block.push(`**${name}** · ${files.length} 篇`)
       for (const f of files.slice(-5)) {
         const title = read(f, 4000).split('\n').find((l) => l.trim()) || basename(f)
-        lines.push(`- ${title.trim().slice(0, 80)}（\`${name}/${basename(f)}\`）`)
-        entries += 1
+        block.push(`- ${title.trim().slice(0, 80)}（\`${name}/${basename(f)}\`）`)
       }
     } else if (MD.test(name)) {
       const title = read(full, 4000).split('\n').find((l) => l.trim()) || name
-      lines.push(`- ${title.trim().slice(0, 80)}（\`${name}\`）`)
-      entries += 1
+      block.push(`- ${title.trim().slice(0, 80)}（\`${name}\`）`)
+    } else {
+      continue
     }
+
+    let text = block.join('\n')
+    if (cap > 0 && text.length > cap) {
+      text = `${text.slice(0, cap).replace(/\n[^\n]*$/, '\n…')}\n（**这一格按电源模式截到 ${cap} 字**：${name}。要全文按路径翻。）`
+    }
+    lines.push(text)
+    entries += 1
   }
 
   if (!entries) lines.push('（空着。）')
@@ -333,8 +355,10 @@ export function renderNowLibrary(root, cfg = {}) {
     lines.push(`**这一段对话**（逐字，不压缩；停 ${gap} 分钟以上算断开，断开的那段归短期）`, '')
     lines.push(raw.text, '')
   } else {
-    lines.push(`**这一段对话**：最近一轮距今已过 ${gap} 分钟——这一段已经结束，转给短期那格了。`, '')
-    lines.push('（刚开口的话还在你手上，不在盘上；开口之后，这一段就接着往下记。）', '')
+    // 读不到 ≠ 过了 45 分钟。原来这里把「阈值」当成「实际停顿」印出来，是一句假话：
+    // 流水文件每 30 分钟才从会话导一次，导之前这一段本来就不在盘上。
+    lines.push('**这一段对话**：还没读到——流水是每 30 分钟从会话里导一次的，导之前这一段不在盘上。', '')
+    lines.push('（这不是「停了很久」，只是「还没导入」。刚说的话还在手上，导入之后这一段就接着往下记。）', '')
   }
 
   if (!keys.length) {

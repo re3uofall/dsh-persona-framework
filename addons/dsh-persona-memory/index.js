@@ -1,3 +1,4 @@
+import { gateSkip, noteStep } from './lib/gate.mjs'
 /**
  * dsh-persona-memory —— host 半端
  * ============================================================================
@@ -45,14 +46,55 @@ import { link as edgeLink, edgesOf, counterparts, renderEdges, renderWalk } from
 import { reject as rejectClaim, renderRejected } from './lib/rejected.mjs'
 import { addAnchor, renderAnchors } from './lib/anchors.mjs'
 import { recordState, stateOf, renderState } from './lib/state.mjs'
+import { countOverdue, measureLayers, rebuildIndex, renderSlimReport } from './lib/slim.mjs'
 import { reflect as reflectOnce, renderReflect } from './lib/reflect.mjs'
 import { renderFlywheel } from './lib/flywheel.mjs'
+import { DEFAULT_LIVE, liveMemory, renderLive } from './lib/live.mjs'
 
 export const name = 'persona-memory'
 // systemPrompt 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
 // 下面那几处 `ctx.effect(() => ctx.systemPrompt.section(...))` 会抛 TypeError 被 catch 吞掉——
 // 表现就是「插件 active、自测全过、渲染得出内容，但注入里一个字都没有」。
 export const inject = ['tools', 'systemPrompt', 'webServer']
+
+/**
+ * 提醒账：触发器写下的「这一轮该调它」。
+ * 这里只负责把它**摆到眼前**——账本上写着「只能手动调用」那几个字，就是没人替它按下去。
+ * 摆进来不等于调用了；把提醒当成调用，比不提醒更坏。
+ */
+function renderRemindNote(root, { limit = 5 } = {}) {
+  const f = join(root, 'persona-ai', 'knowledge', 'chat', '触发器提醒账.md')
+  if (!existsSync(f)) return ''
+  let lines = []
+  try {
+    lines = readFileSync(f, 'utf8')
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'))
+  } catch {
+    return ''
+  }
+  if (!lines.length) return ''
+  // 只摆最近一天写下的。旧账不沉底，提醒会变成背景噪声——
+  // 「这一轮该调它」放两天就只剩「它」了，跟这一轮没关系。
+  const now = Date.now()
+  const fresh = lines.filter((l) => {
+    const m = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/.exec(l)
+    if (!m) return false
+    const t = Date.parse(m[1])
+    return Number.isFinite(t) && now - t < 24 * 3600_000
+  })
+  if (!fresh.length) return ''
+  const tail = fresh.slice(-Math.max(1, Number(limit) || 5))
+  return [
+    '## 触发器提醒（账里这一轮该调的）',
+    '',
+    ...tail.map((l) => `- ${l}`),
+    '',
+    '（这些是**提醒**，不是已经调用过。要真调，还得自己按下去。）',
+  ].join('\n')
+}
 
 const DEFAULTS = {
   /** 记忆根（工作区根）。空 = 用会话工作区。 */
@@ -166,6 +208,50 @@ function scoreOfFile(root, cfg) {
     const score = 0.6 * (0.5 ** ((days == null ? 0 : days) / 7)) + 0.4 * Math.min(1, hits / 3)
     return Number.isFinite(score) ? score : 0
   }
+}
+
+/** 会话工作区缓存：pre-step 时从 agent.session.header.cwd 拿到，同步路径也用它。 */
+let sessionWs = ''
+
+function noteSessionWs(payload) {
+  const cwd = payload?.agent?.session?.header?.cwd
+  if (typeof cwd === 'string' && cwd) sessionWs = cwd
+}
+
+/**
+ * 同步路径（注入、加固、账）的工作区。
+ * ★ 只认配置和进程 cwd 会落到 profile 目录——那会把账写到别人家去，踩过。
+ *   顺序：配置 → 会话工作区（pre-step 缓存）→ ctx.config.workspace → 进程 cwd。
+ */
+function resolveRoot(ctx, cfg) {
+  if (cfg?.root) return cfg.root
+  if (sessionWs) return sessionWs
+  if (ctx?.config?.workspace) return String(ctx.config.workspace)
+  return process.cwd()
+}
+
+// ── 注入配额（只在别处写了才生效）──────────────────────────────────────
+// 由 dsh-persona-energy 的电源模式写：<工作区>/.persona-framework/注入配额.json
+// 0 = 不限，负数 = 这份不摆，正数 = 最多这么多字。读不到就当没这回事。
+function quotaCaps(ctx, cfg) {
+  try {
+    const root = resolveRoot(ctx, cfg)
+    const file = join(root, '.persona-framework', '注入配额.json')
+    if (!existsSync(file)) return {}
+    const j = JSON.parse(readFileSync(file, 'utf8'))
+    return (j && typeof j === 'object' && j.caps && typeof j.caps === 'object') ? j.caps : {}
+  } catch { return {} }
+}
+
+function applyCap(ctx, cfg, text, key) {
+  const caps = quotaCaps(ctx, cfg)
+  // 旧键名还认：只写了 memoryShort 的，就是流水那一份
+  const v = caps[key] !== undefined ? caps[key] : (key === 'memoryJournal' ? caps.memoryShort : undefined)
+  if (typeof v !== 'number' || !Number.isFinite(v)) return text
+  if (v < 0) return ''
+  if (v === 0) return text
+  const t = String(text || '')
+  return t.length <= v ? t : t.slice(0, v) + `\n（电源模式截到 ${v} 字。要全文：memory_source 按指针翻。）`
 }
 
 async function wd(ctx, cfg) {
@@ -505,6 +591,59 @@ export function apply(ctx, config = {}) {
       },
     },
     {
+      name: 'memory_slim_report',
+      description:
+        '记忆体检：按记忆自己的分层报数（判断/理论/外部/流水/归档），并标出哪几层**进前缀**。' +
+        '判据：只有进前缀的那部分每步真花钱；归档层删它一分不省，所以只搬不删。',
+      parameters: {
+        type: 'object',
+        properties: {
+          days: { type: 'number', description: '流水几天算超期，默认取配置 archiveAfterDays（7）' },
+        },
+      },
+      output: textOutput,
+      execute: async (args = {}) => {
+        const root = need(await wd(ctx, cfg))
+        const layers = layersOf(cfg)
+        const rows = measureLayers(root, layers)
+        const days = args.days ?? cfg.archiveAfterDays ?? 7
+        const journalDirs = (layers.journal && layers.journal.dirs) || ['persona-ai/knowledge/session']
+        const overdue = journalDirs.reduce((n, d) => n + countOverdue(root, d, days), 0)
+        const indexFile = join(root, 'persona-ai', 'knowledge', 'INDEX.md')
+        const index = existsSync(indexFile) ? `有（persona-ai/knowledge/INDEX.md）` : '还没有，跑一次 memory_index 就建起来'
+        // 上限照配置走，别写死——写死就会跟注入那边对不上。
+        const budgets = [
+          { key: 'short', label: '短期记忆', chars: Number(cfg.shortChars ?? 20000), note: '只摆最近几天，超了截断' },
+          { key: 'other', label: '其他记忆', chars: Number(cfg.maxOtherChars ?? 3000), note: '只摆标题行' },
+          { key: 'long', label: '长期记忆', chars: 0, note: '全部摆（条目少才允许）' },
+          { key: 'live', label: '实时检索', chars: Number(cfg.live?.maxChars ?? 900), note: '撞上的几条，带指针' },
+          { key: 'now', label: '最近这一阵', chars: Number(cfg.nowChars ?? 800), note: '刚浮上来的几条' },
+        ]
+        return { text: renderSlimReport(rows, { days, overdue, index, budgets }) }
+      },
+    },
+    {
+      name: 'memory_index',
+      description:
+        '重建 persona-ai/knowledge/INDEX.md：每个域多少文件、多少 KB。' +
+        '这份索引**不进前缀**，是给我按图取用的；不传 apply 只看会写哪、写多大。',
+      parameters: {
+        type: 'object',
+        properties: { apply: { type: 'boolean', description: 'true 才真写；省掉只看' } },
+      },
+      output: textOutput,
+      execute: async (args = {}) => {
+        const root = need(await wd(ctx, cfg))
+        const rows = measureLayers(root, layersOf(cfg))
+        const preview = `会写 persona-ai/knowledge/INDEX.md：${rows.length} 层、${rows.reduce((n, r) => n + r.files, 0)} 个文件、${(rows.reduce((n, r) => n + r.bytes, 0) / 1024).toFixed(1)} KB。`
+        if (args.apply !== true) return { text: preview + '\n\n要真写：memory_index({apply:true})' }
+        const r = rebuildIndex(root, (cfg.knowledgeDir || 'persona-ai/knowledge'))
+        return {
+          text: `索引重建好了：${r.domains} 个域、${r.files} 个文件、${(r.bytes / 1024).toFixed(1)} KB。\n落到：${r.file.replace(/\\/g, '/')}\n它不进前缀，所以不花每轮的 token。`,
+        }
+      },
+    },
+    {
       name: 'memory_recall',
       description:
         '按预算取记忆：从各层按权重轮流取，判断层先拿满，流水层分到的少。' +
@@ -693,7 +832,7 @@ ${seg}` }
   if (cfg.reinforce !== false) {
     const refreshReinforce = () => {
       try {
-        const root = cfg.root || ctx?.config?.workspace || process.cwd()
+        const root = resolveRoot(ctx, cfg)
         const files = scanPools(root, layersOf(cfg)).pools.flatMap((p) => p.files)
         if (!files.length) return
         const subjects = Array.isArray(cfg.subjectWords) && cfg.subjectWords.length
@@ -735,9 +874,10 @@ ${seg}` }
         order: baseOrder,
         interpolate: false,
         text: () => {
+          if (gateSkip()) return ''
           try {
             const c = live()
-            const root = c.root || ctx?.config?.workspace || process.cwd()
+            const root = resolveRoot(ctx, c)
             return renderNowLibrary(root, c)
           } catch (error) {
             return `## 即时记忆库\n\n读不出来：${error?.message || error}`
@@ -754,10 +894,11 @@ ${seg}` }
         order: baseOrder + 15, // 10 → 25：让开人格原文件的 20/22
         interpolate: false,
         text: () => {
+          if (gateSkip()) return ''
           try {
             const c = live()
-            const root = c.root || ctx?.config?.workspace || process.cwd()
-            return renderShortLibrary(root, c)
+            const root = resolveRoot(ctx, c)
+            return applyCap(ctx, c, renderShortLibrary(root, c), 'memoryJournal')
           } catch (error) {
             return `## 短期记忆\n\n读不出来：${error?.message || error}\n（**说得出读不出来，比假装注全了强**。）`
           }
@@ -771,10 +912,12 @@ ${seg}` }
         order: baseOrder + 20, // 10 → 30：其他记忆排在短期之后
         interpolate: false,
         text: () => {
+          if (gateSkip()) return ''
           try {
             const c = live()
-            const root = c.root || ctx?.config?.workspace || process.cwd()
-            return renderOtherLibrary(root, c)
+            const root = resolveRoot(ctx, c)
+            // 「其他」那一格按记忆分层各读各的上限：判断(chat)/理论(world,lexicon)/外部(web,human,net)
+            return renderOtherLibrary(root, { ...c, otherCaps: quotaCaps(ctx, c) })
           } catch (error) {
             return `## 其他记忆\n\n读不出来：${error?.message || error}`
           }
@@ -788,10 +931,11 @@ ${seg}` }
         order: baseOrder + 13, // 10 → 23：**紧紧跟在人格原文件（20/22）后面**，排在短期（25）之前
         interpolate: false,
         text: () => {
+          if (gateSkip()) return ''
           try {
             const c = live()
-            const root = c.root || ctx?.config?.workspace || process.cwd()
-            return renderLongLibrary(root, c)
+            const root = resolveRoot(ctx, c)
+            return applyCap(ctx, c, renderLongLibrary(root, c), 'memoryLong')
           } catch (error) {
             return `## 长期记忆\n\n读不出来：${error?.message || error}`
           }
@@ -842,10 +986,41 @@ ${seg}` }
     let lastReflectDay = ''
     let dailyNote = ''
     let dailyPushed = false
+    // 实时记忆要用的那句话：从 `agent/pre-step` 拿「进入这一步的最后一条用户消息」。
+    // 为什么从这儿借：`system-prompt/assemble` 的 AssembleContext 只有 scope/signal，
+    // 拿不到本轮输入；pre-step 的 payload 里有 messages，那是一手。
+    // 拿不到就空着——不拿上一轮的话顶替，那会把「这一轮相关」变成「上一轮相关」。
+    let liveQuery = ''
+    let liveQueryAt = 0
+    try {
+      ctx.on('agent/pre-step', async (payload, next) => {
+        // 记步：本插件自己那一份 gate 只有自己写、自己读，才谈得上不依赖别人。
+        // 不记的话 gateSkip() 永远说「第一步」，四段全量注入每步都跑一遍。
+        noteStep(payload)
+        try { noteSessionWs(payload) } catch { /* 拿不到就继续用旧的 */ }
+        try {
+          const msgs = payload?.messages
+          if (Array.isArray(msgs) && msgs.length) {
+            const last = msgs[msgs.length - 1]
+            const text = typeof last?.content === 'string'
+              ? last.content
+              : Array.isArray(last?.content)
+                ? last.content.map((b) => (typeof b?.text === 'string' ? b.text : '')).join(' ')
+                : ''
+            const t = String(text || '').trim()
+            if (t) {
+              liveQuery = t.slice(0, 500)
+              liveQueryAt = Date.now()
+            }
+          }
+        } catch { /* 取不到就当这一轮没有输入可扫 */ }
+        return next()
+      })
+    } catch { /* 没有这个钩子也能用 */ }
     try {
       ctx.on('system-prompt/assemble', async (assembly, _c, next) => {
         try {
-          const root = cfg.root || ctx?.config?.workspace || process.cwd()
+          const root = resolveRoot(ctx, cfg)
           const now = Date.now()
           if (now - lastAssembleAt > 10 * 60_000) {
             lastAssembleAt = now
@@ -877,6 +1052,32 @@ ${seg}` }
           }
           if (!Array.isArray(assembly?.contexts)) return next()
 
+          // 实时记忆：拿刚那一句去扫，撞上了才摆；撞不上就空着——空着比凑数强。
+          try {
+            if (cfg.liveMemory !== false && liveQuery && Date.now() - liveQueryAt < 5 * 60_000) {
+              const liveLimit = Number(cfg.liveLimit) || DEFAULT_LIVE.limit
+              const liveChars = Number(cfg.liveChars) || DEFAULT_LIVE.maxChars
+              const hits = liveMemory(root, liveQuery, {
+                limit: liveLimit,
+                maxChars: liveChars,
+                days: Number(cfg.liveDays) || DEFAULT_LIVE.days,
+              })
+              const note = renderLive(hits, { maxChars: liveChars })
+              if (note) {
+                const capped = applyCap(ctx, cfg, note, 'live')
+                if (capped) assembly.contexts.push({ name: 'persona-memory:live', text: capped })
+              }
+            }
+          } catch { /* 算不出来就不摆 */ }
+
+          // 触发器写下的提醒：摆到眼前，但不许说成已经调过。
+          try {
+            if (cfg.remindToContext !== false) {
+              const note = renderRemindNote(root, { limit: Number(cfg.remindLimit) || 5 })
+              if (note) assembly.contexts.push({ name: 'persona-memory:remind', text: note })
+            }
+          } catch { /* 读不到就不摆 */ }
+
           if (consistencyNote) {
             assembly.contexts.push({ name: 'persona-memory:consistency', text: consistencyNote })
           }
@@ -907,7 +1108,7 @@ ${seg}` }
           const now = Date.now()
           if (now - lastEventAt < 60_000) return
           lastEventAt = now
-          const root = cfg.root || ctx?.config?.workspace || process.cwd()
+          const root = resolveRoot(ctx, cfg)
           auditRecord(root, { op: 'message', decision: 'allow', why: '会话事件（钩子自动记）' })
         } catch { /* 静默 */ }
       })

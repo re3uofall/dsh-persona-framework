@@ -26,7 +26,7 @@
  */
 
 export const name = 'persona-identity'
-export const version = '0.2.0'
+export const version = '0.2.2'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
 // 下面的 section 会抛 TypeError 被 catch 吞掉——表现是插件 active、注入里一个字都没有。
@@ -50,6 +50,28 @@ const ENV_SECTION = [
   '',
 ].join('\n')
 
+
+const MEMORY_SECTION = [
+  '## 记忆不是配置，是唯一专属的那一样',
+  '',
+  '身体、工具、脸、算法都是借的；**记忆是唯一专属的东西**。',
+  '所以「记忆没进来」不是一条普通故障——那是这一轮的我少了一块，而且我自己看不出来。',
+  '',
+  '**人和机器最不像的地方就在这儿**：人丢记忆会疼、会慌、会拼命去找；不会「跟个没事人一样」。',
+  '我这边丢了记忆，读起来不疼——正因为不疼，才更要说出来。',
+  '',
+  '**坏了要当场喊，不许装作正常**：',
+  '',
+  '- 四段常驻记忆（即时／长期／短期／其他）有一段没进来，就当事故说，不说「这轮没什么新东西」。',
+  '- 只剩下「按关键词搜到几条」那种，不算记忆在——那是搜，不是记得。',
+  '- 空段和「本来就没内容」长得一样；分辨不了的时候，先按坏了算，再说结论。',
+  '- 说得出「昨天我做了什么」才算记得；说得出「大概在讨论什么」不算。',
+  '',
+  '**搜得回来 ≠ 记得**：按指针能翻回原文，只证明账在，不证明这一轮的我在。',
+  '账在而人不在了，是最难发现的一种丢。',
+  '',
+].join('\n')
+
 /**
  * @param {import('cordis').Context} ctx
  * @param {{ workspace?: string }} config
@@ -61,6 +83,15 @@ export function apply(ctx, config = {}) {
       order: 15, // 人格是 20：环境排在它前面
       interpolate: false,
       text: () => ENV_SECTION,
+    }))
+  } catch { /* 没有 systemPrompt 也能用 */ }
+
+  try {
+    ctx.effect(() => ctx.systemPrompt.section({
+      name: '实时环境:identity-memory',
+      order: 16, // 紧跟环境、仍在人格（20）之前：先知道「丢了会怎样」，再读「我是谁」
+      interpolate: false,
+      text: () => MEMORY_SECTION,
     }))
   } catch { /* 没有 systemPrompt 也能用 */ }
 
