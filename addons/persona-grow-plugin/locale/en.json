@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Persona Growth",
-    "description": "Injects a persona file each turn and grows new entries from your corrections; patch-only edits, versioned and reversible."
+    "description": "Injects the persona file each turn and gives ten tools to tidy it: report, archive old sections, edit in place, add/rename/split sections, diff against the last backup, restore. Patches are one path only; every edit leaves a .bak."
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-grow",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "description": "每轮把人格文件注入上下文，并从你的纠正里长出新条目：带版本、可回滚、不覆盖旧条",
   "type": "module",
