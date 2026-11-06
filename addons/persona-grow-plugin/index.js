@@ -155,7 +155,7 @@ export function apply(ctx, config = {}) {
 
   if (p) {
     ctx.effect(() => ctx.systemPrompt.section({
-      name: 'persona:grow',
+      name: '实时环境:grow',
       order: 10,
       interpolate: false,   // 人格里写了 `{{` 也不该把整个提示词炸掉
       text: buildPersonaText,

@@ -892,7 +892,7 @@ export function apply(ctx, config = {}) {
               if (hit) fixedModules.push(hit)
             }
           } catch { /* 读不到目录就不加这一段 */ }
-          if (fixedModules.length) parts.push('', '## 注入（固定）')
+          if (fixedModules.length) parts.push('', '## 实时环境（每轮都在）')
           for (const f of fixedModules) {
             try {
               const raw = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')

@@ -461,7 +461,7 @@ export function apply(ctx, config = {}) {
   // ── 提示词里挂一小段 ────────────────────────────────────────────────────────
   if (cfg.injectPrompt) {
     ctx.effect(() => ctx.systemPrompt.section({
-      name: 'persona:diary',
+      name: '实时环境:diary',
       order: 13,
       interpolate: false,
       text: GUIDE,
@@ -471,7 +471,7 @@ export function apply(ctx, config = {}) {
   // ── 到点提醒：只提一句，不替你写 ────────────────────────────────────────────
   if (cfg.injectReminder) {
     ctx.effect(() => ctx.systemPrompt.section({
-      name: 'persona:diary-remind',
+      name: '实时环境:diary-remind',
       order: 14,
       interpolate: false,
       text: () => {

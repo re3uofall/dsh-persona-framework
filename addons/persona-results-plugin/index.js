@@ -231,7 +231,7 @@ export function apply(ctx, config = {}) {
   // ── 提示词里挂一小段 ────────────────────────────────────────────────────────
   if (cfg.injectPrompt) {
     ctx.effect(() => ctx.systemPrompt.section({
-      name: 'persona:results',
+      name: '实时环境:results',
       order: 12,
       interpolate: false,
       text: GUIDE,

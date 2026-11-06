@@ -57,7 +57,7 @@ const ENV_SECTION = [
 export function apply(ctx, config = {}) {
   try {
     ctx.effect(() => ctx.systemPrompt.section({
-      name: 'persona-identity:env',
+      name: '实时环境:identity',
       order: 15, // 人格是 20：环境排在它前面
       interpolate: false,
       text: () => ENV_SECTION,

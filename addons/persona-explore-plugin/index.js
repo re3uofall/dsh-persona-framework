@@ -452,7 +452,7 @@ export function apply(ctx, config = {}) {
 
   if (p) {
     ctx.effect(() => ctx.systemPrompt.section({
-      name: 'persona:explore',
+      name: '实时环境:explore',
       order: 20,
       interpolate: false,
       text: () => (appearOn() ? sectionText() : ''),

@@ -215,7 +215,7 @@ export function apply(ctx, config) {
 
   try {
     ctx.effect(() => ctx.systemPrompt.context({
-      name: 'persona-energy:state',
+      name: '实时环境:energy',
       order: 101,
       text: () => {
         try { if (!hint) refresh() } catch { return '' }

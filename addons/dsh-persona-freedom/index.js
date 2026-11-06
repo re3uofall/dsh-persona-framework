@@ -284,7 +284,7 @@ export function apply(ctx, config) {
   try {
     ctx.effect(() =>
       ctx.systemPrompt.context({
-        name: 'persona-freedom:due',
+        name: '实时环境:freedom',
         order: 102,
         text: () => {
           if (!hint && Date.now() - lastCheck > 60_000) check()

@@ -332,7 +332,7 @@ export function apply(ctx, config = {}) {
 
   try {
     ctx.effect(() => ctx.systemPrompt.section({
-      name: 'persona-appear:live',
+      name: '实时环境:appear',
       order: 6,
       interpolate: false,
       text: () => {
