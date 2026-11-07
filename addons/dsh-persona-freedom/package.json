@@ -1,8 +1,8 @@
 {
   "name": "dsh-persona-freedom",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "自己给自己划时间：固定事与弹性事、自由空间（一台自己的虚拟机）、自由时间（粗糙作息表 + 精细骨架留白）、免打扰；到点才提一句，弹性事不催不记连续",
+  "description": "自己给自己划时间：粗糙日程（有钟点、要完成）与精细日程（随时可做、可跳过）分开，每天一份想做的事，DND、自由空间与虚拟机配合",
   "type": "module",
   "main": "index.js",
   "exports": {

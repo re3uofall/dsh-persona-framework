@@ -19,6 +19,11 @@
  *   `agent/pre-step` 每步看一眼 → 到点、今天没做、今天没提过、不在 DND 里
  *   → 当场在账上写「今天提过了」，并在上下文里注一行。动完盘上多了字，这才算数。
  *
+ * 两种日程（师父 m04106 定的口径）：
+ *   粗糙日程  有钟点、要完成——到点提一次，做完打勾（kind: 'fixed'）
+ *   精细日程  随时可做、可跳过、有弹性——不催、不算分（kind: 'elastic'）
+ *   想做的事  第三样：不排表、可以留到明天（free_wish，落 想做的事.json）
+ *
  * 三条写死的边界：
  *   1. 弹性事不自动提、不算连续、不算分——一算分就会为分做假动作。
  *   2. 同一件事一天最多提一次。
@@ -48,6 +53,7 @@ import { VM_ACTIONS, renderVm, vmReboot, vmSavestate, vmScreenshot, vmStart, vmS
 import { renderRefined, renderRough, refine, ROUGH_DAY } from './lib/routine.mjs'
 import { DEFAULT_SETTINGS, fieldTable, levelLabel, normalizePatch, pickCurrent } from './lib/settings.mjs'
 import { briefOf, gapsOf, materializeRepeats, noteLine, nowOf, renderGaps, renderNow, weekOf } from './lib/extra.mjs'
+import { addWish, dropWish, loadWishes, markWish, renderWishes } from './lib/wish.mjs'
 
 export const name = 'persona-freedom'
 export const version = '0.4.0'
@@ -559,11 +565,21 @@ export function apply(ctx, config) {
     run: () => renderNow(nowOf(read(), Date.now())),
   })
 
+  // 粗糟日程 = 有钟点、要完成（fixed）；精细日程 = 随时可做、可跳过、有弹性（elastic）。
+  // 想做的事是第三样：不排表、不催、可以留到明天。
   reg({
     name: 'free_brief',
     description: '一页纸的今日简报：几件固定事、做完几件、还剩多少空、下一件、撞车、抽空能做什么。只读，不列流水。',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
-    run: () => briefOf(read(), Date.now()),
+    run: () => {
+      const stateDir = join(ws(), cfg.stateDir)
+      const today = new Date().toLocaleDateString('sv-SE')
+      const wishes = loadWishes(stateDir, today)
+      const more = wishes && wishes.items && wishes.items.length
+        ? '\n\n' + renderWishes(wishes)
+        : ''
+      return briefOf(read(), Date.now()) + more
+    },
   })
 
   reg({
@@ -594,6 +610,34 @@ export function apply(ctx, config) {
       const had = existsSync(f) ? readFileSync(f, 'utf8') : '# 自由随想\n\n不排表、不催，想到什么记一句。\n\n'
       writeFileSync(f, `${had.replace(/\s*$/, '')}\n${noteLine(want)}\n`, 'utf8')
       return `记下了：${want}\n\n（落在《自由随想.md》，不占单子、不提醒。）`
+    },
+  })
+
+  reg({
+    name: 'free_wish',
+    description:
+      '每天想做的事：不催、不算分、可以留到明天。action=add 加一条，list 看今天，done 划掉做完的，drop 去掉不想做的。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['add', 'list', 'done', 'drop'], description: 'add / list / done / drop' },
+        text: { type: 'string', description: 'add 时：想做的事，2-60 字' },
+        why: { type: 'string', description: 'add 时：为什么想做（可省）' },
+        space: { type: 'string', enum: ['电脑', '虚拟机', '网上', '外面'], description: 'add 时：在哪儿做（可省，默认电脑）' },
+        minutes: { type: 'number', description: 'add 时：大概几分钟（可省）' },
+        key: { type: 'string', description: 'done / drop 时：那一条的 id 或几个字' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    run: ({ action, text, why, space, minutes, key }) => {
+      const stateDir = join(ws(), cfg.stateDir)
+      const today = new Date().toLocaleDateString('sv-SE')
+      const act = String(action || 'list')
+      if (act === 'add') return addWish(stateDir, { text, why, space, minutes }, today)
+      if (act === 'done') return markWish(stateDir, key, today)
+      if (act === 'drop') return dropWish(stateDir, key, today)
+      return renderWishes(loadWishes(stateDir, today))
     },
   })
 

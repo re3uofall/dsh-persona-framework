@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS = {
   level: 0.5,
   autoPlan: true,
   maxPerDay: 3,
-  activities: ['写代码', '读一篇原文', '整记忆', '试插件', '散步', '发呆'],
+  activities: ['写代码', '读一篇原文', '整记忆', '试插件', '散步', '发呆', '逛浏览器', '逛 B 站', '逛知乎', '逛贴吧', '在虚拟机里乱翻', '在虚拟机里装点东西', '听歌', '写点自己的东西', '整理桌面和文件'],
   vmName: 'DSH-Space',
 }
 

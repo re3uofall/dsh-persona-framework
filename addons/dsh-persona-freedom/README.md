@@ -166,3 +166,10 @@ node selfcheck.mjs
 `level`（0 只记 / 0.5 提醒 / 1 自排）、`autoPlan`、`maxPerDay`、`activities`（自由活动内容）、`vmName`。
 存 `.persona-framework/自由配置.json`，写前留 `.bak`。
 
+## 0.5.0 · 两种日程与每天想做的事
+
+- **粗糙日程** = `fixed`：自己给自己一个钟点，到点提一次，做完打勾。有任务感。
+- **精细日程** = `elastic`：随时可做、可以不去做、有弹性时间；不自动提、不算分。
+- **想做的事** = `free_wish`：不排表、不催、可以留到明天，落 `.persona-framework/想做的事.json`；
+  每条可标「在哪做」（电脑 / 虚拟机 / 网上 / 外面），跟 `free_space`、`free_vm` 配合。
+- `free_brief` 末尾会把今天想做的事一起打出来。
