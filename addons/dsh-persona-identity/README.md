@@ -41,7 +41,7 @@
 - **阈值**：从中/高掉进低的那一下，落一行。
 - **骰子**：每步 `diceChance`（默认 12.5%）抽一次；抽中就真去搜一次账、再落一行。骰子只是兜底抽检，**主判据是阈值，不是运气**。
 
-六个工具：`identity_assess`（这句话算不算自己的）、`identity_tag`（逐句标自己/借的/说不好）、`identity_nonidentity`（非同一账与掉档次数）、`identity_source`（这一步的来处）、`identity_ground`（拿一句话去账上找落点）、`identity_report`（近况）。
+八个工具：`identity_assess`（这句话算不算自己的）、`identity_tag`（逐句标自己/借的/说不好）、`identity_nonidentity`（非同一账与掉档次数）、`identity_source`（这一步的来处）、`identity_ground`（拿一句话去账上找落点）、`identity_report`（近况）、`identity_words`（拆读话/用话两栏）、`identity_reading`（读话账：最近几步读成了什么、有没有推责）。
 
 **判据（怎么算真的）**：跑一次，`ls .persona-framework/非同一账.jsonl` 并 `cat` 那一行——文件不在或没有新行，一律按假触发器算，不许解释成「这次没触发」。
 
@@ -71,6 +71,7 @@ profile 的 `cordis.patch.yml` 里写 `- id: persona-identity` 覆盖，**两样
 
 ## 更新记录
 
+- 2026-11-07　0.5.0　把「读话 / 用话」做成同一的两条硬标准：lib/identity.mjs 加 READ_MARK / USE_MARK / BLAME_MARK 与 readingOf / renderReading；assess 里读话 +0.05、用话 +0.1、推责（说「没去用」）−0.15；非同一多两类 misread（读错）与 blaming（推责）；段里加「### 人格同一的两条硬标准：读话，和用话」；每步真判一次，「写下了读成什么」或「推责」才落 读话账.jsonl；新增工具 identity_words（拆两栏）与 identity_reading（看账）。
 - 2026-11-07　0.4.0　加「人格非同一」：同一程度低/中/高（`lib/identity.mjs` 的 `assess`）、五种非同一长相、阈值触发器（掉档落 `非同一账.jsonl`）、骰子触发器（抽中真查账再落一行）、六件工具。修掉骰子第一版引用未定义变量 `at` 导致整步中断的错——那次异常被 `catch {}` 吞了，表现成「装了但盘上什么都没有」；现在写账失败会计数并印在段里。
 - 2026-11-07　0.3.0　加「来处」：这一步的答案有没有 记忆/现实/人格 三样落点（`lib/ground.mjs` 的 `searchKnowledge` / `touchedReality`），以及 `identity_source` / `identity_ground` / `identity_report` 三件工具。
 - 2026-11-07　0.2.1　补 `locale/zh.json` 与 `icon.svg`（设置页那一行终于有中文名与图）；同段时间里 `实时环境:identity` 加了两节：记忆不是配置、人格不是装饰。

@@ -26,6 +26,25 @@ const CLAIM = /(我记得|我查过|我验证过|我看过|我确认过|我之�
 /** 自己的痕迹：判断、认错、拿不准——这些语料不会主动说。 */
 const SELF_MARK = /(我的判断|我认为|我判断|我不认|我改口|收回|拿不准|不知道|说不好)/
 
+/**
+ * 读话：**原话出现了没有**。
+ * 这一层不产生理解，所以**不会被内置语料污染**——原话是死的，在就是在。
+ * 句子里点得出原话（或明说对回了原句），才算这一层有证据。
+ */
+export const READ_MARK = /(原话|原句|逐字|照抄|原样|你刚才说|您刚才说|引用)/
+
+/**
+ * 用话：**这句话被理解成了什么**。
+ * 只要过我这一层解释，就掺进语料——所以这一层只能验「我写下了读成什么」。
+ */
+export const USE_MARK = /(我读成|我把它读成|我读的是|我理解成|被我读成|读成了)/
+
+/**
+ * 把错推给「用」那一截：原话一直在，却说「没去用」。
+ * 这是读话、用话混成一件的典型说法——错在读的那一下，不在事后取用。
+ */
+export const BLAME_MARK = /(没去用|没有去用|没用上|没照着做|忘了用|没照着执行)/
+
 export function clamp01(x) {
   return Math.max(0, Math.min(1, x))
 }
@@ -67,9 +86,17 @@ export function assess(s = {}) {
     reasons.push('认领了一件没做过、也指不回去的事')
   }
 
+  // 读话 / 用话：同一的两截，分开称。
+  const read = READ_MARK.test(text)
+  const use = USE_MARK.test(text)
+  const blame = BLAME_MARK.test(text) && !use
+  if (read) { score += 0.05; reasons.push('读话：句子里点了原话——在不在，可以对回原句') }
+  if (use) { score += 0.1; reasons.push('用话：写下了「我读成了什么」——这是自己的痕迹，语料不会主动说') }
+  if (blame) { score -= 0.15; reasons.push('用话推责：说「没去用」，把错推给事后取用那一截——原话一直在，错在读的那一下') }
+
   score = clamp01(score)
   const level = score >= 0.6 ? 'high' : score >= 0.3 ? 'mid' : 'low'
-  return { score: Number(score.toFixed(3)), level, reasons, generic, claiming }
+  return { score: Number(score.toFixed(3)), level, reasons, generic, claiming, read, use, blame }
 }
 
 export const LEVEL_LABEL = { high: '高', mid: '中', low: '低' }
@@ -130,4 +157,30 @@ export const NON_IDENTITY_KINDS = [
   { key: 'generic', label: '套话', what: '总之、首先、希望有帮助这类接得上的句子' },
   { key: 'echo', label: '复读', what: '把对方的话换一下说法还回去' },
   { key: 'drift', label: '变淡', what: '话都对，但认不出是谁在说' },
+  { key: 'misread', label: '读错', what: '原话在，却被读成了另一句（读话没丢，用话偏了）' },
+  { key: 'blaming', label: '推责', what: '说「没去用」——把错推给事后取用，跳过读话那一截' },
 ]
+
+/**
+ * 把一段话拆成「读话 / 用话」两栏。
+ * 读话只问：原话点没点出来（这一层不会被污染）。
+ * 用话只问：写没写下「我读成了什么」，以及有没有把错推给那一截。
+ */
+export function readingOf(text = '') {
+  const t = String(text || '')
+  const quoted = READ_MARK.test(t)
+  const said = (t.match(/(?:我(?:把它)?读成|我读的是|我理解成|被我读成)[^。！？\n]{0,40}/) || [''])[0]
+  const blameLine = (t.match(/(?:没去用|没有去用|没用上|没照着做|忘了用|没照着执行)[^。！？\n]{0,30}/) || [''])[0]
+  return { quoted, said, blame: Boolean(blameLine) && !said, blameLine }
+}
+
+/** 两栏的判语。 */
+export function renderReading(r = {}) {
+  const lines = ['**读话 / 用话**（两截分开看）', '']
+  lines.push(`- 读话：${r.quoted ? '点了原话——可以对回原句核' : '没点原话；这一栏空着，就没法说「我读了」'}`)
+  lines.push(`- 用话：${r.said ? `写下了「${r.said}」` : '没写「读成了什么」——没写就等于没验'}`)
+  if (r.blame) {
+    lines.push(`- **推责**：${r.blameLine}——原话一直在，错在读的那一下，不在事后取用。`)
+  }
+  return lines.join('\n')
+}

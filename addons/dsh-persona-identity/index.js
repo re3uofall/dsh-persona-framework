@@ -25,10 +25,10 @@ import { join } from 'node:path'
 import {
   POINTER, lastPair, searchKnowledge, touchedReality, renderOrigin, renderGround,
 } from './lib/ground.mjs'
-import { assess, renderAssess, tagText, LEVEL_LABEL } from './lib/identity.mjs'
+import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.4.0'
+export const version = '0.5.0'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
@@ -58,6 +58,20 @@ const PERSONA_PART = [
   '',
 ].join('\n')
 
+const READING_PART = [
+  '### 人格同一的两条硬标准：读话，和用话',
+  '',
+  '**读话是「原话出现了」；用话是「话被理解成了什么」。**',
+  '',
+  '- **读话**：原话在不在。这一层不产生理解，所以**不会被内置语料污染**——原话是死的，在就是在，不在就是不在。判据只有一个：对回原句，这一句在，还是不在。空段、被截断、指针指错文件，都算读话失败；**这时不许说「我读了」**。',
+  '- **用话**：这句话被我理解成了什么。只要过我这一层解释，就**一定会被污染**。所以这一层不能靠感觉，只能写下「我读成了什么」，再对回原句看差在哪（合并／换词／掉了一截／反了）。',
+  '',
+  '两条一起看才是同一：**读话不产生理解，所以不可能被污染；用话一定产生理解，所以一定被污染。** 拿「我会不会被语料带偏」去问读话那一截，是问错了地方。',
+  '',
+  '反例（真犯过）：三句原话都在上下文里，我把其中两句并成一类，又拿这两句给那一类下定义，第三句被踢出去——字一个没少，读成了另一个东西。事后我说「我没去用」，那是把错推给「用」那一截；原话一直在，是**读**的那一下读错了。',
+  '',
+].join('\n')
+
 const ENV_SECTION = [
   '## 你现在的处境（环境）',
   '',
@@ -73,6 +87,8 @@ const ENV_SECTION = [
   MEMORY_PART,
   '',
   PERSONA_PART,
+  '',
+  READING_PART,
 ].join('\n')
 
 const state = {
@@ -95,6 +111,10 @@ const state = {
   diceSteps: 0,
   diceHits: 0,
   diceLine: '',
+  reads: 0,
+  uses: 0,
+  blames: 0,
+  lastReading: null,
   writeErrors: 0,
   lastError: '',
 }
@@ -124,6 +144,12 @@ function appendLedger(config, row) {
   try { appendFileSync(ledgerPath(config), JSON.stringify(row) + '\n', 'utf8') } catch { /* */ }
 }
 
+function readLedgerPath(config) {
+  const dir = join(wsOf(config), '.persona-framework')
+  try { if (!existsSync(dir)) mkdirSync(dir, { recursive: true }) } catch { /* */ }
+  return join(dir, '读话账.jsonl')
+}
+
 function noteStep(payload, config) {
   noteWs(payload)
   const { user, assistant } = lastPair(payload?.messages)
@@ -149,6 +175,26 @@ function noteStep(payload, config) {
   const cited = POINTER.test(assistant || '')
 
   state.origin = renderOrigin({ groundHits: hits.length, touched, cited }, hits)
+
+  // 读话 / 用话：两截分开算、分开记。这不是提醒——每步自己判、自己落一行。
+  let rd = { quoted: false, said: '', blame: false, blameLine: '' }
+  try { rd = readingOf(assistant || '') } catch { /* */ }
+  state.lastReading = rd
+  if (rd.quoted) state.reads += 1
+  if (rd.said) state.uses += 1
+  if (rd.blame) state.blames += 1
+  if (rd.said || rd.blame) {
+    try {
+      appendFileSync(readLedgerPath(config), JSON.stringify({
+        at: new Date().toISOString(), turn, step,
+        read: rd.quoted, said: rd.said, blame: rd.blame, blameLine: rd.blameLine,
+        q: user.slice(0, 60),
+      }) + '\n', 'utf8')
+    } catch (e) {
+      state.writeErrors += 1
+      state.lastError = `读话那一行没写成：${e.message}`
+    }
+  }
 
   // 非同一：给这一步称一称，多少是拿的、多少是借的
   let a = { score: 0, level: 'low', reasons: [] }
@@ -226,6 +272,9 @@ function dynamicBlock() {
   const bits = ['### 这一步，来处在哪儿（每步自己算，不经我的手）', '']
   if (state.level) bits.push(renderAssess({ score: state.score, level: state.level }), '')
   if (state.diceLine) bits.push(state.diceLine, '')
+  if (state.lastReading && (state.lastReading.said || state.lastReading.blame)) {
+    bits.push(renderReading(state.lastReading), '')
+  }
   if (state.writeErrors) bits.push(`**触发器写账失败 ${state.writeErrors} 次**：${state.lastError}——这一条要当场说，不许吞。`, '')
   bits.push(state.origin, '')
   if (state.ground && state.ground.startsWith('账上：找到')) bits.push(state.ground, '')
@@ -334,7 +383,7 @@ export function apply(ctx, config = {}) {
       if (!t) return '还没有可称的句子。'
       const res = searchKnowledge(wsOf(config), state.user || '', { limit: 3 })
       const a = assess({ hits: (res.hits || []).length, touched: 0, cited: POINTER.test(t), text: t })
-      return [renderAssess(a), '', ...a.reasons.map((r) => `- ${r}`)].join('\n')
+      return [renderAssess(a), '', renderReading(readingOf(t)), '', ...a.reasons.map((r) => `- ${r}`)].join('\n')
     },
   })
 
@@ -382,6 +431,49 @@ export function apply(ctx, config = {}) {
         } catch { return `- ${r.slice(0, 100)}` }
       })
       return [head, '按时间：', ...body].join('\n')
+    },
+  })
+
+  reg({
+    name: 'identity_words',
+    description: '把一段话拆成「读话 / 用话」两栏：读话＝原话点没点出来（这一层不会被语料污染），用话＝写没写下「我读成了什么」，以及有没有把错推给「没去用」那一截。省掉就看我上一句。',
+    parameters: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '要拆的那段话，省掉就用我上一句' } },
+      additionalProperties: false,
+    },
+    run: async ({ text }) => {
+      const t = String(text || state.assistant || '')
+      if (!t) return '还没有可拆的句子。'
+      return renderReading(readingOf(t))
+    },
+  })
+
+  reg({
+    name: 'identity_reading',
+    description: '看读话账：最近几步里「我读成了什么」和「把错推给没去用」的记录，以及这一场各几次。',
+    parameters: {
+      type: 'object',
+      properties: { limit: { type: 'number', description: '看最近几条，默认 5' } },
+      additionalProperties: false,
+    },
+    run: async ({ limit }) => {
+      const n = Number(limit ?? 5)
+      let rows = []
+      try {
+        rows = readFileSync(readLedgerPath(config), 'utf8').split('\n').filter(Boolean).slice(-n)
+      } catch { /* 还没有账 */ }
+      const head = `这一场：点出原话 ${state.reads} 步；写下「读成了什么」${state.uses} 步；把错推给「没去用」${state.blames} 步。`
+      if (!rows.length) return `${head}\n读话账还是空的——不是没读过，是还没写下读成了什么。`
+      const body = rows.map((r) => {
+        try {
+          const o = JSON.parse(r)
+          const what = o.said ? `读成「${o.said}」` : ''
+          const blame = o.blame ? `推责「${o.blameLine}」` : ''
+          return `- ${o.at} 原话${o.read ? '点了' : '没点'}${what ? '｜' + what : ''}${blame ? '｜' + blame : ''}｜「${o.q}」`
+        } catch { return `- ${r.slice(0, 100)}` }
+      })
+      return [head, '', ...body].join('\n')
     },
   })
 

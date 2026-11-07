@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Persona Identity",
-    "description": "Only one persona file and one memory are allowed; the rest is refused with a name and a pointer back, so no second self can quietly grow."
+    "description": "One persona file, one memory. Each turn: which source this turn reads, plus an identity level whose two hard tests are reading (was the exact wording there) and using (what it was read as)."
   }
 }
