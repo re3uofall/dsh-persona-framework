@@ -1,4 +1,8 @@
 import { noteStep, snapshot } from './lib/gate.mjs'
+import {
+  LEDGER_FILE, LADDER, adjudicate, appendPriority, ladderTable, presentLine, presenceOf,
+  readPriority, renderPriority,
+} from './lib/priority.mjs'
 /**
  * dsh-persona-appear —— 人格出现的总闸（host 半端）
  * ============================================================================
@@ -37,7 +41,7 @@ import {
 } from './lib/settings.mjs'
 
 export const name = 'persona-appear'
-export const version = '0.6.0'
+export const version = '0.7.0'
 export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
@@ -96,6 +100,28 @@ function writeState(p, state) {
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, JSON.stringify(state, null, 2) + '\n', 'utf8')
 }
+// ── 优先级：每一轮自己算一遍、自己记一行，不等我想起它 ────────────────
+let priorityNow = { at: '', presence: null, wrote: false, error: '' }
+
+function ledgerPathOf(cfg) {
+  return join(cfg.workspace || guessWorkspace(), cfg.stateDir, LEDGER_FILE)
+}
+
+/** 强制：每步都算一遍；账面一行一条，翻得回去。 */
+function runPriority(cfg) {
+  const at = new Date().toISOString()
+  try {
+    const ws = cfg.workspace || guessWorkspace()
+    const presence = presenceOf(ws)
+    const snap = snapshot()
+    appendPriority(ledgerPathOf(cfg), { at, turn: snap.turn, step: snap.step, repeat: snap.repeat, presence })
+    priorityNow = { at, presence, wrote: true, error: '' }
+  } catch (error) {
+    priorityNow = { at, presence: priorityNow.presence, wrote: false, error: String(error?.message || error) }
+  }
+  return priorityNow
+}
+
 
 // ── 设置文件：给装的人自己调，不用改代码 ──────────────────────────────
 const SETTINGS_FILE = '出现配置.json'
@@ -323,7 +349,16 @@ export function apply(ctx, config = {}) {
   })
 
 
-  // ── 实时注入：这一轮临时摆一段进去，过期自己撤 ──────────────────────
+
+  // ── 优先级：强制触发器。台阶每一轮都在，谁在场每一轮重算 ──────────
+  try {
+    ctx.effect(() => ctx.systemPrompt.section({
+      name: '实时环境:priority',
+      order: 3,
+      interpolate: false,
+      text: () => renderPriority(priorityNow),
+    }))
+  } catch { /* 没有 systemPrompt 也能用 */ }  // ── 实时注入：这一轮临时摆一段进去，过期自己撤 ──────────────────────
   // 跟「出场闸」分开：闸管长期（谁出不出场），这里管临时（往里加一段）。
   const livePath = join(dirname(p), LIVE_FILE)
   // 现算：启动那一刻还没拿到会话工作区，算早了就指到 profile 目录去。
@@ -414,6 +449,7 @@ export function apply(ctx, config = {}) {
   ctx.on('agent/pre-step', (payload, next) => {
     try { noteSessionWorkspace(payload) } catch { /* 拿不到就继续用旧的 */ }
     try { if (liveNow().noteSteps) noteStep(payload) } catch { /* 记步坏了不许拦路 */ }
+    try { runPriority(cfg) } catch { /* 算坏了不许拦路，段里会写没算成 */ }
     return next()
   })
 
@@ -465,6 +501,44 @@ export function apply(ctx, config = {}) {
     },
   }))
 
+
+  reg({
+    name: 'appear_priority',
+    description: '看优先级台阶（人格 > 长期 > 即时 > 短期 > 其他 > 靠内置语料的非同一）：不给参数看台阶和最近的账；给 claims 就当场裁谁压谁。',
+    parameters: {
+      type: 'object',
+      properties: {
+        claims: { type: 'array', description: '要裁的几层说法：[{layer, text}]；layer 取 persona/longTerm/now/shortTerm/other/corpus' },
+        limit: { type: 'number', description: '看最近几行账，默认 5' },
+      },
+      additionalProperties: false,
+    },
+    async run(args) {
+      const claims = Array.isArray(args.claims) ? args.claims : []
+      if (claims.length) {
+        const out = adjudicate(claims)
+        return [
+          out.winner ? `赢的是：${out.winner.layer}（第 ${out.winner.rank} 级）——${out.winner.text}` : '没给可裁的层。',
+          out.why,
+        ].join('\n')
+      }
+      const lines = [
+        '台阶（上面压下面，不看哪句更顺）：',
+        ...ladderTable().map((r) => `  ${r.rank}. ${r.label}`),
+        '',
+        `这一轮在场：${presentLine(priorityNow.presence)}`,
+      ]
+      const rows = readPriority(ledgerPathOf(cfg), Number(args.limit) || 5)
+      if (rows.length) {
+        lines.push('', '最近的账：')
+        for (const r of rows) lines.push(`  ${r.at} 第 ${r.step} 步（repeat=${r.repeat}）`)
+      } else {
+        lines.push('', '账还是空的——说明优先级一次都没算成，这是故障。')
+      }
+      lines.push('', '要裁一条：appear_priority claims=[{layer:"now",text:"..."},{layer:"longTerm",text:"..."}]')
+      return lines.join('\n')
+    },
+  })
   return { statePath: p }
 }
 

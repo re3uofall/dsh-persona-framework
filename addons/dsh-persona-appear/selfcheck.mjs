@@ -8,6 +8,9 @@ import {
   INJECTORS, PARTS, STATE_FILE, allows, emptyState, mute, mutedPlugins, normalizeState, orderOf,
   orderTable, roster, setGlobal, setOrder, unmute,
 } from './lib/appear.mjs'
+import {
+  LADDER, adjudicate, presentLine, rankOf, renderPriority, ladderTable,
+} from './lib/priority.mjs'
 
 let n = 0
 const t = (name, fn) => { fn(); n += 1; console.log(`  ok ${n}  ${name}`) }
@@ -122,4 +125,52 @@ t('顺序表按数值排好', () => {
   assert.deepEqual(nums, [...nums].sort((a, b) => a - b))
 })
 
+
+// ── 优先级：台阶是死的，谁在场是活的 ─────────────────────────────
+t('优先级：六个台阶，人格在最上面', () => {
+  assert.equal(LADDER.length, 6)
+  assert.equal(rankOf('persona'), 1)
+  assert.equal(rankOf('longTerm'), 2)
+  assert.equal(rankOf('now'), 3)
+  assert.equal(rankOf('shortTerm'), 4)
+  assert.equal(rankOf('other'), 5)
+  assert.equal(rankOf('corpus'), 6)
+  assert.equal(rankOf('不认识的层'), 6, '认不出的一律落最后一档')
+})
+
+t('优先级：上面压下面，不看哪句更顺', () => {
+  const r = adjudicate([{ layer: 'shortTerm', text: '顺的' }, { layer: 'persona', text: '判据' }])
+  assert.equal(r.winner.layer, 'persona')
+  assert.equal(r.losers[0].layer, 'shortTerm')
+  assert.ok(r.why.includes('台阶在上面'))
+})
+
+t('优先级：只有一层说话就不裁', () => {
+  const r = adjudicate([{ layer: 'now', text: '就一句' }])
+  assert.equal(r.winner.layer, 'now')
+  assert.equal(r.losers.length, 0)
+})
+
+t('优先级：空输入不报错', () => {
+  assert.equal(adjudicate([]).winner, null)
+})
+
+t('优先级：看不见的层写不知道，不写成 0', () => {
+  const line = presentLine({ persona: true, longTerm: 2, now: null, shortTerm: 0, other: 7 })
+  assert.ok(line.includes('即时记忆：不知道'))
+  assert.ok(line.includes('长期记忆：2 篇'))
+})
+
+t('优先级：段里一定带台阶表，算坏了也带', () => {
+  const ok = renderPriority({ presence: { persona: true, longTerm: 1, now: null, shortTerm: 2, other: 3 }, at: 'T', wrote: true })
+  assert.ok(ok.includes('1. 人格'))
+  assert.ok(ok.includes('上面压下面'))
+  const bad = renderPriority({ presence: null, at: 'T', wrote: false, error: 'boom' })
+  assert.ok(bad.includes('1. 人格'))
+  assert.ok(bad.includes('没算成'))
+})
+
+t('优先级：台阶表永远按 1..6 排', () => {
+  assert.deepEqual(ladderTable().map((r) => r.rank), [1, 2, 3, 4, 5, 6])
+})
 console.log(`\n${n} 条全过。`)
