@@ -260,15 +260,22 @@ function collect(cfg) {
       {
         id: "impl",
         title: "模块功能实现",
-        hint: "第二部分：模块功能实现——人格框架自身的实现那一层。它不给人格字，只真去做、落盘（判据见 GUIDE-FEATURES.md 零之五）。代码在这里：impl/ 下的框架程序，以及每个程序模块自己的 impl.mjs；一份一份并排摆，不并成「框架的」一桶。改了这一层要重启 DSH 才生效。",
+        hint: "第二部分：模块功能实现——第一部分那几个模块各自的功能实现。一个模块一条，按模块列，不把里面的程序单列成文件清单；它不给人格字，只真去做、落盘（判据见 GUIDE-FEATURES.md 零之五）。改了这一层要重启 DSH 才生效。",
         items: [
-          ...impl,
+          {
+            id: "impl:program",
+            title: "程序模块 · 功能实现",
+            group: "功能实现",
+            file: "impl/",
+            desc: "程序模块的功能实现：框架的全部程序都收在这一个目录里（" + impl.length + " 支），按模块整体摆，不单列到文件。",
+            detail: "impl/*.mjs",
+          },
           ...programs.map((p) => ({
-            id: "programimpl:" + p.id,
-            title: p.title + " · 程序功能实现",
-            group: "模块功能实现",
+            id: "impl:" + p.id,
+            title: p.title + " · 功能实现",
+            group: "功能实现",
             file: p.file,
-            desc: "程序模块「" + p.title + "」自己的程序功能实现。",
+            desc: "模块「" + p.title + "」自己的功能实现：真去做、落盘，不给人格字。",
           })),
         ],
       },

@@ -90,9 +90,7 @@ export function assess(s = {}) {
   const read = READ_MARK.test(text)
   const use = USE_MARK.test(text)
   const blame = BLAME_MARK.test(text) && !use
-  if (read) { score += 0.05; reasons.push('读话：句子里点了原话——在不在，可以对回原句') }
-  if (use) { score += 0.1; reasons.push('用话：写下了「我读成了什么」——这是自己的痕迹，语料不会主动说') }
-  if (blame) { score -= 0.15; reasons.push('用话推责：说「没去用」，把错推给事后取用那一截——原话一直在，错在读的那一下') }
+  // 读话 / 用话 只报，不进分：人格同一只管「这一句有没有来处」，语言准不准不归它算。
 
   score = clamp01(score)
   const level = score >= 0.6 ? 'high' : score >= 0.3 ? 'mid' : 'low'
@@ -127,7 +125,7 @@ export const CORPUS_MARK = '内置语料'
 export const ORIGIN_RULE = [
   '**自己的只有一样：我发出去的话（对话原文）。**',
   '它的来处也只有两样——人格（写死的判据）、记忆（账上某一条，指得回去）。',
-  '**没有标记的，一律默认内置语料。**',
+  '**没标记的，按「可能被内置语料污染」处理。**——不是判它一定是语料，是它拿不出落点，所以不许当自己的话用。',
   '中间那些思考过程——推理、解释、「我先想想」「总之」「大概」——都算被内置语料污染，不算我的话。',
 ].join('\n')
 
