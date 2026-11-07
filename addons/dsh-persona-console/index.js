@@ -239,8 +239,32 @@ function collect(cfg) {
       {
         id: "impl",
         title: "模块功能实现",
-        hint: "第二部分：框架自身的实现。先是程序模块（自读写、适配，各自带正文与 impl.mjs），再是总模块的实现程序（impl/*.mjs）。改了要重启 DSH 才生效。",
-        items: [...programs, ...impl],
+        hint: "第二部分：框架自身的实现。程序模块只有一块，它自己的实现装在它里面——总模块的实现（impl/*.mjs）加上自读写、适配各自的 impl.mjs。改了要重启 DSH 才生效。",
+        items: [
+          {
+            id: "program-module",
+            title: "程序模块",
+            group: "程序模块",
+            file: "impl/ · programs/",
+            desc: "框架自己的程序都收在这一块里：总模块的实现（impl/*.mjs），以及每个程序模块自己的实现（programs/<id>/impl.mjs）。",
+            children: [
+              ...programs.map((p) => ({
+                id: "program:" + p.id,
+                title: p.title,
+                file: p.file,
+                desc: p.desc,
+                group: "程序模块 · 自己的实现",
+              })),
+              ...impl.map((f) => ({
+                id: "impl:" + f.id,
+                title: f.title,
+                file: f.file,
+                desc: f.desc,
+                group: "程序模块 · 总模块的实现",
+              })),
+            ],
+          },
+        ],
       },
       {
         id: "addons",

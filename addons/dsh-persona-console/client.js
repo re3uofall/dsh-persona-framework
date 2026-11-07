@@ -49,26 +49,36 @@ window.__ModuleLoader__.load({
       })
     }
 
-    function Row(item, kind) {
+    function Row(item, kind, depth) {
       const sub = kind === 'modules'
         ? item.file
         : [item.pkg, item.version ? 'v' + item.version : ''].filter(Boolean).join(' · ')
-      return h('div', {
-        key: (item.id || item.pkg || item.dir) + ':' + (item.version || ''),
+      const key = (item.id || item.pkg || item.dir) + ':' + (item.version || '')
+      const self = h('div', {
+        key: key,
         style: {
           display: 'flex', gap: 10, alignItems: 'flex-start',
-          padding: '7px 0', borderBottom: '1px solid var(--dsw-alias-border-l1)',
+          padding: depth ? '5px 0 5px 16px' : '8px 0',
+          borderBottom: '1px solid var(--dsw-alias-border-l1)',
         },
       },
         h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
           h('div', {
             style: {
               display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 13.5, color: 'var(--dsw-alias-label-primary)',
+              fontSize: depth ? 13 : 13.5, color: 'var(--dsw-alias-label-primary)',
             },
           },
             kind === 'addons' ? dot(Boolean(item.enabled)) : null,
-            h('span', { style: { fontWeight: 500 } }, item.title || item.id || item.pkg),
+            h('span', { style: { fontWeight: depth ? 400 : 500 } }, item.title || item.id || item.pkg),
+            item.children
+              ? h('span', {
+                style: {
+                  fontSize: 11, color: 'var(--dsw-alias-label-quaternary)',
+                  border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 5, padding: '0 5px',
+                },
+              }, String(item.children.length) + ' 个程序')
+              : null,
             kind === 'addons' && !item.enabled
               ? h('span', {
                 style: {
@@ -84,11 +94,22 @@ window.__ModuleLoader__.load({
             : null,
         ),
       )
+      if (!item.children || !item.children.length) return self
+      return h('div', { key: 'wrap:' + key },
+        self,
+        h('div', {
+          style: {
+            marginLeft: 4, paddingLeft: 8,
+            borderLeft: '2px solid var(--dsw-alias-border-l1)',
+          },
+        }, item.children.map((c) => Row(c, 'children', (depth || 0) + 1))),
+      )
     }
 
     function ConsolePanel() {
       const [state, setState] = React.useState({ phase: 'loading', data: null, error: '' })
       const [nonce, setNonce] = React.useState(0)
+      const [q, setQ] = React.useState('')
 
       React.useEffect(() => {
         let alive = true
@@ -120,19 +141,48 @@ window.__ModuleLoader__.load({
 
       const summary = h('p', { style: { margin: '6px 0 18px', fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', lineHeight: 1.7 } },
         counts
-          ? `总分三层：本体 1 个 · 模块正文 ${counts.modules} 篇 · 附加插件 ${counts.addons} 个（已登记 ${counts.addonsOn}）`
-          : '本体、模块正文、附加插件，三层分开摆。',
+          ? `分三层：本体 1 个 · 模块正文 ${counts.modules} 篇 · 程序模块 ${counts.programs} 个（程序 ${counts.impl} 支）· 附加插件 ${counts.addons} 个（已登记 ${counts.addonsOn}）`
+          : '本体、模块正文、程序模块、附加插件，分开摆。',
         data && data.workspace
           ? h('span', { style: Object.assign({}, mono, { display: 'block', fontSize: 11.5, color: 'var(--dsw-alias-label-quaternary)', marginTop: 4, wordBreak: 'break-all' }) }, data.workspace)
           : null,
       )
 
+      const search = h('input', {
+        value: q,
+        placeholder: '找名字、路径或说明（空着就全看）',
+        onChange: (e) => setQ(e.target.value),
+        style: {
+          boxSizing: 'border-box', width: '100%', height: 30, margin: '0 0 18px',
+          padding: '0 10px', fontSize: 12.5, borderRadius: 7,
+          border: '1px solid var(--dsw-alias-border-l2)', background: 'transparent',
+          color: 'var(--dsw-alias-label-primary)', outline: 'none',
+        },
+      })
+
       const errorLine = state.error
         ? h('div', { style: { marginBottom: 14, fontSize: 13, color: 'var(--dsw-alias-state-error-primary)' } }, '读不出来：' + state.error)
         : null
 
+      const needle = q.trim().toLowerCase()
+      const hits = (item) => {
+        if (!needle) return true
+        const hay = [item.title, item.id, item.file, item.pkg, item.desc, item.group]
+          .filter(Boolean).join(' ').toLowerCase()
+        return hay.includes(needle)
+      }
+      const narrow = (item) => {
+        if (!item.children) return hits(item) ? item : null
+        const kids = item.children.filter(hits)
+        if (hits(item) || kids.length) return Object.assign({}, item, { children: kids })
+        return null
+      }
+
       const groups = data && Array.isArray(data.groups) ? data.groups : []
-      const body = groups.map((g) => h('section', {
+      const shown = groups
+        .map((g) => Object.assign({}, g, { items: g.items.map(narrow).filter(Boolean) }))
+        .filter((g) => g.items.length > 0 || !needle)
+      const body = shown.map((g) => h('section', {
         key: g.id,
         style: {
           marginBottom: 26, border: '1px solid var(--dsw-alias-border-l1)',
@@ -141,12 +191,11 @@ window.__ModuleLoader__.load({
       },
         h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 } },
           h('h3', { style: { fontSize: 14, fontWeight: 600, margin: 0, color: 'var(--dsw-alias-label-primary)' } }, g.title),
-          h('span', { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-quaternary)' } }, String(g.items.length) + ' 项'),
+          h('span', { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-quaternary)' } },
+            String(g.items.length) + ' 项' + (needle ? '（筛过的）' : '')),
         ),
         h('p', { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', margin: '4px 0 10px', lineHeight: 1.6 } }, g.hint),
-        h('div', {
-          style: null,
-        }, g.items.map((item) => Row(item, g.id))),
+        h('div', { style: null }, g.items.map((item) => Row(item, g.id))),
       ))
 
       return h('div', {
@@ -154,7 +203,7 @@ window.__ModuleLoader__.load({
           boxSizing: 'border-box', height: '100%', overflowY: 'auto',
           padding: '32px 40px 64px',
         },
-      }, h('div', { style: { maxWidth: 820 } }, head, summary, errorLine, body))
+      }, h('div', { style: { maxWidth: 820 } }, head, summary, search, errorLine, body))
     }
 
     return {
