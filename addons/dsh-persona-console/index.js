@@ -135,14 +135,14 @@ function collect(cfg) {
   if (isDir(implDir)) {
     impl = readdirSync(implDir)
       .filter((f) => f.endsWith(".mjs"))
-      .map((f) => ({ id: f, file: "impl/" + f, title: f, group: "框架程序" }))
+      .map((f) => ({ id: f, file: "impl/" + f, title: f, group: "模块功能实现" }))
       .sort((a, b) => a.id.localeCompare(b.id))
   }
   impl.unshift({
     id: "index.js",
     file: "index.js",
     title: "index.js",
-    group: "骨架",
+    group: "模块功能实现",
     desc: "总模块本体：注入、调度、工具注册。它自己不算「功能实现」，只是把实现接起来。",
   })
 
@@ -259,13 +259,13 @@ function collect(cfg) {
       {
         id: "impl",
         title: "模块功能实现",
-        hint: "第二部分：实现程序本身——总模块的 impl/*.mjs，加上每个程序模块自己的 impl.mjs。改了这一层要重启 DSH 才生效。",
+        hint: "第二部分：模块功能实现——人格框架自身的实现。框架的全部程序都在这里：impl/ 里的框架程序，加上每个程序模块自己的 impl.mjs。改了这一层要重启 DSH 才生效。",
         items: [
           ...impl,
           ...programs.map((p) => ({
             id: "programimpl:" + p.id,
             title: p.title + " · 程序功能实现",
-            group: "程序模块的实现",
+            group: "模块功能实现",
             file: p.file,
             desc: "程序模块「" + p.title + "」自己的程序功能实现。",
           })),

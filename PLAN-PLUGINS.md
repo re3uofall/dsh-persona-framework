@@ -786,7 +786,7 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | 部分 | 今天 | 它从哪来 |
 | --- | --- | --- |
 | 一、总模块插件 | 本体 `dsh-persona-framework` 5.22.0 ＋ 97 篇模块正文 ＋ 三个模块（程序模块 `impl/`、自读写 `programs/selfrw/`、适配 `programs/adapter/`，后两个各带一份正文） | 工作区根（不在 bundles 里，靠 link 依赖加载）＋ `persona-ai/modules/*.md` ＋ `programs/<id>/` |
-| 二、模块功能实现 | 实现程序本身：总模块的 `impl/*.mjs` 37 支 ＋ 三个模块各自的程序功能实现（框架程序收在 `impl/`，自读写与适配各一份 `programs/<id>/impl.mjs`） | 框架自身：`impl/` 与 `programs/<id>/impl.mjs` |
+| 二、模块功能实现 | **人格框架自身的实现**：框架的全部程序（`impl/*.mjs` 37 支 ＋ `programs/<id>/impl.mjs`），原话「把人格框架的程序都移动到这个功能实现里面」——是一整份，不按谁的再切 | 框架自身：`impl/` 与 `programs/<id>/impl.mjs` |
 | 三、附加插件 | 18 个包，17 个已登记 | `addons/*` + `dsh.profile.bundles` |
 
 > 面板上三部分就是这三行：第一部分列本体、97 篇正文和三个并列的模块（程序模块、自读写、适配）；第二部分只列实现程序（`impl/*.mjs` 与 `programs/<id>/impl.mjs`）；第三部分是附加插件。
