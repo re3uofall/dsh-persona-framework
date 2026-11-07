@@ -1,0 +1,32 @@
+# ============================================================================
+# dsh-persona-mouth —— 插件自己带的挂载声明
+# ============================================================================
+# 装上之后 profile 把本包列进 `dsh.profile.bundles` 即生效。
+# 下面的 config 都能改；改完重启 DSH 生效。
+#
+# 它平时不注入字；只有「真送出去、还没说出口」那一下才注一行，
+# 注之前先把「说过了」写进盘（嘴账状态.json），这才算数。
+#
+# 和手的区别只有一句：手记「我动了什么」，嘴记「我说出去了什么」。
+# ============================================================================
+
+- insert:
+    - id: persona-mouth
+      name: dsh-persona-mouth
+      config:
+        # 工作区根。留空 = 用会话头里的 cwd（插件装在仓库里，往上推会推到 addons/）。
+        workspace: ''
+
+        # 嘴账与状态放哪，相对工作区。
+        stateDir: '.persona-framework'
+
+        # 送完还没说出口时，要不要注那一行。关掉只剩嘴账。
+        speak: true
+
+        # 通道表。默认只有 file（写进发件箱）。
+        # command 例：{ kind: command, command: "curl ... -d '{text}'" }
+        # http    例：{ kind: http, url: "http://127.0.0.1:xxxx/say" }
+        channels:
+          file:
+            kind: file
+            path: '.persona-framework/嘴/发件箱.md'
