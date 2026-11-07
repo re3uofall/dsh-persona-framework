@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, appendFileSync, readdirSync } from
 import { join } from 'node:path'
 import { readJson, writeJson, nowIso, localDate } from './store.mjs'
 import { TRIGGERS, DEFAULTS, evaluate, mergeState, ledgerPath, readFires, renderFires } from './triggers.mjs'
-import { KINDS, renderCatalog, planOf, platformHint, pick } from './scope.mjs'
+import { KINDS, edit as editCatalog, hintIn, listOf, planIn, renderCatalogIn } from './catalog.mjs'
 
 const API = '/api/persona-explore'
 const PANEL_LEDGER = 8
@@ -71,9 +71,9 @@ function collectData(p, opts) {
     total: Array.isArray(ledger) ? ledger.length : 0,
     triggerState: state?.trigger || null,
     catalogue: {
-      range: KINDS.range.length,
-      mode: KINDS.mode.length,
-      platform: KINDS.platform.length,
+      range: listOf('range', p.homeDir).length,
+      mode: listOf('mode', p.homeDir).length,
+      platform: listOf('platform', p.homeDir).length,
     },
   }
 }
@@ -190,11 +190,22 @@ export function install(ctx, { cfg, p, warn }) {
       ctx.tools.register({
         name: 'explore_plan',
         description:
-          '碗外面的探索：看探索范围/方式/平台的目录，或给一趟探索排个计划。action=catalog 看目录，plan 出一趟，fire 看最近的触发账，hint 看某个平台怎么进。',
+          '碗外面的探索：看探索范围/方式/平台的目录，给一趟探索排个计划，或改这个目录。action=catalog 看目录，plan 出一趟，fire 看最近的触发账，hint 看某个平台怎么进，edit 增/改/划掉一条。',
         parameters: {
           type: 'object',
           properties: {
-            action: { type: 'string', enum: ['catalog', 'plan', 'fire', 'hint'], description: '要干什么' },
+            action: { type: 'string', enum: ['catalog', 'plan', 'fire', 'hint', 'edit'], description: '要干什么' },
+            op: { type: 'string', enum: ['add', 'edit', 'remove', 'restore'], description: 'edit 时：加一条 / 改一条 / 划掉 / 放回来' },
+            id: { type: 'string', description: 'edit 时：那一条的 id（add 时自己起，小写字母、数字和横杠）' },
+            label: { type: 'string', description: 'edit 时：一句话名字' },
+            asks: { type: 'string', description: 'range 专用：这条范围要问什么' },
+            done: { type: 'string', description: 'range 专用：算做完的样子' },
+            fails: { type: 'string', description: 'range 专用：不算的样子' },
+            how: { type: 'string', description: 'mode 专用：具体怎么搜' },
+            note: { type: 'string', description: 'mode 专用：为什么这么搜' },
+            entry: { type: 'string', description: 'platform 专用：怎么进' },
+            got: { type: 'string', description: 'platform 专用：拿得到什么' },
+            miss: { type: 'string', description: 'platform 专用：拿不到什么' },
             range: { type: 'string', description: '探索范围：fact/how/counter/primary/lineage/timeline/limit' },
             mode: { type: 'string', description: '探索方式：narrow/rephrase/against/follow/origin/cross/translate' },
             platform: { type: 'string', description: '探索平台：web/github/npm/arxiv/wiki/forum/video' },
@@ -208,18 +219,21 @@ export function install(ctx, { cfg, p, warn }) {
           const action = String(args?.action || 'catalog')
           try {
             if (action === 'plan') {
-              return { text: planOf({ range: args?.range, mode: args?.mode, platform: args?.platform }) }
+              return { text: planIn({ range: args?.range, mode: args?.mode, platform: args?.platform }, p ? p.homeDir : '') }
             }
             if (action === 'hint') {
-              const one = pick('platform', args?.platform)
-              return { text: one ? platformHint(one.id) : renderCatalog('platform') }
+              return { text: hintIn(args?.platform, p ? p.homeDir : '') }
             }
             if (action === 'fire') {
               const fires = p ? readFires(p.homeDir, opts, 10) : []
               return { text: renderFires(fires) }
             }
             const kind = args?.kind && KINDS[args.kind] ? args.kind : 'range'
-            return { text: renderCatalog(kind) }
+            if (action === 'edit') {
+              if (!p) return { text: '没有找到人格目录，目录改不了。' }
+              return { text: editCatalog(p.homeDir, args || {}) }
+            }
+            return { text: renderCatalogIn(kind, p ? p.homeDir : '') }
           } catch (error) {
             return { text: '没办成：' + String(error?.message || error) }
           }
