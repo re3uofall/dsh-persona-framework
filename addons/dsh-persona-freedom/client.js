@@ -192,7 +192,6 @@ window.__ModuleLoader__.load({
                 row.hint ? h('div', { style: T.hint }, row.hint) : null),
               h('div', { style: { flex: row.type === 'list' ? '0 0 46%' : '0 0 auto' } }, control))
           })),
-        ),
 
         h('div', { style: T.actions },
           h('button', { style: T.primary, disabled: busy || !dirty, onClick: save }, busy ? '存……' : '保存'),

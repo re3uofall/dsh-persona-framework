@@ -227,7 +227,14 @@ function noteSessionWs(payload) {
 function resolveRoot(ctx, cfg) {
   if (cfg?.root) return cfg.root
   if (sessionWs) return sessionWs
-  if (ctx?.config?.workspace) return String(ctx.config.workspace)
+  // ★ 不能直接读 ctx.config：本插件 inject 里没有 'config'，Cordis 会抛
+  //   `cannot get property "config" without inject`
+  //   ——抛在段渲染里，四个记忆段就一起变成「读不出来」。踩过。
+  try {
+    const c = typeof ctx?.get === 'function' ? ctx.get('config') : null
+    const ws = (c && c.workspace) || (ctx && ctx.config && ctx.config.workspace)
+    if (ws) return String(ws)
+  } catch { /* 没有 config 服务就当没有 */ }
   return process.cwd()
 }
 
