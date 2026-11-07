@@ -41,7 +41,7 @@ import {
 } from './lib/settings.mjs'
 
 export const name = 'persona-appear'
-export const version = '0.7.0'
+export const version = '0.7.1'
 export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
