@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-console",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "人格框架台：侧栏一页把本体、模块正文、附加插件三层分开摆，和插件页分开",
   "type": "module",

@@ -233,38 +233,25 @@ function collect(cfg) {
       {
         id: "core",
         title: "总模块插件",
-        hint: "第一部分：本体（注入与调度）＋ 模块正文（每轮按配额挑几篇进上下文；可以用「模块即插件」把某篇搬成独立包）。",
-        items: [...core, ...modules],
+        hint: "第一部分：本体（注入与调度）＋ 模块正文（每轮按配额挑几篇进上下文）＋ 程序模块（自读写、适配：框架自己的程序，各带一份正文）。",
+        items: [
+          ...core,
+          ...programs.map((p) => ({
+            id: "program:" + p.id,
+            title: p.title,
+            group: "程序模块",
+            file: p.file,
+            desc: p.desc,
+            detail: "正文 programs/" + p.id + "/module.md",
+          })),
+          ...modules,
+        ],
       },
       {
         id: "impl",
         title: "模块功能实现",
-        hint: "第二部分：框架自身的实现。程序模块只有一块，它自己的实现装在它里面——总模块的实现（impl/*.mjs）加上自读写、适配各自的 impl.mjs。改了要重启 DSH 才生效。",
-        items: [
-          {
-            id: "program-module",
-            title: "程序模块",
-            group: "程序模块",
-            file: "impl/ · programs/",
-            desc: "框架自己的程序都收在这一块里：总模块的实现（impl/*.mjs），以及每个程序模块自己的实现（programs/<id>/impl.mjs）。",
-            children: [
-              ...programs.map((p) => ({
-                id: "program:" + p.id,
-                title: p.title,
-                file: p.file,
-                desc: p.desc,
-                group: "程序模块 · 自己的实现",
-              })),
-              ...impl.map((f) => ({
-                id: "impl:" + f.id,
-                title: f.title,
-                file: f.file,
-                desc: f.desc,
-                group: "程序模块 · 总模块的实现",
-              })),
-            ],
-          },
-        ],
+        hint: "第二部分：实现程序本身——总模块的 impl/*.mjs，加上每个程序模块自己的 impl.mjs。改了这一层要重启 DSH 才生效。",
+        items: impl,
       },
       {
         id: "addons",

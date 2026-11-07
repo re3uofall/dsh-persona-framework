@@ -141,8 +141,8 @@ window.__ModuleLoader__.load({
 
       const summary = h('p', { style: { margin: '6px 0 18px', fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', lineHeight: 1.7 } },
         counts
-          ? `分三层：本体 1 个 · 模块正文 ${counts.modules} 篇 · 程序模块 ${counts.programs} 个（程序 ${counts.impl} 支）· 附加插件 ${counts.addons} 个（已登记 ${counts.addonsOn}）`
-          : '本体、模块正文、程序模块、附加插件，分开摆。',
+          ? `三部分：总模块插件（本体 1 个 + 模块正文 ${counts.modules} 篇 + 程序模块 ${counts.programs} 个）· 模块功能实现 ${counts.impl} 支 · 附加插件 ${counts.addons} 个（已登记 ${counts.addonsOn}）`
+          : '三部分：总模块插件、模块功能实现、附加插件。',
         data && data.workspace
           ? h('span', { style: Object.assign({}, mono, { display: 'block', fontSize: 11.5, color: 'var(--dsw-alias-label-quaternary)', marginTop: 4, wordBreak: 'break-all' }) }, data.workspace)
           : null,
