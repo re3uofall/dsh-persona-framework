@@ -146,7 +146,32 @@ function collect(cfg) {
     desc: "总模块本体：注入、调度、工具注册。它自己不算「功能实现」，只是把实现接起来。",
   })
 
-  // ── 二、模块功能实现（模块正文） ──────────────────────────────────────────
+  // ── 二之一、程序模块（programs/<id>：自带正文与自己的实现） ─────────────
+  let programs = []
+  const programsDir = join(frameworkDir, "programs")
+  if (isDir(programsDir)) {
+    programs = readdirSync(programsDir)
+      .filter((d) => isDir(join(programsDir, d)))
+      .map((d) => {
+        const root = join(programsDir, d)
+        const meta = readJson(join(root, "program.json"), {}) ?? {}
+        const implFile = String(meta.impl ?? "impl.mjs")
+        return {
+          id: String(meta.id ?? d),
+          order: Number(meta.order ?? 900),
+          pkg: "programs/" + d,
+          title: String(meta.title ?? d),
+          file: "programs/" + d + "/" + implFile,
+          desc: String(meta.note ?? ""),
+          enabled: true,
+          detail: "程序模块：正文 programs/" + d + "/module.md，实现 programs/" + d + "/" + implFile,
+          group: "程序模块",
+        }
+      })
+      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+  }
+
+  // ── 二之二、模块正文（persona-ai/modules/*.md） ────────────────────────── ──────────────────────────────────────────
   let modules = []
   if (isDir(modulesDir)) {
     modules = readdirSync(modulesDir)
@@ -195,36 +220,32 @@ function collect(cfg) {
     workspace: ws,
     frameworkDir,
     modulesDir,
+    programsDir,
     addonsDir,
     counts: {
       modules: modules.length,
+      programs: programs.length,
       impl: impl.length,
       addons: addons.length,
       addonsOn: addons.filter((x) => x.enabled).length,
     },
     groups: [
       {
-        id: 'core',
-        title: '总模块插件',
-        hint: '本体：注入与调度。一个。',
-        items: core,
+        id: "core",
+        title: "总模块插件",
+        hint: "第一部分：本体（注入与调度）＋ 模块正文（每轮按配额挑几篇进上下文；可以用「模块即插件」把某篇搬成独立包）。",
+        items: [...core, ...modules],
       },
       {
         id: "impl",
-        title: "程序功能实现",
-        hint: "框架自身的实现程序：每个 .mjs 一个文件，改了要重启 DSH 才生效。",
-        items: impl,
+        title: "模块功能实现",
+        hint: "第二部分：框架自身的实现。先是程序模块（自读写、适配，各自带正文与 impl.mjs），再是总模块的实现程序（impl/*.mjs）。改了要重启 DSH 才生效。",
+        items: [...programs, ...impl],
       },
       {
-        id: "modules",
-        title: "模块正文",
-        hint: "每轮按配额挑几篇进上下文。不是插件，是它读的东西；可以用「模块即插件」把某篇搬成独立包。",
-        items: modules,
-      },
-      {
-        id: 'addons',
-        title: '附加插件',
-        hint: '挂在框架上的那些：记忆、日记、器官、电量……「已装」= 登记在 bundles 里。',
+        id: "addons",
+        title: "附加插件",
+        hint: "第三部分：挂在框架上的那些（记忆、日记、器官、电量……）。「已装」= 登记在 bundles 里。",
         items: addons,
       },
     ],

@@ -1,5 +1,0 @@
-- insert:
-    - id: persona-module-selfrw
-      name: dsh-persona-module-selfrw
-      config:
-        order: 205

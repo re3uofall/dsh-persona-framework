@@ -1,5 +1,11 @@
 # 变更记录
 
+## 5.22.0 · 2026-11-07
+
+新：**程序模块层 `programs/`**。自读写（`programs/selfrw`）与适配（`programs/adapter`）从附加插件搬进框架自身——各带一份 `program.json`、`module.md` 正文与 `impl.mjs` 实现；框架加 `listPrograms(dir)`，在 `apply()` 里替它们注册 `模块:<id>` 段（order 205/206），并让 `claimedModules()` 把它们也算进「已认领」，`persona-ai/modules/` 里同号正文不再重复进上下文。
+
+改：**框架台改成三部分**——总模块插件（本体＋模块正文）、模块功能实现（程序模块＋总模块的 `impl/*.mjs`）、附加插件。程序模块不再当附加插件列。
+
 ## 5.21.0 · 2026-11-07
 
 新：两个更新工具。`framework_module`（list/read/save/append 模块正文，写前留旧稿）与 `framework_code`（list/read/save/check 程序，写完当场 node --check）。真动手的在 `impl/update.mjs`，工具只是壳。

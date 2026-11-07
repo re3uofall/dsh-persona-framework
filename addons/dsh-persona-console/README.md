@@ -1,14 +1,14 @@
 # dsh-persona-console · 人格框架台
 
-**侧栏一页，把这一套拆成三层摆出来**——和 DSH 原来的「插件」页分开。
+**侧栏一页，把这一套拆成三部分摆出来**——和 DSH 原来的「插件」页分开。
 
 左边那一列，和「日记」「成果」并排，多一个「人格框架」图标。点开是三块：
 
 | 组 | 里面是什么 | 判据 |
 | --- | --- | --- |
-| **总模块插件** | 本体 `dsh-persona-framework`：注入骨架、模块索引、模块正文、配额、元协调 | 只有一个。它不在 `addons/` 里，也不挂在别的插件底下 |
-| **模块功能实现** | `persona-ai/modules/*.md` 的模块正文（现在 97 篇） | 不是插件，是本体每轮按配额挑进去读的东西；标题取每篇第一行 `#` |
-| **附加插件** | `dsh-persona-framework/addons/*`（现在 15 个） | 「已登记」= 在 `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` 里；没登记就显示空心圈 |
+| **总模块插件** | 本体 `dsh-persona-framework`，加上 `persona-ai/modules/*.md` 的模块正文（现在 97 篇，按编号排） | 本体只有一个；正文不是插件，是本体每轮按配额挑进去读的东西 |
+| **模块功能实现** | 程序模块 `programs/<id>/`（自读写、适配：各自一份 `module.md` 正文 + `impl.mjs` 实现），后接总模块自己的实现程序 `impl/*.mjs` | 这三样都是人格框架自身的实现；改了要重启 DSH 才生效 |
+| **附加插件** | `dsh-persona-framework/addons/*`（现在 18 个） | 「已登记」= 在 `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` 里；没登记就显示空心圈 |
 
 ## 为什么单独一页
 
@@ -16,10 +16,12 @@
 
 ## 数据从哪来
 
-host 半端只读三个地方，不改任何东西：
+host 半端只读这几个地方，不改任何东西：
 
 - `<工作区>/dsh-persona-framework/package.json` → 本体版本
 - `<工作区>/persona-ai/modules/*.md` → 模块正文清单（按编号排）
+- `<工作区>/dsh-persona-framework/programs/<id>/program.json` → 程序模块（名字、顺序、正文与实现的位置）
+- `<工作区>/dsh-persona-framework/impl/*.mjs` → 总模块自己的实现程序
 - `<工作区>/dsh-persona-framework/addons/*/package.json` + `locale/zh.json` → 附加插件的名字、版本、中文标题
 - `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` → 登记没登记
 
@@ -39,5 +41,6 @@ host 半端只读三个地方，不改任何东西：
 
 ## 更新记录
 
+- 0.1.2 —— 按师父口径改成三部分：总模块插件（本体＋模块正文，97 篇正文归第一部分）、模块功能实现（程序模块 自读写／适配，后接总模块的 impl/*.mjs）、附加插件。程序模块归框架自己，不再算附加插件。
 - 0.1.1 —— 面板自己吃滚轮：根容器 `height:100%` + `overflowY:auto`（原来套在无高度的容器里，页面滚不动），内层不再单独滚。
 - 0.1.0 —— 第一版：侧栏一页，三组（本体 / 模块正文 / 附加插件），只读扫描 + 刷新。

@@ -51,7 +51,7 @@ import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from
 import { IMPLS } from './impl/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '5.21.0'
+const VERSION = '5.22.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 // 插件自带的模块**正文**（85 个）。
 // 原来只有 BUNDLED_MODULES（索引），别人装了插件只能看见目录、取不到内容——
@@ -401,6 +401,31 @@ const resolveAiFile = (cfg, ctx) => {
 }
 
 /** 谁已经以「模块插件」的身份注了哪几篇：读 <ws>/.persona-framework/模块插件.json。只读，不改任何东西。 */
+/** 框架自带的程序模块：programs/<id>/program.json + module.md。读不到就空表。 */
+export function listPrograms(dir) {
+  const base = dir || join(HERE, "programs")
+  const out = []
+  try {
+    for (const d of readdirSync(base)) {
+      const root = join(base, d)
+      const file = join(root, "program.json")
+      if (!existsSync(file)) continue
+      let meta = {}
+      try { meta = JSON.parse(readFileSync(file, "utf8")) } catch { continue }
+      const id = String(meta.id || d)
+      const bodyFile = join(root, String(meta.body || "module.md"))
+      out.push({
+        id,
+        title: String(meta.title || id),
+        order: Number(meta.order) || 205,
+        root,
+        impl: join(root, String(meta.impl || "impl.mjs")),
+        body: () => { try { return readFileSync(bodyFile, "utf8").replace(/\r\n/g, "\n").trim() } catch { return "" } },
+      })
+    }
+  } catch { /* 没有 programs/ 就空表 */ }
+  return out
+}
 export function claimedModules(cfg, ctx) {
   const set = new Set()
   try {
@@ -411,6 +436,7 @@ export function claimedModules(cfg, ctx) {
       for (const k of Object.keys((raw && raw.modules) || {})) set.add(String(k).padStart(2, "0"))
     }
   } catch { /* 读不到就当没人认领：宁可多注一遍，也不因为一个坏文件把模块全停掉 */ }
+  try { for (const p of listPrograms()) set.add(String(p.id).padStart(2, "0")) } catch { /* 程序模块读不出来不影响轮转 */ }
   return set
 }
 export function apply(ctx, config = {}) {
@@ -1373,6 +1399,19 @@ export function apply(ctx, config = {}) {
     ctx.on('agent/pre-step', (payload, next) => { gateNoteStep(payload); return next() })
   } catch { /* 没有这个钩子也能用：退化成每步全量，不坏 */ }
 
+
+  // ── 程序模块（programs/）：框架自身的功能实现，各注自己那一段 ─────────────
+  try {
+    for (const prog of listPrograms()) {
+      if (!prog.body()) continue
+      ctx.effect(() => ctx.systemPrompt.section({
+        name: `模块:${prog.id}`,
+        order: prog.order,
+        interpolate: false,
+        text: () => prog.body(),
+      }))
+    }
+  } catch { /* 一个程序模块坏了不该把总模块拖下水 */ }
   ctx.effect(() => ctx.systemPrompt.section({
     name: 'persona:framework',
     order: cfg.order,

@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Module · Adapter",
-    "description": "A module as a plugin: the adapter body is injected by its own package."
-  }
-}

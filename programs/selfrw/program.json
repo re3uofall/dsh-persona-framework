@@ -1,0 +1,8 @@
+{
+  "id": "selfrw",
+  "title": "自读写",
+  "order": 205,
+  "impl": "impl.mjs",
+  "body": "module.md",
+  "note": "程序模块：读是借、写是欠——它的实现就是这个程序模块自己的程序功能实现。"
+}

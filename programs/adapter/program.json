@@ -1,0 +1,8 @@
+{
+  "id": "adapter",
+  "title": "适配",
+  "order": 206,
+  "impl": "impl.mjs",
+  "body": "module.md",
+  "note": "程序模块：核心不许改，接口改到能对上——它的实现就是这个程序模块自己的程序功能实现。"
+}

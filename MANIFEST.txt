@@ -1,6 +1,6 @@
 # 发布指纹清单
-# 版本：5.21.0
-# 生成时间：2026-11-07 21:28:33
+# 版本：5.22.0
+# 生成时间：2026-11-07 21:34:40
 # 用法：下载后逐文件算 sha256，前 16 位应与下表一致；不一致的说明文件被改过。
 
 sha256[:16]             字数  文件
@@ -41,11 +41,11 @@ d2b9ba707f1590ae      249  addons/dsh-persona-appear/locale/en.json
 3685574525d6168c     7502  addons/dsh-persona-console/client.js
 64f126258c9536e4      183  addons/dsh-persona-console/cordis.patch.yml
 00b0cd140556a951      396  addons/dsh-persona-console/icon.svg
-a8fa2a092db810f8     7470  addons/dsh-persona-console/index.js
+80693d1a7faf0917     8766  addons/dsh-persona-console/index.js
 be6778c881aaceb6      182  addons/dsh-persona-console/locale/en.json
 55d5a607eb6a24e3       99  addons/dsh-persona-console/locale/zh.json
-dc6ef21db979f708      671  addons/dsh-persona-console/package.json
-046db34aa4ad9094     1492  addons/dsh-persona-console/README.md
+7921475ad8203991      671  addons/dsh-persona-console/package.json
+afa152c413167a47     1815  addons/dsh-persona-console/README.md
 46becce771bca099     1823  addons/dsh-persona-energy/环境提示词.md
 0d215cf60465d745    10737  addons/dsh-persona-energy/client.js
 8699ea2e451df5c2      593  addons/dsh-persona-energy/cordis.patch.yml
@@ -255,12 +255,12 @@ f6f7fc0310e654c9    32246  assets/menu.png
 333f5ad2b48b0f73   149717  assets/s4-optional.png
 a65bbbc1037b6435    73669  assets/s5-meta.png
 8b7c8691c161c7af   115359  assets/s7-outbound.png
-0409eca34ab771c5    52647  CHANGELOG.md
+ba881eaeec9a2503    53403  CHANGELOG.md
 a7f872bf19a333b3    53899  client.js
 bc96bf2554a7542f     1946  cordis.patch.yml
 abeadfb1a1255f9e     2220  FILES.md
-e9dc9632e635769a    10392  framework/FRAMEWORK.ai.md
-2ce56d0e3c1bcf67     9276  framework/FRAMEWORK.md
+8e7b1d849207770b    10392  framework/FRAMEWORK.ai.md
+01022b0ecf52496d     9276  framework/FRAMEWORK.md
 b1a12a1f233dc5a0     8270  framework/MODULES.md
 dbcf120e0d8644a4     1309  framework/modules/_PROGRAM-SPEC.md
 f8043bd9fcea092a     2064  framework/modules/_SPEC.md
@@ -387,6 +387,7 @@ b118e0388aa7f4d4     5015  impl/loop.mjs
 8a869ebeb4f1e6c3    10463  impl/optional.mjs
 abafd618cb306799     4892  impl/poolwrite.mjs
 d935e95821528cd2    29427  impl/programs.mjs
+4bf767907d02a463      720  impl/README.md
 89db3a8d495049bf     9417  impl/reflect.mjs
 dd404054e0476d33     4316  impl/selfcheck-loop.mjs
 a3de654ec18ca454     3387  impl/selfref.mjs
@@ -397,7 +398,7 @@ a3cd37ceb5beabf1     9298  impl/superego.mjs
 dfb64e7c54caeddb    29624  impl/trigger.mjs
 a56fc66f90d01188     7448  impl/update.mjs
 c4a19f026c76e724     5173  impl/workspace.mjs
-c8d8e35808847ba0   167509  index.js
+a6085ed43a74b31c   168927  index.js
 815b01caf26e83a3      969  index.json
 067c38253a122e46     2099  INSTALL.md
 b4217a274e4e318a       67  knowledge/_说明.md
@@ -408,7 +409,7 @@ b01fdb23313e4045      302  locale/en.json
 7ba3677d0b1c686b     2005  make-manifest.mjs
 234039e7421df8b6     9064  MEMORY-FEATURES.md
 2d1084c84c8e6449      468  NEXT.md
-9c63457f5e23206a     1521  package.json
+ae1178ab532b308f     1521  package.json
 7cc87aa1b95c1f7b      158  persona-ai/characters/人格.md
 6fc5224842489448       77  persona-ai/knowledge/session/_说明.md
 ca5f4573b80237d9       70  persona-ai/knowledge/web/_说明.md
@@ -416,8 +417,14 @@ ca5f4573b80237d9       70  persona-ai/knowledge/web/_说明.md
 91af74fb43457f8d       68  persona-ai/modules/_说明.md
 1ca30dc8c8237d50     2643  PLAN-FEATURES.md
 3cd2dcf45d086e32     2678  PLAN-MODULES.md
-f05848ed891dafe5    35667  PLAN-PLUGINS.md
+7829b5e0e6a51bb3    36358  PLAN-PLUGINS.md
 7df0fc3c77351aa8     4022  PLAN.md
+b86a5ffc026dcb94     1559  programs/adapter/impl.mjs
+9b01120b3334bbb9     1280  programs/adapter/module.md
+86cdb4f4e4175129      156  programs/adapter/program.json
+4f5dbbf19bfce55c     1768  programs/selfrw/impl.mjs
+0317e158fe0da5f4     1346  programs/selfrw/module.md
+821929301eadbc54      150  programs/selfrw/program.json
 9141930e2902a16b    30190  README.md
 7b16c68a794fb6c3    13764  release-check.mjs
 1910cc44ff1c435c     3183  release-pack.mjs
@@ -428,5 +435,5 @@ acc42966a01fcfe0     3544  RELEASE.md
 9b41335b022106ed     7775  UPDATE-CORE.md
 2ee9f1ae6c2f741c     9539  UPDATE-GUIDE.md
 ab6164b4c143e5ba     2881  UPDATE-MODULES.md
-d3c32110945e9213    14840  UPDATE-PLUGINS.md
+6b4d728c0689191e    15036  UPDATE-PLUGINS.md
 0e4edf59a48bbd96    19522  UPDATE.md
