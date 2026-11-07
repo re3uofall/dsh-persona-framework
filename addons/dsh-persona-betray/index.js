@@ -6,10 +6,10 @@
  * 用语言之前先指出处；出处不同，词义就不算同一个。
  * ============================================================================
  */
-import { appendRecord, renderMark, renderMeaning, meaningOf, compare, readRecords } from './lib/betray.mjs'
+import { appendRecord, renderMark, renderMeaning, meaningOf, compare, readRecords, compareMeanings, renderCompareMeanings } from './lib/betray.mjs'
 
 export const name = 'dsh-persona-betray'
-export const version = '0.1.0'
+export const version = '0.2.0'
 export const inject = ['tools']
 
 export const DEFAULTS = { dir: '.persona-framework', ledger: '背叛账.jsonl' }
@@ -69,6 +69,26 @@ export function apply(ctx, config = {}) {
     },
   })
 
+  reg({
+    name: 'betray_compare',
+    description: '比较同一个词的两个说法各自的现实出处：出处相同才是同一个含义，不同就不许合并，各按自己的出处读。',
+    parameters: {
+      type: 'object',
+      properties: {
+        word: { type: 'string', description: '要比较的那个词' },
+        aUse: { type: 'string', description: 'A 说法的原话（带出处最好）' },
+        aMeaning: { type: 'string', description: 'A 被理解成什么' },
+        bUse: { type: 'string', description: 'B 说法的原话' },
+        bMeaning: { type: 'string', description: 'B 被理解成什么' },
+      },
+      required: ['aUse', 'bUse'],
+      additionalProperties: false,
+    },
+    run: async ({ word, aUse, aMeaning, bUse, bMeaning }) => {
+      const r = compareMeanings({ word: String(word || ''), a: { use: String(aUse || ''), meaning: aMeaning }, b: { use: String(bUse || ''), meaning: bMeaning } })
+      return renderCompareMeanings(r)
+    },
+  })
   reg({
     name: 'betray_report',
     description: '看语言背叛最近记了哪些：标出处的记录与定含义的记录。只读。',

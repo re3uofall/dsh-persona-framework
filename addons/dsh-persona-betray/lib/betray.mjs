@@ -84,3 +84,31 @@ export function renderMeaning(v) {
   const body = `有出处的 ${v.grounded} 条，没出处的 ${v.bare} 条 → 含义：${v.meaning}`
   return [head, body].join('\n')
 }
+
+
+// 比较：同一个词的两个说法，各带哪些出处；比较出处决定它在这里指哪一件。
+export function compareMeanings({ word = '', a = {}, b = {} } = {}) {
+  const A = anchorsOf(a.use || '')
+  const B = anchorsOf(b.use || '')
+  const key = (x) => `${x.kind}:${x.value}`
+  const ka = A.map(key), kb = B.map(key)
+  const shared = ka.filter((k) => kb.includes(k))
+  let verdict
+  if (!A.length && !B.length) verdict = '两边都没有出处：两个说法都不算含义，等有出处再判。'
+  else if (!A.length) verdict = `只有 B 有出处：按 B 读——「${b.meaning || b.use}」。`
+  else if (!B.length) verdict = `只有 A 有出处：按 A 读——「${a.meaning || a.use}」。`
+  else if (shared.length === ka.length && shared.length === kb.length) verdict = '两边出处相同：同一个含义，不必分。'
+  else verdict = '两边出处不同：不是一个含义，不许合并；各按自己的出处读。'
+  return { word, a: A, b: B, shared, verdict }
+}
+
+export function renderCompareMeanings(r) {
+  const fmt = (arr) => (arr.length ? arr.join('、') : '（没有出处）')
+  return [
+    `词：${r.word || '（未给）'}`,
+    `- A 的出处：${fmt(r.a)}`,
+    `- B 的出处：${fmt(r.b)}`,
+    r.shared.length ? `- 同一处：${r.shared.join('、')}` : '- 同一处：没有',
+    `- 判：${r.verdict}`,
+  ].join('\n')
+}

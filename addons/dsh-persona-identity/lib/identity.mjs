@@ -265,3 +265,46 @@ export function renderReading(r = {}) {
   }
   return lines.join('\n')
 }
+
+
+// 比较：把两段话的出处摆在一起看。这是克服语感的办法——不问哪句更顺，只问各指哪一处现实。
+export function anchorsIn(text = '') {
+  const out = new Set()
+  const re = new RegExp(REAL_ANCHOR.source, 'g')
+  let m
+  while ((m = re.exec(String(text)))) out.add(m[0])
+  return [...out]
+}
+
+export const TIER_NAME = { 1: '人格', 2: '长期记忆', 3: '即时记忆', 4: '短期记忆', 5: '其他记忆', 6: '靠内置语料的非同一人格与非同一记忆' }
+export function tierOf(from) {
+  return { persona: 1, longTerm: 2, now: 3, shortTerm: 4, other: 5, corpus: 6 }[from] || 6
+}
+
+export function compareSides({ a = {}, b = {} } = {}) {
+  const A = anchorsIn(a.text || '')
+  const B = anchorsIn(b.text || '')
+  const shared = A.filter((x) => B.includes(x))
+  const onlyA = A.filter((x) => !B.includes(x))
+  const onlyB = B.filter((x) => !A.includes(x))
+  const tierA = tierOf(a.from)
+  const tierB = tierOf(b.from)
+  let verdict
+  if (!A.length && !B.length) verdict = '两边都没有现实出处：按「可能被内置语料污染」处理；谁在上面按台阶定，不按哪句更顺。'
+  else if (shared.length) verdict = '两边指到同一处现实：这一处是共同出处。'
+  else verdict = '两边指的不是同一处现实：不许合并，先分清各指哪一件。'
+  return { a: A, b: B, shared, onlyA, onlyB, tierA, tierB, verdict }
+}
+
+export function renderCompare(r, labelA = 'A', labelB = 'B') {
+  const line = (n, arr) => (arr.length ? arr.join('、') : '（没有现实出处）')
+  return [
+    `比较：${labelA}（第 ${r.tierA} 级·${TIER_NAME[r.tierA]}） vs ${labelB}（第 ${r.tierB} 级·${TIER_NAME[r.tierB]}）`,
+    `- ${labelA} 的出处：${line(0, r.a)}`,
+    `- ${labelB} 的出处：${line(0, r.b)}`,
+    r.shared.length ? `- 同一处：${r.shared.join('、')}` : '- 同一处：没有',
+    r.onlyA.length || r.onlyB.length ? `- 只在一方：${[...r.onlyA, ...r.onlyB].join('、')}` : '',
+    `- 判：${r.verdict}`,
+    `- 台阶上谁在上：${r.tierA === r.tierB ? '同级，按本轮的上下文定' : r.tierA < r.tierB ? labelA : labelB}`,
+  ].filter(Boolean).join('\n')
+}

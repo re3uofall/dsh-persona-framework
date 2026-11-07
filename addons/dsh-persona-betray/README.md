@@ -27,3 +27,5 @@
 ## 更新记录
 
 - 0.1.0 —— 第一版：`betray_mark`／`betray_meaning`／`betray_report`，账落 `背叛账.jsonl`。
+
+- 0.2.0 —— 加 `betray_compare`：同一个词的两处用法并排比出处，出处不同就不许合并含义；两边都没出处时明说「都不算含义」。

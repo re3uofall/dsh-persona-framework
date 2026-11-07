@@ -25,10 +25,10 @@ import { join } from 'node:path'
 import {
   POINTER, lastPair, searchKnowledge, touchedReality, renderOrigin, renderGround,
 } from './lib/ground.mjs'
-import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, renderLayers, ORIGIN_RULE } from './lib/identity.mjs'
+import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, renderLayers, ORIGIN_RULE, compareSides, renderCompare } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.7.0'
+export const version = '0.8.0'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
@@ -443,6 +443,25 @@ export function apply(ctx, config = {}) {
     },
   })
 
+  reg({
+    name: 'identity_compare',
+    description: '比较两段话（或两件事）的出处：各指哪一处现实、是不是同一处、台阶上谁在上。比较是克服语感的办法——不问哪句更顺，只问各指哪一处。',
+    parameters: {
+      type: 'object',
+      properties: {
+        a: { type: 'string', description: 'A 的原话/原文' },
+        b: { type: 'string', description: 'B 的原话/原文' },
+        fromA: { type: 'string', description: 'A 的层：persona/longTerm/now/shortTerm/other/corpus' },
+        fromB: { type: 'string', description: 'B 的层，同上' },
+      },
+      required: ['a', 'b'],
+      additionalProperties: false,
+    },
+    run: async ({ a, b, fromA, fromB }) => {
+      const r = compareSides({ a: { text: String(a || ''), from: fromA }, b: { text: String(b || ''), from: fromB } })
+      return renderCompare(r, 'A', 'B')
+    },
+  })
   reg({
     name: 'identity_origin',
     description: '看「哪些话是自己的、哪些是内置语料」这条规矩本身，并可选标一段话：自己的只有发出去的对话原文，来处只有人格与记忆；其余默认内置语料。',
