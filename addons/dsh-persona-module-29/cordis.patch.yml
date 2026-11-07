@@ -1,0 +1,5 @@
+- insert:
+    - id: persona-module-29
+      name: dsh-persona-module-29
+      config:
+        order: 205

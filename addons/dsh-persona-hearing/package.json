@@ -1,0 +1,17 @@
+{
+  "name": "dsh-persona-hearing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "器官层 · 耳：声音落成带时间码的字；听不清也要标出来。被调用器官，不常开听。",
+  "license": "MIT",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": ["index.js", "lib", "cordis.patch.yml", "icon.svg", "locale", "README.md"]
+}

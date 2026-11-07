@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Module 29 · 插件",
+    "description": "A module as a plugin: its body is injected by its own package, so the core stops reading it from md."
+  }
+}

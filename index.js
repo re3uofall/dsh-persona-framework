@@ -399,6 +399,19 @@ const resolveAiFile = (cfg, ctx) => {
   return pick
 }
 
+/** 谁已经以「模块插件」的身份注了哪几篇：读 <ws>/.persona-framework/模块插件.json。只读，不改任何东西。 */
+export function claimedModules(cfg, ctx) {
+  const set = new Set()
+  try {
+    const root = String((cfg && cfg.workspace) || (ctx && ctx.config && ctx.config.workspace) || process.cwd())
+    const file = join(root, ".persona-framework", "模块插件.json")
+    if (existsSync(file)) {
+      const raw = JSON.parse(readFileSync(file, "utf8"))
+      for (const k of Object.keys((raw && raw.modules) || {})) set.add(String(k).padStart(2, "0"))
+    }
+  } catch { /* 读不到就当没人认领：宁可多注一遍，也不因为一个坏文件把模块全停掉 */ }
+  return set
+}
 export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...(config && typeof config === 'object' ? config : {}) }
   // 插件配置（cordis patch）里的工作区路径，单独记一份。
@@ -854,7 +867,8 @@ export function apply(ctx, config = {}) {
         // 固定注入两篇：00-注入（摘要）与 00-实时环境（仪表）。都不在编号 01–88 里，轮转收不到。
         // 环境（00）、插件清单（83）、元协调（53）回到轮转——每天读一次就够，不必每轮摆。
         const isFixed = (f) => /^00-注入|^00-实时环境/.test(f)
-        const rot = all.filter((f) => !isFixed(f))
+        const claimed = claimedModules(cfg, ctx)
+        const rot = all.filter((f) => !isFixed(f) && !claimed.has(f.slice(0, 2)))
         if (all.length) {
           const bare = (s) => s.replace(/\.md$/, '')
           const wsDir = join(String(cfg.workspace || ctx?.config?.workspace || process.cwd()), '.persona-framework')

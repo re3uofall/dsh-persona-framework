@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Organ · Ear",
+    "description": "Turns sound into timed text. A called organ: listens only when ear_* is invoked."
+  }
+}

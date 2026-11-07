@@ -1,0 +1,19 @@
+{
+  "name": "dsh-persona-module-29",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "模块 29 · 插件，长成一个插件：正文由自己的包注进来，总模块不再重复注。",
+  "license": "MIT",
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "module": { "id": "29", "title": "插件" }
+  },
+  "exports": {
+    ".": "./index.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": ["index.js", "module.md", "cordis.patch.yml", "icon.svg", "locale", "README.md"]
+}

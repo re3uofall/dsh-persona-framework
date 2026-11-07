@@ -1,0 +1,6 @@
+- insert:
+    - id: persona-hearing
+      name: dsh-persona-hearing
+      config:
+        model: small
+        speak: true
