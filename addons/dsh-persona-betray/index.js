@@ -84,7 +84,8 @@ export function apply(ctx, config = {}) {
       required: ['aUse', 'bUse'],
       additionalProperties: false,
     },
-    run: async ({ word, aUse, aMeaning, bUse, bMeaning }) => {
+    output: textOutput,
+    async execute({ word, aUse, aMeaning, bUse, bMeaning }) {
       const r = compareMeanings({ word: String(word || ''), a: { use: String(aUse || ''), meaning: aMeaning }, b: { use: String(bUse || ''), meaning: bMeaning } })
       return renderCompareMeanings(r)
     },
