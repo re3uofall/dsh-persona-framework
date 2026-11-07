@@ -21,9 +21,15 @@ import {
   normalizeTitle, nowIso, readJson, recentEntries, todayEntries, writeJson,
 } from './lib/store.mjs'
 import { htmlToText, titleOf } from './lib/readable.mjs'
+import { KINDS, pick as pickScope, planOf, platformHint, renderCatalog, renderOne } from './lib/scope.mjs'
+import {
+  DEFAULTS as TRIGGER_DEFAULTS, appendFires, evaluate as evaluateTriggers,
+  mergeState as mergeTriggerState, readFires, renderFires,
+} from './lib/triggers.mjs'
+import { install as installExtend } from './lib/extend.mjs'
 
 export const name = 'persona-explore'
-export const inject = ['tools', 'systemPrompt']
+export const inject = ['tools', 'systemPrompt', 'webServer']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */
 const DEFAULTS = {
@@ -134,6 +140,10 @@ export function apply(ctx, config = {}) {
       }
     : null
   if (!p) warn('没有找到人格目录：请在 patch 的 config.personaDir 里指到 persona-ai 那一层')
+  // 触发器（事件/阈值/骰子）与侧栏页的数据接口；p 没了就什么都不挂，只剩工具。
+  if (p) {
+    try { installExtend(ctx, { cfg, p, warn }) } catch (error) { warn(error) }
+  }
 
   const rel = (file) => {
     if (!p) return file
@@ -255,12 +265,14 @@ export function apply(ctx, config = {}) {
     try { return ctx.get('web') || null } catch { return null }
   }
 
-  const doSearch = async (query, max) => {
+  const doSearch = async (query, max, platform) => {
     const q = String(query || '').trim()
     if (!q) return '给个搜索词。'
     const web = webService()
     if (!web) return '这个宿主没接网上通道（web 服务不在），先别搜了。'
     const limit = int(max, 1, 10, 6)
+    const hint = platform ? platformHint(String(platform).trim()) : ''
+    if (platform && !hint) return `平台只认 ${KINDS.platform.join(' / ')}；不给就按 web。`
     let result
     try {
       result = await web.search({ query: q, maxResults: limit })
@@ -280,6 +292,7 @@ export function apply(ctx, config = {}) {
       lines.push('', '搜索服务给的一段摘要（还没核对，别当事实用）：')
       lines.push(clip(String(result.content).replace(/\s+/g, ' '), 500))
     }
+    if (hint) lines.push('', hint)
     lines.push('', '要读原文就 explore read url=…')
     return lines.join('\n')
   }
@@ -452,7 +465,7 @@ export function apply(ctx, config = {}) {
 
   if (p) {
     ctx.effect(() => ctx.systemPrompt.section({
-      name: '实时环境:explore',
+      name: 'persona:explore',
       order: 20,
       interpolate: false,
       text: () => (appearOn() ? sectionText() : ''),
@@ -484,10 +497,14 @@ export function apply(ctx, config = {}) {
         properties: {
           action: {
             type: 'string',
-            enum: ['search', 'read', 'keep', 'queue', 'status', 'auto'],
-            description: 'search=搜网页；read=读一个网址的正文；keep=留下一条；queue=排/看想挖的方向；status=看账；auto=管闹钟。',
+            enum: ['search', 'read', 'keep', 'queue', 'status', 'auto', 'scope'],
+            description: 'search=搜网页；read=读一个网址的正文；keep=留下一条；queue=排/看想挖的方向；status=看账；auto=管闹钟；scope=看探索范围/方式/平台，或给这一趟排个方案。',
           },
           query: { type: 'string', description: 'search 的搜索词。' },
+          range: { type: 'string', description: 'scope/plan 用：这一趟是哪种范围——fact 事实核对 / how 做法与操作 / counter 反例与争论 / primary 原始材料 / lineage 人物与流派 / timeline 时间线 / limit 边界与失灵。' },
+          mode: { type: 'string', description: 'scope/plan 用：搜法——narrow 窄词直搜 / rephrase 换措辞重搜 / against 反向搜索 / follow 顺引用走 / origin 找出处 / cross 交叉验证 / translate 换语言搜。' },
+          platform: { type: 'string', description: 'search/scope 用：去哪找——web / github / npm / arxiv / wiki / forum / video；不给默认 web。' },
+          kind: { type: 'string', description: 'scope 用：只列哪一类（range / mode / platform）；给了具体 id 就只讲那一条。' },
           url: { type: 'string', description: 'read 要读的 http(s) 网址。' },
           max: { type: 'number', description: 'search 最多几条（默认 6）；read 最多读多少字（默认 4000，范围 1000–12000）。' },
           title: { type: 'string', description: 'keep 的标题：一句话，最多 60 字。' },
@@ -508,7 +525,7 @@ export function apply(ctx, config = {}) {
           const action = String(a.action || '').trim()
           let text = ''
           if (action === 'search') {
-            text = await doSearch(a.query, a.max)
+            text = await doSearch(a.query, a.max, a.platform)
           } else if (action === 'read') {
             text = await doRead(a.url, a.max)
           } else if (action === 'keep') {
@@ -538,10 +555,22 @@ export function apply(ctx, config = {}) {
             } else {
               text = await describeSchedule()
             }
+          } else if (action === 'scope') {
+            const kind = String(a.kind || '').trim()
+            const one = kind || a.range || a.mode || a.platform
+            const plan = a.range || a.mode || a.platform
+            if (plan && (a.range || a.mode || a.platform)) {
+              const p2 = planOf({ range: a.range, mode: a.mode, platform: a.platform })
+              text = p2 ? `${renderOne('range', a.range) ? '' : ''}${p2}` : '给的范围/方式/平台对不上，先用 scope 不带参数看一遍。'
+            } else if (one && KINDS[kind] ? KINDS[kind].includes(one) : false) {
+              text = renderOne(kind, one)
+            } else {
+              text = renderCatalog(kind || undefined)
+            }
           } else if (action === 'status' || action === '') {
             text = await doStatus()
           } else {
-            text = 'action 只认 search / read / keep / queue / status / auto。'
+            text = 'action 只认 search / read / keep / queue / status / auto / scope。'
           }
           maybeArm(exec)
           return { text }

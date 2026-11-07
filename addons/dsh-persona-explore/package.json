@@ -1,0 +1,36 @@
+{
+  "name": "dsh-persona-explore",
+  "version": "0.5.1",
+  "private": true,
+  "description": "主动探索：搜索范围/方式/平台三维可选，四条触发器（队列空/连续无留/队列超期/骰子）真落账，左侧栏一页看留下的判断、队列与触发账；历史判断按条目整理（一天一个文件里也按 ## 拆开）",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./client": "./client.js"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "selfcheck.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}
