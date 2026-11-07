@@ -614,7 +614,7 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | 类 | 有哪些 | 形状 | 判据 |
 | --- | --- | --- | --- |
 | **自动器官** | 手 `dsh-persona-hand`、嘴 `dsh-persona-mouth` | 工具 + 账 + 触发器：真做了 / 真说了 → 落一行账 → 还没说出口的，下一轮自己注一行 | 盘上多一行、下一轮自己说一句。缺一个就是假的 |
-| **被调用的器官** | 眼 `eye`（实现件 `dsh-persona-vision`）、耳 `ear`（实现件 `dsh-persona-hearing`，未做） | 只有工具：`vision_look` / `vision_note`，调用一次才看一次 | **不调就没有**——这不是缺陷，是被调用器官的定义 |
+| **被调用的器官** | 眼 `eye`（实现件 `dsh-persona-vision`）、耳 `ear`（实现件 `dsh-cixisound` 1.0.3，工具 `sound_*`） | 只有工具：`vision_look` / `vision_note`，调用一次才看一次 | **不调就没有**——这不是缺陷，是被调用器官的定义 |
 
 这条分界的用处：眼和耳**不许假装一直在看、一直在听**。它们没账、没触发器，就没资格说「我刚看见了」。手和嘴反过来——动手了不出回执、说话了没落账，那是假的，不是安静。
 
@@ -625,6 +625,26 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 3. 工具名跟着**实现件**走：`hand_*` / `mouth_*` / `vision_*`（耳做出来就叫 `hearing_*`）。`eye` / `ear` 是器官名，不拿来命名包和工具。
 4. README 第一句就说「这是器官层的哪一个口子」，再说功能。
 
+### 耳的实现件：`dsh-cixisound` 1.0.3（2026-11-07 装）
+
+师父 m01422 给了仓库 `CixiSVesper/dsh-soundtry`，说「听觉有了」。看了，是真的：六个工具全在，全本机跑。
+
+| 工具 | 干什么 | 用在哪 |
+| --- | --- | --- |
+| `sound_read` | 一次给全：逐句时间码 + BPM/切点对位 + 人声旋律 + 和弦 | 想搞清「这条在说什么、什么调」 |
+| `sound_transcribe` | 语音/歌词 → 带时间码文本，可写 SRT、可切窗口 | 要字幕、要引用台词 |
+| `sound_rhythm` | BPM（网格回套 + 相位扫描 + 半/倍频消歧）、鼓组能量、切点踩拍率 | 「是不是跟着音乐剪的」 |
+| `sound_melody` | 人声轨音域、调性、常用音、指定窗口音高轮廓 | 「副歌有没有升」 |
+| `sound_chords` | 拍点级和弦时间轴 + 各和弦时长 | 「是不是四和弦循环」——只信根音和谐波节奏，品质不可信 |
+| `sound_structure` | 段落边界（0.25 秒窗，报 0.1 秒）+ 人声进/鼓进/峰值时刻 | 「按段落切片」 |
+
+**它仍然是「被调用的器官」**：只有工具，没有段、没有触发器、不注册 `实时环境:*`。不调就没有——这一条不改。
+
+**它自己承认的边界**（都写进工具描述，值得学）：BPM 有 ambiguous 三态、和弦明说「根音可信、品质不可信」、分离后端 MDX-Net → Demucs → HPSS 降级链、`vad` 对歌声会把整首判成非人声。这跟我们「听不清要单列、不许当成听过了」是同一条规矩。
+
+**运行条件**：Windows x64、Python 3.10–3.12、磁盘约 2.4 GB、内存 6 GB 可用（4 分钟歌「分离+转写」峰值 4.42 GB）；不需要显卡，也不需要 torch。本机 Python 是 **3.12.10**，磁盘够；但内存空着只有 3 GB，跑长音频前得先关别的。
+
+**怎么装的**：GitHub 页面直连不通，走 `api.github.com/repos/.../contents/<file>` 逐个取 14 个文件（共 215 KB）落到 `C:/爱思考的大肥鱼思思/external/dsh-cixisound/`，再 `pnpm add` link 进去 + 写进 `dsh.profile.bundles`（第 48 条）。**没有走 npm**——这个包在 npm 上不存在。
 ### 器官名和包名不是一回事
 
 师父 m01254：「vision不是eye hearing不是ear」。对——`vision` 是「看」这个功能，`eye` 是「眼」这个器官。功能可以换（以后换一个别的视觉插件来实现「看」），器官不换；所以：
@@ -632,7 +652,7 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | 层 | 名 | 现在的实现 |
 | --- | --- | --- |
 | 器官 | 眼 `eye` | `dsh-persona-vision`（工具 `vision_look` / `vision_note`） |
-| 器官 | 耳 `ear` | 无（`dsh-persona-hearing` 只有计划） |
+| 器官 | 耳 `ear` | `dsh-cixisound`（`sound_read` / `sound_transcribe` / `sound_rhythm` / `sound_melody` / `sound_chords` / `sound_structure`） |
 | 器官 | 手 `hand` | `dsh-persona-hand`（工具 `hand_run` …） |
 | 器官 | 嘴 `mouth` | `dsh-persona-mouth`（工具 `mouth_say` …） |
 
@@ -645,7 +665,7 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | 手 | `dsh-persona-hand` | 已装 0.1.0 | `.persona-framework/手账.jsonl` |
 | 嘴 | `dsh-persona-mouth` | 已装 0.1.0 | `.persona-framework/嘴账.jsonl` |
 | 眼 `eye` | `dsh-persona-vision` 0.1.1（实现件，被调用） | 已装，补了 locale 与图标 | 看过的落 memory，不另记账 |
-| 耳 `ear` | `dsh-persona-hearing`（未做） | **还没有这个包**——只有计划（第一节） | 将来落 memory |
+| 耳 `ear` | `dsh-cixisound` 1.0.3（实现件，被调用；第三方，不是我们写的） | **已装**：六个工具在工具表里；Python 3.12.10 就位，依赖与模型首次调用才装（约 2.4 GB，峰值内存 4.4 GB） | 将来落 memory |
 
 ## 二十二、四个配套：技能→手、语言/语音→嘴、视觉→眼、听觉→耳
 
