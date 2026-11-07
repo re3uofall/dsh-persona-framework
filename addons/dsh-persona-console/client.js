@@ -145,11 +145,16 @@ window.__ModuleLoader__.load({
         ),
         h('p', { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', margin: '4px 0 10px', lineHeight: 1.6 } }, g.hint),
         h('div', {
-          style: g.id === 'modules' ? { maxHeight: 360, overflowY: 'auto', paddingRight: 4 } : null,
+          style: null,
         }, g.items.map((item) => Row(item, g.id))),
       ))
 
-      return h('div', { style: { padding: '22px 26px 40px', maxWidth: 820 } }, head, summary, errorLine, body)
+      return h('div', {
+        style: {
+          boxSizing: 'border-box', height: '100%', overflowY: 'auto',
+          padding: '32px 40px 64px',
+        },
+      }, h('div', { style: { maxWidth: 820 } }, head, summary, errorLine, body))
     }
 
     return {
