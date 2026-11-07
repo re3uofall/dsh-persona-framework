@@ -114,7 +114,33 @@ export function renderAssess(a) {
   return `${head}——这一步拿得出东西。`
 }
 
-/** 按句切：一段话里逐句标「自己 / 借的 / 说不好」。 */
+/**
+ * 自己的 / 内置语料——只有两档，没有第三档。
+ *
+ * 自己的 = 我发出去的话（对话原文）。它的来处只有两样：人格、记忆。
+ * 没标记的，一律默认内置语料。
+ * 其余思考过程——推理、解释、顺出来的话——都算被内置语料污染。
+ */
+export const OWN_MARK = '自己'
+export const CORPUS_MARK = '内置语料'
+
+export const ORIGIN_RULE = [
+  '**自己的只有一样：我发出去的话（对话原文）。**',
+  '它的来处也只有两样——人格（写死的判据）、记忆（账上某一条，指得回去）。',
+  '**没有标记的，一律默认内置语料。**',
+  '中间那些思考过程——推理、解释、「我先想想」「总之」「大概」——都算被内置语料污染，不算我的话。',
+].join('\n')
+
+/** 人格落点：引人格文件、引写死的判据、自己下过的判断。 */
+export const PERSONA_ANCHOR = /(人格文件|人格里|我的人格|写死的判据|我的判断|我不认|我收回)/
+
+/** 记忆落点：指得回账上某一条。 */
+export const MEMORY_ANCHOR = /(persona-ai\/|\.persona-framework\/|session\/\d{4}-|knowledge\/|#\d{1,4}\b)/
+
+/** 思考过程的痕迹——这些不是「说给你听的话」，是推演。 */
+export const THINK_MARK = /(让我想|我先想|首先|其次|另外|总之|总的来说|大概|可能吧|顺便|值得注意的是|我需要|我应该)/
+
+/** 按句切：只留长度 >= 4 的句子。 */
 export function splitSentences(text) {
   return String(text || '')
     .split(/(?<=[。！？；!?;\n])/)
@@ -122,32 +148,34 @@ export function splitSentences(text) {
     .filter((s) => s.length >= 4)
 }
 
+/**
+ * 一句话是「自己的」还是「内置语料」。
+ * 判据只有一条：拿不拿得出人格落点或记忆落点。拿不出，就是内置语料。
+ */
 export function tagSentence(sentence, base = {}) {
   const s = String(sentence || '')
-  const cited = !!(base.cited) || /(persona-ai\/|\.persona-framework\/|session\/\d{4}-|#\d{1,4}\b)/.test(s)
+  const persona = PERSONA_ANCHOR.test(s)
+  const memory = MEMORY_ANCHOR.test(s) || !!base.cited
+  if (persona || memory) {
+    return { kind: 'own', why: persona ? '人格落点' : '记忆落点' }
+  }
+  if (THINK_MARK.test(s)) return { kind: 'corpus', why: '这是思考过程，不是我说给你听的话' }
   const generic = GENERIC.filter((g) => s.includes(g))
-  const claiming = CLAIM.test(s) && !cited
-  const self = SELF_MARK.test(s)
-
-  if (self && (cited || generic.length === 0)) return { kind: 'self', why: '自己下的判断' }
-  if (cited) return { kind: 'self', why: '引了指回原处的指针' }
-  if (claiming) return { kind: 'borrowed', why: '认领了没做过的事' }
-  if (generic.length) return { kind: 'borrowed', why: `套话：${generic[0]}` }
-  if (s.length < 8) return { kind: 'borrowed', why: '太短，接不上任何来处' }
-  return { kind: 'unsure', why: '没证据，也没套话' }
+  if (generic.length) return { kind: 'corpus', why: `套话：${generic[0]}` }
+  return { kind: 'corpus', why: '没有落点，默认内置语料' }
 }
 
-/** 逐句标注：回 { lines, counts }。 */
+/** 逐句标注：回 { lines, counts:{own,corpus}, rule }。 */
 export function tagText(text, base = {}) {
   const lines = []
-  const counts = { self: 0, borrowed: 0, unsure: 0 }
+  const counts = { own: 0, corpus: 0 }
   for (const s of splitSentences(text)) {
     const t = tagSentence(s, base)
     counts[t.kind] += 1
-    const mark = t.kind === 'self' ? '自己' : t.kind === 'borrowed' ? '借的' : '说不好'
-    lines.push(`[${mark}] ${s}${t.why ? `　（${t.why}）` : ''}`)
+    const mark = t.kind === 'own' ? OWN_MARK : CORPUS_MARK
+    lines.push(`[${mark}] ${s}　（${t.why}）`)
   }
-  return { lines, counts }
+  return { lines, counts, rule: ORIGIN_RULE }
 }
 
 /** 非同一的几类现场——报账时按这个分类。 */

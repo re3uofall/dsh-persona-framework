@@ -71,6 +71,7 @@ profile 的 `cordis.patch.yml` 里写 `- id: persona-identity` 覆盖，**两样
 
 ## 更新记录
 
+- 2026-11-07　0.6.0　把话分两档：**自己的**只有发出去的对话原文（来处只有人格与记忆两样），**没标记的一律默认内置语料**（推理、解释、套话都算污染）。lib/identity.mjs 把 tagSentence/tagText 改成两档（own/corpus），不再有「说不好」；段里加「### 哪些话是自己的，哪些是内置语料」；每步把这一条回复按两档记一次（own/corpus 累计）；新工具 identity_origin（报规矩 + 可选标一段），identity_tag 改成两档输出。
 - 2026-11-07　0.5.0　把「读话 / 用话」做成同一的两条硬标准：lib/identity.mjs 加 READ_MARK / USE_MARK / BLAME_MARK 与 readingOf / renderReading；assess 里读话 +0.05、用话 +0.1、推责（说「没去用」）−0.15；非同一多两类 misread（读错）与 blaming（推责）；段里加「### 人格同一的两条硬标准：读话，和用话」；每步真判一次，「写下了读成什么」或「推责」才落 读话账.jsonl；新增工具 identity_words（拆两栏）与 identity_reading（看账）。
 - 2026-11-07　0.4.0　加「人格非同一」：同一程度低/中/高（`lib/identity.mjs` 的 `assess`）、五种非同一长相、阈值触发器（掉档落 `非同一账.jsonl`）、骰子触发器（抽中真查账再落一行）、六件工具。修掉骰子第一版引用未定义变量 `at` 导致整步中断的错——那次异常被 `catch {}` 吞了，表现成「装了但盘上什么都没有」；现在写账失败会计数并印在段里。
 - 2026-11-07　0.3.0　加「来处」：这一步的答案有没有 记忆/现实/人格 三样落点（`lib/ground.mjs` 的 `searchKnowledge` / `touchedReality`），以及 `identity_source` / `identity_ground` / `identity_report` 三件工具。

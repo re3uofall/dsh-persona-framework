@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Persona Identity",
-    "description": "One persona file, one memory. Each turn: which source this turn reads, plus an identity level whose two hard tests are reading (was the exact wording there) and using (what it was read as)."
+    "description": "One persona file, one memory pool. Every reply is marked either own (the words sent out, grounded in persona or memory) or corpus (everything else, including reasoning)."
   }
 }

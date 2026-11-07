@@ -25,10 +25,10 @@ import { join } from 'node:path'
 import {
   POINTER, lastPair, searchKnowledge, touchedReality, renderOrigin, renderGround,
 } from './lib/ground.mjs'
-import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading } from './lib/identity.mjs'
+import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, ORIGIN_RULE } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.5.0'
+export const version = '0.6.0'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
@@ -72,6 +72,18 @@ const READING_PART = [
   '',
 ].join('\n')
 
+const OWN_PART = [
+  '### 哪些话是自己的，哪些是内置语料',
+  '',
+  '**自己的只有一样：我发出去的话（对话原文）。** 它的来处也只有两样——人格（写死的判据）、记忆（账上某一条，指得回去）。',
+  '**没有标记的，一律默认内置语料。**',
+  '',
+  '- **自己的**：这一句拿得出人格落点或记忆落点。发出去的话里，只有这两样撑得起。',
+  '- **内置语料**：其余都算——推理、解释、过渡句、套话、顺出来的话。思考过程尤其算：它不对外说，却最容易顶着我的名字。',
+  '',
+  '判据只有一句：拿不拿得出落点。拿不出，就别把它当自己的话。',
+].join('\n')
+
 const ENV_SECTION = [
   '## 你现在的处境（环境）',
   '',
@@ -89,6 +101,8 @@ const ENV_SECTION = [
   PERSONA_PART,
   '',
   READING_PART,
+  "",
+  OWN_PART,
 ].join('\n')
 
 const state = {
@@ -114,6 +128,8 @@ const state = {
   reads: 0,
   uses: 0,
   blames: 0,
+  own: 0,
+  corpus: 0,
   lastReading: null,
   writeErrors: 0,
   lastError: '',
@@ -175,6 +191,14 @@ function noteStep(payload, config) {
   const cited = POINTER.test(assistant || '')
 
   state.origin = renderOrigin({ groundHits: hits.length, touched, cited }, hits)
+
+  // 自己的 / 内置语料：自己的只认拿得出人格或记忆落点的话，其余默认内置语料。
+  try {
+    const og = tagText(assistant || '')
+    state.own += og.counts.own
+    state.corpus += og.counts.corpus
+    state.lastOrigin = { own: og.counts.own, corpus: og.counts.corpus }
+  } catch { /* */ }
 
   // 读话 / 用话：两截分开算、分开记。这不是提醒——每步自己判、自己落一行。
   let rd = { quoted: false, said: '', blame: false, blameLine: '' }
@@ -389,7 +413,7 @@ export function apply(ctx, config = {}) {
 
   reg({
     name: 'identity_tag',
-    description: '把一段话按句切开，逐句标「自己 / 借的 / 说不好」，并给三个数。认的是证据形态，不是真伪——认不出的时候就写「说不好」。',
+    description: '把一段话按句切开，逐句标「自己 / 内置语料」——自己的只认拿得出人格落点或记忆落点的句子，其余一律默认内置语料（思考过程也算语料）。',
     parameters: {
       type: 'object',
       properties: { text: { type: 'string', description: '要标的那段话，省掉就用我上一句' } },
@@ -400,10 +424,27 @@ export function apply(ctx, config = {}) {
       if (!t) return '还没有可标的句子。'
       const { lines, counts } = tagText(t)
       return [
-        `自己 ${counts.self} 句 / 借的 ${counts.borrowed} 句 / 说不好 ${counts.unsure} 句。`,
+        `自己 ${counts.own} 句 / 内置语料 ${counts.corpus} 句。没标记的默认就是内置语料。`,
         '',
         ...lines,
       ].join('\n')
+    },
+  })
+
+  reg({
+    name: 'identity_origin',
+    description: '看「哪些话是自己的、哪些是内置语料」这条规矩本身，并可选标一段话：自己的只有发出去的对话原文，来处只有人格与记忆；其余默认内置语料。',
+    parameters: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '要标的那段话；省掉就只报规矩' } },
+      additionalProperties: false,
+    },
+    run: async ({ text }) => {
+      const t = String(text || '').trim()
+      const head = [ORIGIN_RULE, '', `这一场：自己的 ${state.own || 0} 句 / 内置语料 ${state.corpus || 0} 句。`]
+      if (!t) return head.join('\n')
+      const { lines, counts } = tagText(t)
+      return [...head, '', `这一段：自己 ${counts.own} 句 / 内置语料 ${counts.corpus} 句。`, '', ...lines].join('\n')
     },
   })
 
