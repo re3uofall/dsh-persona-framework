@@ -611,16 +611,29 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | 类 | 有哪些 | 形状 | 判据 |
 | --- | --- | --- | --- |
 | **自动器官** | 手 `dsh-persona-hand`、嘴 `dsh-persona-mouth` | 工具 + 账 + 触发器：真做了 / 真说了 → 落一行账 → 还没说出口的，下一轮自己注一行 | 盘上多一行、下一轮自己说一句。缺一个就是假的 |
-| **被调用的器官** | 眼 `dsh-persona-vision`、耳 `dsh-persona-hearing`（未做） | 只有工具：`vision_look` / `vision_note`，调用一次才看一次 | **不调就没有**——这不是缺陷，是被调用器官的定义 |
+| **被调用的器官** | 眼 `eye`（实现件 `dsh-persona-vision`）、耳 `ear`（实现件 `dsh-persona-hearing`，未做） | 只有工具：`vision_look` / `vision_note`，调用一次才看一次 | **不调就没有**——这不是缺陷，是被调用器官的定义 |
 
 这条分界的用处：眼和耳**不许假装一直在看、一直在听**。它们没账、没触发器，就没资格说「我刚看见了」。手和嘴反过来——动手了不出回执、说话了没落账，那是假的，不是安静。
 
 ### 命名规矩（四处一起改，别只改一处）
 
-1. 设置页标题：`器官 · 手` / `器官 · 嘴` / `器官 · 眼` / `器官 · 耳`（`locale/zh.json` 的 `meta.title`）。
+1. 设置页标题：`器官 · 手` / `器官 · 嘴` / `器官 · 眼` / `器官 · 耳`（`locale/zh.json` 的 `meta.title`）。**标题是器官名，不是包名。**
 2. 段名：只有自动器官有段——`实时环境:hand`（order 41）、`实时环境:mouth`（order 42）；眼/耳**不注册段**。
-3. 工具名：`hand_*` / `mouth_*` / `vision_*`（耳做出来就叫 `hearing_*`）。
+3. 工具名跟着**实现件**走：`hand_*` / `mouth_*` / `vision_*`（耳做出来就叫 `hearing_*`）。`eye` / `ear` 是器官名，不拿来命名包和工具。
 4. README 第一句就说「这是器官层的哪一个口子」，再说功能。
+
+### 器官名和包名不是一回事
+
+师父 m01254：「vision不是eye hearing不是ear」。对——`vision` 是「看」这个功能，`eye` 是「眼」这个器官。功能可以换（以后换一个别的视觉插件来实现「看」），器官不换；所以：
+
+| 层 | 名 | 现在的实现 |
+| --- | --- | --- |
+| 器官 | 眼 `eye` | `dsh-persona-vision`（工具 `vision_look` / `vision_note`） |
+| 器官 | 耳 `ear` | 无（`dsh-persona-hearing` 只有计划） |
+| 器官 | 手 `hand` | `dsh-persona-hand`（工具 `hand_run` …） |
+| 器官 | 嘴 `mouth` | `dsh-persona-mouth`（工具 `mouth_say` …） |
+
+所以设置页那一行写「器官 · 眼」是给眼睛看的名字；包名和工具名仍然说实话——它们实现的是「看」，不是眼本身。
 
 ### 状态
 
@@ -628,8 +641,8 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | --- | --- | --- | --- |
 | 手 | `dsh-persona-hand` | 已装 0.1.0 | `.persona-framework/手账.jsonl` |
 | 嘴 | `dsh-persona-mouth` | 已装 0.1.0 | `.persona-framework/嘴账.jsonl` |
-| 眼 | `dsh-persona-vision` | 已装 0.1.1（被调用，有 locale 与图标） | 看过的落 memory，不另记账 |
-| 耳 | `dsh-persona-hearing` | **还没有这个包**——只有计划（第一节）；现在没有眼睛之外的「听见」 | 将来落 memory |
+| 眼 `eye` | `dsh-persona-vision` 0.1.1（实现件，被调用） | 已装，补了 locale 与图标 | 看过的落 memory，不另记账 |
+| 耳 `ear` | `dsh-persona-hearing`（未做） | **还没有这个包**——只有计划（第一节） | 将来落 memory |
 
 ## 二十二、两个配套：技能（对应手）、语音（对应嘴）
 

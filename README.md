@@ -98,7 +98,7 @@
 
 **看图单独拿出来说一句**：它不认图——认图交给已经装着的 `vision_describe`。它管的是**看多久、看哪几帧、看完留什么**：抓一串帧 → 按指纹挑出变了的 → 拼成一张 → 想认才认 → 落一条带时间来源的记录。
 
-**器官层：进两个、出两个**（2026-11-07 定名，见 [PLAN-PLUGINS.md](PLAN-PLUGINS.md) 第二十一节）。手（`dsh-persona-hand` 0.1.0，真跑一条命令 + 手账）和嘴（`dsh-persona-mouth` 0.1.0，真送一句 + 嘴账）是**自动器官**——有账、有触发器，动完／送完还没说出口的，下一轮自己注一行；眼（`dsh-persona-vision` 0.1.1，`vision_look`／`vision_note`）是**被调用的器官**——调一次看一次，**没调用就不许说「我刚看见了」**。还欠：耳（`dsh-persona-hearing`）、心、脑。对着手和嘴的两个配套——技能（`dsh-persona-skills`）、语音（`dsh-persona-voice`）——只有计划（第二十二节）。
+**器官层：进两个、出两个**（2026-11-07 定名，见 [PLAN-PLUGINS.md](PLAN-PLUGINS.md) 第二十一节）。手（`dsh-persona-hand` 0.1.0，真跑一条命令 + 手账）和嘴（`dsh-persona-mouth` 0.1.0，真送一句 + 嘴账）是**自动器官**——有账、有触发器，动完／送完还没说出口的，下一轮自己注一行；眼（器官名 `eye`，实现件 `dsh-persona-vision` 0.1.1，`vision_look`／`vision_note`——`vision` 是功能名，不是器官名）是**被调用的器官**——调一次看一次，**没调用就不许说「我刚看见了」**。还欠：耳（`dsh-persona-hearing`）、心、脑。对着手和嘴的两个配套——技能（`dsh-persona-skills`）、语音（`dsh-persona-voice`）——只有计划（第二十二节）。
 
 **未来计划分四份**：总计划 [PLAN.md](PLAN.md)（四条线、凭什么排先后），模块的 [PLAN-MODULES.md](PLAN-MODULES.md)，功能的 [PLAN-FEATURES.md](PLAN-FEATURES.md)，插件的 [PLAN-PLUGINS.md](PLAN-PLUGINS.md)。
 
