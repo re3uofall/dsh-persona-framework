@@ -23,6 +23,9 @@ import {
 } from './lib/free.mjs'
 import { planOf, renderPlan } from './lib/plan.mjs'
 import { addSpace, defaultSpaces, findSpace, isolationCheck, normalizeSpaces, probeSpace } from './lib/space.mjs'
+import { ROUGH_DAY, renderRough, refine, renderRefined } from './lib/routine.mjs'
+import { DEFAULT_SETTINGS, fieldTable, levelLabel, normalizeActivities, normalizeLevel, normalizePatch, pickCurrent } from './lib/settings.mjs'
+import { renderVm, VM_ACTIONS } from './lib/vm.mjs'
 
 let pass = 0
 const fails = []
@@ -218,6 +221,55 @@ ok(addSpace(sp0, { key: 'c', kind: 'computer' }).ok === false, '自己的电脑�
 ok(findSpace(spAdd.state, '实验台')?.key === 'lab', '按名字也找得到')
 eq(normalizeSpaces({ spaces: [{ key: 'x' }] }).spaces[0].kind, 'computer', '认不出的 kind 回 computer')
 eq(normalizeSpaces(null).spaces.length, 2, '坏账回默认两块')
+
+
+// ---- 自由时间：粗糙版 ----
+ok(ROUGH_DAY.length === 12, '粗糙版是 12 条')
+const rough = renderRough()
+ok(rough.includes('07:30') && rough.includes('22:30'), '粗糙版从起床排到洗漱')
+ok(rough.includes('模板不自动写账'), '粗糙版自己声明不写账')
+ok(ROUGH_DAY.every((r) => /^\d{2}:\d{2}$/.test(r.at) && r.minutes > 0), '每条都有钟点与分钟')
+
+// ---- 自由时间：精细版 ----
+const rs0 = emptyState()
+const one = addItem(rs0, { kind: 'fixed', text: '写自检', at: '09:00', minutes: 90 }, 1)
+const withTwo = addItem(one.state, { kind: 'fixed', text: '看邮件', at: '14:00', minutes: 30 }, 1).state
+const fin = refine(withTwo, Date.now(), { window: { wake: '08:00', sleep: '23:30' } })
+ok(fin.busy.length === 2, '精细版把两段固定事排进来')
+ok(fin.density > 0 && fin.density < 0.3, '两小段不会把一天塞满')
+ok(fin.slots.length >= 3, '仍然剩下不止一段整块空白')
+ok(fin.slots.every((x) => x.minutes >= 30), '留白只算 30 分钟以上的整段')
+const finTxt = renderRefined(fin)
+ok(finTxt.includes('密度') && finTxt.includes('空白'), '精细版给出密度与空白')
+const tightState = addItem(emptyState(), { kind: 'fixed', text: '一整天', at: '08:00', minutes: 600 }, 1).state
+const tight = refine(tightState, Date.now(), { window: { wake: '08:00', sleep: '23:30' } })
+ok(/密|空/.test(renderRefined(tight)), '排很满也能印出来不炸')
+
+// ---- 设置：四个旋钮 ----
+eq(normalizeLevel(0), 0, '0 是只记')
+eq(normalizeLevel(0.4), 0.5, '中间是提醒')
+eq(normalizeLevel(5), 1, '超过上限算自排')
+eq(normalizeLevel('x'), DEFAULT_SETTINGS.level, '读不懂回默认')
+eq(normalizeLevel(-3), 0, '负数算只记')
+eq(normalizeActivities('写代码，散步、发呆').length, 3, '逗号顿号都能切')
+eq(normalizeActivities([]).length, DEFAULT_SETTINGS.activities.length, '空列表回默认')
+const patched = normalizePatch({ level: 1, autoPlan: 'true', maxPerDay: 99, activities: 'a\nb' })
+eq(patched.level, 1, 'patch 收 level')
+eq(patched.autoPlan, true, 'patch 收布尔')
+eq(patched.maxPerDay, 9, 'maxPerDay 夹到 9')
+eq(patched.activities.join(','), 'a,b', 'patch 收活动列表')
+ok(!('nope' in normalizePatch({ nope: 1 })), '白名单外的不收')
+eq(levelLabel(0), '只记', '档位名字对得上')
+ok(fieldTable().length === 5, '设置页五行')
+ok(fieldTable().find((f) => f.key === 'level').options.length === 3, '自由度三档')
+
+// ---- 自由空间：虚拟机那层（只判文案，不真开机器）----
+const vmOff = renderVm({ ok: false, why: '没有 VBoxManage' }, { action: 'status' })
+ok(vmOff.includes('没有 VBoxManage'), '没装虚拟机管理器时说清原因')
+const vmOn = renderVm({ ok: true, name: 'DSH-Space', state: 'running', memoryMB: 512, cpus: 2, vdi: 'D:/dsh-vm/x.vdi' })
+ok(vmOn.includes('DSH-Space') && vmOn.includes('512'), '看状态时报名字与内存')
+ok(vmOn.includes('关闭') || vmOn.includes('正常关'), '在跑时给出怎么关')
+ok(VM_ACTIONS.length === 6 && VM_ACTIONS.includes('screenshot'), '六个动作，不多不少')
 
 // ---- 结果 ----
 if (fails.length) {

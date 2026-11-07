@@ -44,10 +44,13 @@ import {
 import { DEFAULT_WINDOW, planOf, renderPlan } from './lib/plan.mjs'
 import { addSpace, defaultSpaces, findSpace, isolationCheck, normalizeSpaces, probeSpace, renderSpaces } from './lib/space.mjs'
 import { busyState } from './lib/busy.mjs'
+import { VM_ACTIONS, renderVm, vmReboot, vmSavestate, vmScreenshot, vmStart, vmStatus, vmStop, VBOX_DEFAULT } from './lib/vm.mjs'
+import { renderRefined, renderRough, refine, ROUGH_DAY } from './lib/routine.mjs'
+import { DEFAULT_SETTINGS, fieldTable, levelLabel, normalizePatch, pickCurrent } from './lib/settings.mjs'
 
 export const name = 'persona-freedom'
-export const version = '0.2.0'
-export const inject = ['tools', 'systemPrompt']
+export const version = '0.3.0'
+export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
   /** 工作区根；空 = 用进程当前目录（插件装在仓库里，往上推会推到 addons/）。 */
@@ -99,6 +102,52 @@ export function apply(ctx, config) {
   const ws = () => cfg.workspace || guessWorkspace()
   const statePath = () => join(ws(), cfg.stateDir, '自由账.json')
   const spacePath = () => join(ws(), cfg.stateDir, '空间.json')
+  const settingsPath = () => join(ws(), cfg.stateDir, '自由配置.json')
+
+  const readSettings = () => {
+    try {
+      const p = settingsPath()
+      if (!existsSync(p)) return pickCurrent({})
+      return pickCurrent(JSON.parse(readFileSync(p, 'utf8')))
+    } catch {
+      return pickCurrent({})
+    }
+  }
+  const writeSettings = (patch) => {
+    try {
+      const p = settingsPath()
+      mkdirSync(dirname(p), { recursive: true })
+      if (existsSync(p)) {
+        try { writeFileSync(p + '.bak', readFileSync(p, 'utf8'), 'utf8') } catch { /* 备份失败不拦保存 */ }
+      }
+      const next = pickCurrent({ ...readSettings(), ...normalizePatch(patch) })
+      writeFileSync(p, JSON.stringify(next, null, 2), 'utf8')
+      return next
+    } catch {
+      return null
+    }
+  }
+
+  const sendJson = (res, code, body) => {
+    try {
+      res.statusCode = code
+      res.setHeader('content-type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify(body))
+    } catch { /* 响应写不出去就算了 */ }
+  }
+  const readBody = (req, limit = 64 * 1024) => new Promise((resolve) => {
+    let buf = ''
+    let done = false
+    const finish = (v) => { if (!done) { done = true; resolve(v) } }
+    try {
+      req.on('data', (c) => {
+        buf += c
+        if (buf.length > limit) { finish(''); try { req.destroy() } catch { /* ignore */ } }
+      })
+      req.on('end', () => finish(buf))
+      req.on('error', () => finish(''))
+    } catch { finish('') }
+  })
 
   const read = () => {
     try {
@@ -371,6 +420,121 @@ export function apply(ctx, config) {
     },
   })
 
+  reg({
+    name: 'free_day',
+    description:
+      '粗糙版的自由时间：印一份「一个普通人的一天」当参照纸（起床、三顿饭、上午下午做事、午休、散步、洗漱、睡）。只读，不写账——要哪条自己 free_add。',
+    parameters: {
+      type: 'object',
+      properties: {
+        wake: { type: 'string', description: '几点算醒（HH:MM，默认 08:00）' },
+        sleep: { type: 'string', description: '几点算睡（HH:MM，默认 23:30）' },
+      },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const wake = args.wake || '08:00'
+      const sleep = args.sleep || '23:30'
+      const st = readSettings()
+      const note = st.autoPlan ? '' : '\n（设置里 autoPlan 关着：这张纸只在你问的时候才印。）'
+      return renderRough(ROUGH_DAY, { wake, sleep }) + note
+    },
+  })
+
+  reg({
+    name: 'free_refine',
+    description:
+      '精细版的自由时间：把账上的固定事排进骨架，算出≥30 分钟的整段留白、密度、最长一段，再给一句判语。只读，不替你加事。',
+    parameters: {
+      type: 'object',
+      properties: {
+        wake: { type: 'string', description: '几点算醒（HH:MM，默认取配置文件或 08:00）' },
+        sleep: { type: 'string', description: '几点算睡（HH:MM，默认取配置文件或 23:30）' },
+      },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const window = {}
+      if (args.wake) window.wake = String(args.wake)
+      if (args.sleep) window.sleep = String(args.sleep)
+      return renderRefined(refine(read(), Date.now(), Object.keys(window).length ? { window } : {}))
+    },
+  })
+
+  reg({
+    name: 'free_vm',
+    description:
+      '自由空间那台电脑（虚拟机）：status 看状态 / start 开机（后台）/ stop 正常关 / savestate 存盘挂起 / reboot 重启 / screenshot 拍一张现场。只做这六样，不删盘、不改硬件。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: VM_ACTIONS, description: 'status / start / stop / savestate / reboot / screenshot' },
+        name: { type: 'string', description: '机器名；不给就用设置里那个（默认 DSH-Space）' },
+        path: { type: 'string', description: 'action=screenshot 时存图路径；不给就放 .persona-framework/空间/截图-<时间>.png' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const st = readSettings()
+      const name = String(args.name || st.vmName || 'DSH-Space').trim()
+      const bin = cfg.vbox || VBOX_DEFAULT
+      const action = String(args.action || 'status')
+      if (!VM_ACTIONS.includes(action)) return `action 只有 ${VM_ACTIONS.join(' / ')}。`
+      if (action === 'status') return renderVm(vmStatus(bin, name))
+      if (action === 'start') {
+        const r = vmStart(bin, name)
+        return r.ok ? `开机了：${name}（${r.state}）。\n${renderVm(vmStatus(bin, name))}` : `没开成：${r.why}`
+      }
+      if (action === 'stop') {
+        const r = vmStop(bin, name)
+        return r.ok ? `发了正常关机信号：${name}（${r.state}）。里面有没存完的东西，等它自己关。` : `没关成：${r.why}`
+      }
+      if (action === 'savestate') {
+        const r = vmSavestate(bin, name)
+        return r.ok ? `存盘挂起了：${name}。下次接着这一秒。` : `没挂成：${r.why}`
+      }
+      if (action === 'reboot') {
+        const r = vmReboot(bin, name)
+        return r.ok ? `重启了：${name}。` : `没重启成：${r.why}`
+      }
+      const out = String(args.path || '').trim() ||
+        join(ws(), cfg.stateDir, '空间', `截图-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`)
+      mkdirSync(dirname(out), { recursive: true })
+      const r = vmScreenshot(bin, name, out)
+      return r.ok ? `拍到了：${r.path}（${Math.round(r.bytes / 1024)} KB）` : `没拍到：${r.why}`
+    },
+  })
+
+  reg({
+    name: 'free_settings',
+    description:
+      '看或改自由度设置：level（0 只记 / 0.5 提醒 / 1 自排）、autoPlan、maxPerDay、activities（自由活动的内容）、vmName。不给参数只看。',
+    parameters: {
+      type: 'object',
+      properties: {
+        level: { type: 'number', description: '0 / 0.5 / 1' },
+        autoPlan: { type: 'boolean', description: '每天早上算一遍今天长什么样' },
+        maxPerDay: { type: 'number', description: '一天最多自己加几条（0–9）' },
+        activities: { type: 'array', items: { type: 'string' }, description: '自由活动的内容' },
+        vmName: { type: 'string', description: '虚拟机名字' },
+      },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const has = Object.keys(args || {}).length > 0
+      const st = has ? writeSettings(args) : readSettings()
+      if (!st) return '没存成：写配置文件失败。'
+      const lines = [
+        `自由度 **${levelLabel(st.level)}**（${st.level}）——${st.level === 0 ? '只记不提醒' : st.level === 1 ? '可以自己加事' : '提醒但不替我改'}`,
+        `每天算骨架：${st.autoPlan ? '算' : '不算'}　自己加事上限：${st.maxPerDay} 条/天`,
+        `自由空间那台机器：${st.vmName}`,
+        `闲着可以：${st.activities.join('、')}`,
+      ]
+      return (has ? '改好了。\n\n' : '') + lines.join('\n')
+    },
+  })
+
   // ---- 触发器：每步看一眼，到点了才说话 ----------------------------------
   let hint = ''
   let lastCheck = 0
@@ -427,5 +591,34 @@ export function apply(ctx, config) {
     /* 没有 context 也能用 */
   }
 
-  return { statePath }
+  // ---- 设置页：自由度四个旋钮 --------------------------------------------
+  try {
+    ctx.effect(() => {
+      const d1 = ctx.webServer.register({
+        kind: 'exact',
+        path: '/api/persona-freedom/status',
+        handler: (_req, res) => sendJson(res, 200, { ok: true, settings: readSettings(), fields: fieldTable() }),
+      })
+      const d2 = ctx.webServer.register({
+        kind: 'exact',
+        path: '/api/persona-freedom/config',
+        handler: async (req, res) => {
+          const raw = await readBody(req)
+          let patch = {}
+          try { patch = raw ? JSON.parse(raw) : {} } catch { return sendJson(res, 400, { ok: false, why: '请求体不是 JSON' }) }
+          const next = writeSettings(patch)
+          if (!next) return sendJson(res, 500, { ok: false, why: '写配置文件失败' })
+          return sendJson(res, 200, { ok: true, saved: true, settings: next, fields: fieldTable() })
+        },
+      })
+      return () => {
+        try { d1 && d1() } catch { /* ignore */ }
+        try { d2 && d2() } catch { /* ignore */ }
+      }
+    })
+  } catch {
+    /* 没有 webServer 也能用：设置还能用 free_settings 改 */
+  }
+
+  return { statePath, settingsPath }
 }

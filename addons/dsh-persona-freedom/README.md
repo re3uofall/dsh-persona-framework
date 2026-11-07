@@ -140,3 +140,23 @@ node selfcheck.mjs
 
 - **0.2.0** 2026-11-07 —— 加三块：`free_space`（自己的电脑与浏览器 + 三条隔离判据）、`free_plan`（排表与留白、密度、撞车标记）、`free_busy`（免打扰门槛，读 `GetLastInputInfo`）。`free_add` 支持 `minutes`。自检 91 项。
 - **0.1.0** 2026-11-06 —— 初版。freetime（固定/弹性）、freeselect（划掉/挪/换）、DND（跨零点、可关）、到点触发一次、账与 DND 落盘。67 项自检全过。
+
+## 自由空间：它现在真能开一台自己的电脑
+
+`free_vm` 六个动作，只做六样：`status` / `start` / `stop` / `savestate` / `reboot` / `screenshot`。
+它**不删盘、不改硬件、不装系统**——那些事要人来做。
+
+那台机器叫 `DSH-Space`（VirtualBox，Alpine Linux），名字可以在设置页改。
+截图默认落在 `.persona-framework/空间/截图-<时间>.png`，拍完给路径，不往上下文里塞图。
+
+## 自由时间：粗糙版与精细版
+
+- **粗糙版**（`free_day`）：一份普通人一天的参照纸（07:30 起床……22:30 洗漱），**只读不写账**——要看哪条，自己 `free_add`。
+- **精细版**（`free_refine`）：把账上已有的固定事排进骨架，算出所有 ≥30 分钟的整段空白、密度、最长一段，再给一句判语（太密 / 太空 / 合适）。
+  判语只说密度，不打分——一打分就会为分数做假动作。
+
+## 设置页：自由度四个旋钮
+
+`level`（0 只记 / 0.5 提醒 / 1 自排）、`autoPlan`、`maxPerDay`、`activities`（自由活动内容）、`vmName`。
+存 `.persona-framework/自由配置.json`，写前留 `.bak`。
+
