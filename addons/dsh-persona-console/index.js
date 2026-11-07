@@ -216,6 +216,12 @@ function collect(cfg) {
       .sort((a, b) => a.title.localeCompare(b.title, 'zh'))
   }
 
+  // 第二部分除了程序模块，还收「模块类」的功能实现插件：模块 29/35 的实现、通用清扫。
+  // 判据是包名——模块类一律 dsh-persona-module-；清扫是通用功能实现（帮别的实现干活）。
+  const MODULE_PKG = /^dsh-persona-module-/
+  const implAddons = addons.filter((x) => MODULE_PKG.test(x.pkg) || x.pkg === 'dsh-persona-sweep')
+  const otherAddons = addons.filter((x) => !implAddons.includes(x))
+
   return {
     ok: true,
     workspace: ws,
@@ -228,6 +234,7 @@ function collect(cfg) {
       programs: programs.length,
       programModules: programs.length + 1,
       impl: impl.length,
+      implAddons: implAddons.length,
       addons: addons.length,
       addonsOn: addons.filter((x) => x.enabled).length,
     },
@@ -277,13 +284,23 @@ function collect(cfg) {
             file: p.file,
             desc: "模块「" + p.title + "」自己的功能实现：真去做、落盘，不给人格字。",
           })),
+          // 模块类插件（模块 29/35）与通用清扫：它们是把某一篇讲的事真做出来的实现件。
+          ...implAddons.map((x) => ({
+            id: "impl:pkg:" + x.pkg,
+            title: x.title + " · 功能实现",
+            group: "功能实现",
+            file: x.dir,
+            desc: (x.desc ? x.desc + " " : "") + "包：" + x.pkg + (x.version ? "（" + x.version + "）" : ""),
+            detail: "插件包 " + x.pkg,
+            enabled: x.enabled,
+          })),
         ],
       },
       {
         id: "addons",
         title: "附加插件",
-        hint: "第三部分：挂在框架上的那些（记忆、日记、器官、电量……）。「已装」= 登记在 bundles 里。",
-        items: addons,
+        hint: "第三部分：挂在框架上的那些（记忆、日记、器官、电量……）。「已装」= 登记在 bundles 里。模块类实现（模块 29/35、通用清扫）不在这一栏，它们在第一部分那些模块的第二部分实现里。",
+        items: otherAddons,
       },
     ],
   }
