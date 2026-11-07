@@ -628,8 +628,8 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | --- | --- | --- | --- |
 | 手 | `dsh-persona-hand` | 已装 0.1.0 | `.persona-framework/手账.jsonl` |
 | 嘴 | `dsh-persona-mouth` | 已装 0.1.0 | `.persona-framework/嘴账.jsonl` |
-| 眼 | `dsh-persona-vision` | 已装 0.1.0（被调用） | 看过的落 memory，不另记账 |
-| 耳 | `dsh-persona-hearing` | 未动工（第一节） | 将来落 memory |
+| 眼 | `dsh-persona-vision` | 已装 0.1.1（被调用，有 locale 与图标） | 看过的落 memory，不另记账 |
+| 耳 | `dsh-persona-hearing` | **还没有这个包**——只有计划（第一节）；现在没有眼睛之外的「听见」 | 将来落 memory |
 
 ## 二十二、两个配套：技能（对应手）、语音（对应嘴）
 
