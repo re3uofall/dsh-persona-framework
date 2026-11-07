@@ -253,6 +253,80 @@ git push origin main
 
 **验收一句**：接完之后，答得出「它现在跑在哪儿、动了谁的东西、删掉怎么删」——三条答不出，就是还没接明白。
 
+## 十、要做插件时，先去找现成的
+
+> 2026-11-07 加。起因：师父要求「找一下能用的插件，用途第一优化已有的插件、第二制作新的插件，把这个流程写到插件更新指南里」。
+> 这一节写的不是「怎么抄」，是**先看别人、再决定自己写什么**的顺序。
+
+### 10.1 先定这一步在哪一层
+
+| 我要做的 | 先看的是 | 判据 |
+| --- | --- | --- |
+| 优化已有插件 | 别人同类插件的**骨架**（它把什么变成什么） | 改完这一处，盘上多了/少了什么 |
+| 做一个新插件 | 别人同类插件的**判据与接口**，不是它的代码 | 这个插件拿掉，哪件事就没人管了 |
+| 借一个整包 | 第九节那四档 | 会不会长出第二份人格或记忆 |
+
+**别一上来就读代码。** 先读它的 README 与 `package.json`：许可证、`engines.dsh`、注不注入、挂哪些钩子——四样读完，大半的候选已经能排除。
+
+### 10.2 去哪找（本机 2026-11-07 实测）
+
+- **插件索引 JSON**（一次下全，1.6 MB / 1055 条，比逐个搜快得多）
+  `https://polang233.github.io/dsh-plugin-index/index.json`
+  `https://shutongx.github.io/dsh-plugins-index/index.json`
+  字段够用：`name`、`title.zh`、`description.zh`（星数印在描述开头）、`metadata.sortKeys.github-stars`、`metadata.category`、`versions[0].engines.dsh`。
+  **下的时候给足超时**：`curl -m 25` 会在 683 KB 处截断，`JSON.parse` 报 `Unterminated string`；`-m 120` 才拿到完整的 1.6 MB。
+- **npm**：`npm view <包名> dist-tags engines` —— 版本与 dsh 约束一眼看清，不用解包。
+- **GitHub**：本机 `github.com` 与 `raw.githubusercontent.com` 握手被 reset（2026-11-07 实测，DNS 通、TCP 断），但 `api.github.com` 通；仓库首页 HTML 也能取：
+  `curl -sL -A "Mozilla/5.0" https://github.com/<user>/<repo> -o repo.html`，再从 `<article class="markdown-body">` 里剥 README 正文。**别拿这个当长期方案**，网络一变就得换路。
+
+### 10.3 读它什么（四条，按顺序，读完就够决定）
+
+1. **许可证**：能不能商用、能不能改、能不能闭源再分发。学算法与搬代码是两件事（`dsh-hippocampus` 是 PolyForm-Noncommercial：只学算法）。
+2. **`engines.dsh`**：枚举白名单最容易坑人——写死到某一串版本的插件，一升级就被门禁拦下。
+3. **注入什么**：`systemPrompt.section(...)` / `.context(...)` 的 `name` 与 `order`。它每轮往上下文里塞多少字，决定了它值不值装。
+4. **挂哪些钩子**：`agent/pre-step`（每步）、`tools/post-execute`（工具结果）、`approval/request`（审批）、`system-prompt/assemble`（装配）。钩子越多，它坏起来越静默。
+
+### 10.4 借形状，不借代码
+
+抄的是**它把什么变成什么**，不是它的行：
+
+- 不整段复制别人的实现（许可证之外，还有一处更实际的风险：它的默认值是它的机器算出来的）。
+- 不照抄默认阈值（`-30%`、`0.600`、`150 GB` 这些数字背后各有一台机器，换一台就不是同一个判据）。
+- 不把它的钩子当自己的钩子：要挂就自己写一份，像 `gate.mjs` 三份副本那样——各写各的，谁被拿走别人还能跑。
+
+### 10.5 验（本机能跑才算数）
+
+`npm pack <包> --pack-destination C:/tmp/ref` 解压看文件（**不安装**）→ 决定抄哪一样 → 写完 `node --check` → 跑本插件自己的 `selfcheck.mjs` → 真跑一次，看盘上多了什么。
+
+**"装了"与"能用"是两件事**：`reload_plugin` 会告诉你"重载了 1 个"，但那只证明 loader 换了条目，不证明模块换了代码（ESM 按 URL 缓存）。要证明新代码在跑，只有打一个**只有新代码才会说出的字**。
+
+### 10.6 登记（五处，缺一处就是"装了但看不见"）
+
+1. `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 加 `link:`（插件页是从依赖表读的）
+2. 同一份的 `dsh.profile.bundles`
+3. `dsh-persona-framework/lib/optional.mjs` 的 `OPTIONAL_META`
+4. `locale/zh.json` **与** `locale/en.json`（只有 `zh.json` 的话，设置页显示裸包名——这条是 2026-11-06 踩出来的）
+5. 本插件 README 的「功能预期」与「更新记录」
+
+### 10.7 本轮找到的（按用途挑，不按星数挑）
+
+| 插件 | ★ | 类别 | 用途 | 抄哪一样 |
+| --- | --- | --- | --- | --- |
+| `brooks-lint` | 1565 | skills | 优化已有插件 | 六项技能（代码审查／架构审计／技术债／测试质量／项目健康／修复）→ 抄「按项打分 + 指到具体位置」的报告形状 |
+| `dsh-auto-review` | 247 | development | 优化已有插件 | 审批前由独立只读模型复核；**复核失败不自动放行** |
+| `dsh-secure-audit` | 86 | development | 做新插件前的检查 | 提示注入 / 脱敏 / 本机配置三张检查表 → 抄「先列检查项再跑」 |
+| `dsh-qa-skills` | 61 | skills | 做新插件 | 需求→策略→用例→自动化→探索→回归 → 抄「先写用例再改代码」 |
+| `@hyzyn/dsh-plugin-kit` | 64 | interface | 做新插件 | 插件模板与开发工具组合 → 抄目录骨架与 `cordis.patch.yml` 形状 |
+| `dsh-file-review` | 43 | interface | 优化已有插件 | 侧栏逐条审阅工作区改动 → 抄「改动逐条列 + 采纳/拒绝」 |
+| `dsh-lsp-actions` | 38 | tools | 做新插件（改代码） | 语言服务器的诊断/格式化/符号/重命名 → 用它替肉眼找引用 |
+| `@zseven-w/dsh-harbor` | 25 | development | 升级前检查 | 只读查看已装插件的能力、冲突、版本差异、源码位置 |
+
+**没装的**：以上一个都还没装。理由：这一节先要「知道去哪找、读什么、怎么验」，装不装是下一步的事；而且本机 `github.com` 不通，装之前得先确认它 npm 上的包是完整可用的。
+
+### 10.8 验收一句
+
+答得出「它替我省了哪一步，那一步原来花多少」——答不出，就是又多了一个要维护的东西。
+
 ## 附录：当前清单
 
 > 2026-11-02 核对。**只列自建的**——别人的插件自有它的作者和文档，抄进来出事时不知道该找谁。
