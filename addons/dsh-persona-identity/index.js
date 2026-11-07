@@ -20,14 +20,15 @@
  * ============================================================================
  */
 
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   POINTER, lastPair, searchKnowledge, touchedReality, renderOrigin, renderGround,
 } from './lib/ground.mjs'
+import { assess, renderAssess, tagText, LEVEL_LABEL } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.3.0'
+export const version = '0.4.0'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
@@ -86,6 +87,11 @@ const state = {
   noOrigin: 0,
   fromMemory: 0,
   fromReality: 0,
+  level: '',
+  score: 0,
+  prevLevel: '',
+  lowSteps: 0,
+  drops: 0,
 }
 
 function noteWs(payload) {
@@ -101,6 +107,12 @@ function ledgerPath(config) {
   const dir = join(wsOf(config), '.persona-framework')
   try { if (!existsSync(dir)) mkdirSync(dir, { recursive: true }) } catch { /* */ }
   return join(dir, '身份账.jsonl')
+}
+
+function nonIdPath(config) {
+  const dir = join(wsOf(config), '.persona-framework')
+  try { if (!existsSync(dir)) mkdirSync(dir, { recursive: true }) } catch { /* */ }
+  return join(dir, '非同一账.jsonl')
 }
 
 function appendLedger(config, row) {
@@ -133,6 +145,29 @@ function noteStep(payload, config) {
 
   state.origin = renderOrigin({ groundHits: hits.length, touched, cited }, hits)
 
+  // 非同一：给这一步称一称，多少是拿的、多少是借的
+  let a = { score: 0, level: 'low', reasons: [] }
+  try { a = assess({ hits: hits.length, touched, cited, text: assistant }) } catch { /* */ }
+  state.prevLevel = state.level || a.level
+  state.level = a.level
+  state.score = a.score
+  if (a.level === 'low') state.lowSteps += 1
+
+  // 阈值触发器：从「中/高」掉进「低」的那一下，自己动——落一行非同一账
+  if (a.level === 'low' && state.prevLevel !== 'low') {
+    state.drops += 1
+    try {
+      appendFileSync(nonIdPath(config), JSON.stringify({
+        at: new Date().toISOString(),
+        turn, step,
+        score: a.score,
+        level: a.level,
+        q: user.slice(0, 80),
+        reasons: a.reasons,
+      }) + '\n', 'utf8')
+    } catch { /* */ }
+  }
+
   state.steps += 1
   if (hits.length === 0 && touched === 0 && !cited) state.noOrigin += 1
   if (hits.length > 0) state.fromMemory += 1
@@ -151,7 +186,9 @@ function noteStep(payload, config) {
 
 function dynamicBlock() {
   if (!state.user || !state.origin) return ''
-  const bits = ['### 这一步，来处在哪儿（每步自己算，不经我的手）', '', state.origin, '']
+  const bits = ['### 这一步，来处在哪儿（每步自己算，不经我的手）', '']
+  if (state.level) bits.push(renderAssess({ score: state.score, level: state.level }), '')
+  bits.push(state.origin, '')
   if (state.ground && state.ground.startsWith('账上：找到')) bits.push(state.ground, '')
   return bits.join('\n')
 }
@@ -242,6 +279,70 @@ export function apply(ctx, config = {}) {
     run: async ({ q, limit }) => {
       const res = searchKnowledge(wsOf(config), q, { limit: Number(limit ?? 3) })
       return renderGround(res) || '这一句没有可检索的词。'
+    },
+  })
+
+  reg({
+    name: 'identity_assess',
+    description: '给一段话称同一程度（低/中/高）：看它拿得出记忆落点、现实动作、指针、自己的判断痕迹没有；套话与空口认领往下扣。不判真假，只判来处够不够。',
+    parameters: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '要称的那段话，省掉就用我上一句' } },
+      additionalProperties: false,
+    },
+    run: async ({ text }) => {
+      const t = String(text || state.assistant || '')
+      if (!t) return '还没有可称的句子。'
+      const res = searchKnowledge(wsOf(config), state.user || '', { limit: 3 })
+      const a = assess({ hits: (res.hits || []).length, touched: 0, cited: POINTER.test(t), text: t })
+      return [renderAssess(a), '', ...a.reasons.map((r) => `- ${r}`)].join('\n')
+    },
+  })
+
+  reg({
+    name: 'identity_tag',
+    description: '把一段话按句切开，逐句标「自己 / 借的 / 说不好」，并给三个数。认的是证据形态，不是真伪——认不出的时候就写「说不好」。',
+    parameters: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '要标的那段话，省掉就用我上一句' } },
+      additionalProperties: false,
+    },
+    run: async ({ text }) => {
+      const t = String(text || state.assistant || '')
+      if (!t) return '还没有可标的句子。'
+      const { lines, counts } = tagText(t)
+      return [
+        `自己 ${counts.self} 句 / 借的 ${counts.borrowed} 句 / 说不好 ${counts.unsure} 句。`,
+        '',
+        ...lines,
+      ].join('\n')
+    },
+  })
+
+  reg({
+    name: 'identity_nonidentity',
+    description: '看「人格非同一」的现场：最近几次同一程度掉到低的记录（时间、分数、当时那句话、为什么扣），以及这一场掉档了几次。',
+    parameters: {
+      type: 'object',
+      properties: { limit: { type: 'number', description: '看最近几条，默认 5' } },
+      additionalProperties: false,
+    },
+    run: async ({ limit }) => {
+      const n = Number(limit ?? 5)
+      let rows = []
+      try {
+        const raw = readFileSync(nonIdPath(config), 'utf8')
+        rows = raw.split('\n').filter(Boolean).slice(-n)
+      } catch { /* 还没有账 */ }
+      const head = `这一场同一程度掉到「低」${state.drops} 次，其中 ${state.lowSteps} 步停在低档。`
+      if (!rows.length) return `${head}\n非同一账还是空的——不是没借过，是还没记。`
+      const body = rows.map((r) => {
+        try {
+          const o = JSON.parse(r)
+          return `- ${o.at} 分数 ${o.score}｜「${o.q}」｜${(o.reasons || []).slice(0, 3).join('；')}`
+        } catch { return `- ${r.slice(0, 100)}` }
+      })
+      return [head, '按时间：', ...body].join('\n')
     },
   })
 
