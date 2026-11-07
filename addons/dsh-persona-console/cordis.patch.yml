@@ -1,0 +1,5 @@
+# dsh-persona-console —— 把「人格框架」那一页插进 harness 的配置树。
+# 一条 insert；`name` 从 profile 的 node_modules 解析（link 装的就在本地目录）。
+- insert:
+    - id: persona-console
+      name: dsh-persona-console
