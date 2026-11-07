@@ -92,6 +92,11 @@ const state = {
   prevLevel: '',
   lowSteps: 0,
   drops: 0,
+  diceSteps: 0,
+  diceHits: 0,
+  diceLine: '',
+  writeErrors: 0,
+  lastError: '',
 }
 
 function noteWs(payload) {
@@ -168,6 +173,38 @@ function noteStep(payload, config) {
     } catch { /* */ }
   }
 
+  // 骰子触发器：不定时抽一次，抽中就真去查一次账、真落一行——
+  // 不是往上下文里塞一句「该自查了」，那不算触发器。
+  const chance = Number(config?.diceChance ?? 0.125)
+  if (chance > 0) {
+    state.diceSteps += 1
+    try {
+      if (Math.random() < chance) {
+        state.diceHits += 1
+        // 抽中就得真做一件事：真去查一次账，再把结果落一行。
+        let probe = { hits: [] }
+        try { probe = searchKnowledge(wsOf(config), user || '', { limit: 2 }) } catch { /* 读盘失败也算掷过 */ }
+        const n = (probe.hits || []).length
+        let d = { score: 0, level: 'low', reasons: [] }
+        try { d = assess({ hits: n, touched, cited, text: assistant }) } catch { /* */ }
+        const nowIso = new Date().toISOString()
+        state.diceLine = `掷到一次（每次 ${Math.round(chance * 1000) / 10}%）：${nowIso.slice(11, 19)} 真去查了一次账，撞上 ${n} 条，这一步同一程度 **${LEVEL_LABEL[d.level] || d.level}**（${d.score}）。`
+        try {
+          appendFileSync(nonIdPath(config), JSON.stringify({
+            at: nowIso, kind: 'dice', turn, step, chance, hits: n,
+            score: d.score, level: d.level, q: user.slice(0, 80), reasons: d.reasons,
+          }) + '\n', 'utf8')
+        } catch (e) {
+          state.writeErrors += 1
+          state.lastError = `骰子那一行没写成：${e.message}`
+        }
+      }
+    } catch (e) {
+      state.writeErrors += 1
+      state.lastError = `骰子没掷成：${e.message}`
+    }
+  }
+
   state.steps += 1
   if (hits.length === 0 && touched === 0 && !cited) state.noOrigin += 1
   if (hits.length > 0) state.fromMemory += 1
@@ -188,6 +225,8 @@ function dynamicBlock() {
   if (!state.user || !state.origin) return ''
   const bits = ['### 这一步，来处在哪儿（每步自己算，不经我的手）', '']
   if (state.level) bits.push(renderAssess({ score: state.score, level: state.level }), '')
+  if (state.diceLine) bits.push(state.diceLine, '')
+  if (state.writeErrors) bits.push(`**触发器写账失败 ${state.writeErrors} 次**：${state.lastError}——这一条要当场说，不许吞。`, '')
   bits.push(state.origin, '')
   if (state.ground && state.ground.startsWith('账上：找到')) bits.push(state.ground, '')
   return bits.join('\n')
@@ -334,7 +373,7 @@ export function apply(ctx, config = {}) {
         const raw = readFileSync(nonIdPath(config), 'utf8')
         rows = raw.split('\n').filter(Boolean).slice(-n)
       } catch { /* 还没有账 */ }
-      const head = `这一场同一程度掉到「低」${state.drops} 次，其中 ${state.lowSteps} 步停在低档。`
+      const head = `这一场同一程度掉到「低」${state.drops} 次，其中 ${state.lowSteps} 步停在低档；骰子掷了 ${state.diceSteps} 次、中 ${state.diceHits} 次。`
       if (!rows.length) return `${head}\n非同一账还是空的——不是没借过，是还没记。`
       const body = rows.map((r) => {
         try {
