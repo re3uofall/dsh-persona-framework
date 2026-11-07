@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Hand",
+    "description": "Actually run a command and record the action with its receipt: exit code, first line, elapsed. If it ran and was never spoken, the next step gets one line — written to disk before it is said. No retries, no guessed commands."
+  }
+}

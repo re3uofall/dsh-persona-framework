@@ -26,6 +26,7 @@ import { addSpace, defaultSpaces, findSpace, isolationCheck, normalizeSpaces, pr
 import { ROUGH_DAY, renderRough, refine, renderRefined } from './lib/routine.mjs'
 import { DEFAULT_SETTINGS, fieldTable, levelLabel, normalizeActivities, normalizeLevel, normalizePatch, pickCurrent } from './lib/settings.mjs'
 import { renderVm, VM_ACTIONS } from './lib/vm.mjs'
+import { briefOf, gapsOf, materializeRepeats, noteLine, nowOf, renderGaps, renderNow, weekOf } from './lib/extra.mjs'
 
 let pass = 0
 const fails = []
@@ -271,7 +272,32 @@ ok(vmOn.includes('DSH-Space') && vmOn.includes('512'), '看状态时报名字与
 ok(vmOn.includes('关闭') || vmOn.includes('正常关'), '在跑时给出怎么关')
 ok(VM_ACTIONS.length === 6 && VM_ACTIONS.includes('screenshot'), '六个动作，不多不少')
 
-// ---- 结果 ----
+// ---- 实用工具那几样（extra.mjs）----
+const base = normalizeState({
+  items: [
+    { id: 'a', kind: 'fixed', text: '上午正事', at: '09:00', minutes: 120 },
+    { id: 'b', kind: 'elastic', text: '读一篇原文' },
+  ],
+})
+const gaps = gapsOf(base, T0900, { atLeast: 60 })
+ok(Array.isArray(gaps.list) && gaps.list.length > 0, '空档列表非空')
+ok(gaps.list.every((b) => b.minutes >= 60 && b.to > '09:00'), '空档都够长、都没过去')
+ok(renderGaps(gaps, 60).includes('空档'), '空档文案出得来')
+ok(renderGaps({ list: [], plan: gaps.plan }, 60).includes('一段都没有'), '没空档也说实话')
+const nowNow = nowOf(base, T0900)
+ok(nowNow.at === 540, '此刻取到本地分钟')
+ok(renderNow(nowNow).includes('09:00') || renderNow(nowNow).includes('08:00'), '此刻文案带钟点')
+const brief = briefOf(base, T0900)
+ok(brief.includes('固定事') && brief.includes('密度'), '简报带件数与密度')
+ok(weekOf({ ...base, items: [{ ...base.items[0], doneDays: [dayKeyOf(T0900)] }] }, T0900, 7).includes('打勾 1 次'), '这一周数得对')
+ok(weekOf({ items: [] }, T0900, 7).includes('一件都没打勾'), '没打勾也直说')
+ok(noteLine('想到一句', T0900).startsWith('- 2026-'), '随想行带日期')
+const rep = materializeRepeats({ ...base, repeats: [{ text: '早饭', kind: 'fixed', at: '08:00', minutes: 30, lastDays: [] }] }, T0900)
+ok(rep.added.length === 1 && rep.added[0] === '早饭', '每天重复的会真加进单子')
+ok(rep.state.items.some((it) => it.text === '早饭'), '加完账上真多一条')
+const rep2 = materializeRepeats(rep.state, T0900)
+ok(rep2.added.length === 0, '同一天不重复落')
+
 if (fails.length) {
   console.log(`没全过：${pass} 过，${fails.length} 没过`)
   for (const f of fails) console.log('  ✗ ' + f)

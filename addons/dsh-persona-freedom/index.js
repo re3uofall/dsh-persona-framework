@@ -47,9 +47,10 @@ import { busyState } from './lib/busy.mjs'
 import { VM_ACTIONS, renderVm, vmReboot, vmSavestate, vmScreenshot, vmStart, vmStatus, vmStop, VBOX_DEFAULT } from './lib/vm.mjs'
 import { renderRefined, renderRough, refine, ROUGH_DAY } from './lib/routine.mjs'
 import { DEFAULT_SETTINGS, fieldTable, levelLabel, normalizePatch, pickCurrent } from './lib/settings.mjs'
+import { briefOf, gapsOf, materializeRepeats, noteLine, nowOf, renderGaps, renderNow, weekOf } from './lib/extra.mjs'
 
 export const name = 'persona-freedom'
-export const version = '0.3.0'
+export const version = '0.4.0'
 export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
@@ -535,6 +536,115 @@ export function apply(ctx, config) {
     },
   })
 
+  // ---- 实用工具：空档、此刻、一页纸、这一周、随想、每天重复 ----------------
+
+  reg({
+    name: 'free_gap',
+    description: '找今天还剩下的整段空档：给一个至少几分钟（默认 30），只列还没过去、够长的那些。只读。',
+    parameters: {
+      type: 'object',
+      properties: { atLeast: { type: 'number', description: '至少多少分钟，默认 30（5–1440）' } },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const atLeast = Number(args.atLeast) > 0 ? Math.round(Number(args.atLeast)) : 30
+      return renderGaps(gapsOf(read(), Date.now(), { atLeast }), atLeast)
+    },
+  })
+
+  reg({
+    name: 'free_now',
+    description: '现在这一刻：在做事、在空档、还是已经该睡了；下一件几点、还差多久；是不是在安静时段。只读。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    run: () => renderNow(nowOf(read(), Date.now())),
+  })
+
+  reg({
+    name: 'free_brief',
+    description: '一页纸的今日简报：几件固定事、做完几件、还剩多少空、下一件、撞车、抽空能做什么。只读，不列流水。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    run: () => briefOf(read(), Date.now()),
+  })
+
+  reg({
+    name: 'free_week',
+    description: '最近几天打勾的账：每件事做过几次、一共几次。只报数，不排名、不算连续、不当分。',
+    parameters: {
+      type: 'object',
+      properties: { days: { type: 'number', description: '看最近几天，默认 7（1–30）' } },
+      additionalProperties: false,
+    },
+    run: (args) => weekOf(read(), Date.now(), Number(args.days) > 0 ? Math.round(Number(args.days)) : 7),
+  })
+
+  reg({
+    name: 'free_note',
+    description: '记一条随想：不排表、不催、不算完成，落在账旁边的《自由随想.md》里，带时间。',
+    parameters: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '想记的一句' } },
+      required: ['text'],
+      additionalProperties: false,
+    },
+    run: ({ text }) => {
+      const want = String(text || '').trim()
+      if (!want) return '没什么可记的。'
+      const f = join(ws(), cfg.stateDir, '自由随想.md')
+      mkdirSync(dirname(f), { recursive: true })
+      const had = existsSync(f) ? readFileSync(f, 'utf8') : '# 自由随想\n\n不排表、不催，想到什么记一句。\n\n'
+      writeFileSync(f, `${had.replace(/\s*$/, '')}\n${noteLine(want)}\n`, 'utf8')
+      return `记下了：${want}\n\n（落在《自由随想.md》，不占单子、不提醒。）`
+    },
+  })
+
+  reg({
+    name: 'free_repeat',
+    description:
+      '每天都要做的事：action=add 加一条（fixed 要带钟点，elastic 不带）/ list 看有哪些 / drop 去掉。到第二天第一步会真的加进当天单子。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['add', 'list', 'drop'], description: 'add / list / drop' },
+        text: { type: 'string', description: 'add / drop：那件事的原文' },
+        kind: { type: 'string', enum: ['fixed', 'elastic'], description: 'add 时：fixed 带钟点 / elastic 抽空做' },
+        at: { type: 'string', description: 'add 且 kind=fixed 时必填，HH:MM' },
+        minutes: { type: 'number', description: 'add 时：占多久（默认 30）' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const state = read()
+      const action = String(args.action || 'list')
+      const list = Array.isArray(state.repeats) ? state.repeats : []
+      const show = (s) => {
+        const rows = (Array.isArray(s.repeats) ? s.repeats : []).filter((r) => r && r.active !== false)
+        if (!rows.length) return '还没有每天重复的事。'
+        return `每天重复 ${rows.length} 条：\n${rows.map((r) => `- ${r.kind === 'fixed' ? r.at : '抽空'}　${r.text}${r.minutes ? `（${r.minutes} 分钟）` : ''}`).join('\n')}`
+      }
+      if (action === 'list') return show(state)
+      const text = String(args.text || '').trim()
+      if (!text) return '要给 text：哪件事。'
+      if (action === 'drop') {
+        const next = { ...state, repeats: list.filter((r) => !(r && String(r.text).trim() === text)) }
+        if (next.repeats.length === list.length) return `没找到「${text}」。`
+        write(next)
+        return `去掉了「${text}」。\n\n${show(next)}`
+      }
+      const kind = args.kind === 'elastic' ? 'elastic' : 'fixed'
+      let at = ''
+      if (kind === 'fixed') {
+        if (readClock(args.at) === null) return '每天固定的事要带钟点，写成 HH:MM。'
+        at = String(args.at).trim()
+      }
+      if (list.some((r) => r && r.active !== false && r.text === text && (r.at || '') === at)) return `「${text}」已经在每天里了。`
+      const minutes = Math.max(5, Math.min(600, Number(args.minutes) || 30))
+      const next = { ...state, repeats: [...list, { text, kind, at, minutes, active: true, lastDays: [] }] }
+      write(next)
+      return `加进每天了：${kind === 'fixed' ? `${at} ${text}（${minutes} 分钟）` : `抽空 ${text}`}\n\n${show(next)}`
+    },
+  })
+
   // ---- 触发器：每步看一眼，到点了才说话 ----------------------------------
   let hint = ''
   let lastCheck = 0
@@ -542,7 +652,15 @@ export function apply(ctx, config) {
   const check = (now = Date.now()) => {
     lastCheck = now
     try {
-      const state = read()
+      let state = read()
+      // 「每天都要」的那几条：今天还没落进单子就先落——这一步真写盘，不是提醒。
+      try {
+        const folded = materializeRepeats(state, now)
+        if (folded.added.length) {
+          state = folded.state
+          write(state)
+        }
+      } catch { /* 重复项坏了不影响到点提醒 */ }
       if (!cfg.remind) {
         hint = ''
         return
