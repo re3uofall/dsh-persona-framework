@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { appendReceipt, briefOf, countReceipts, readPending, readReceipts, renderReceipts, writePending } from './lib/receipt.mjs'
-import { firstLine, runCommand } from './lib/run.mjs'
+import { decodeOutput, firstLine, runCommand, sniffEncoding } from './lib/run.mjs'
 
 let pass = 0
 const fails = []
@@ -67,6 +67,16 @@ ok('runCommand 空命令不跑', r3.ok === false && r3.why.includes('没给命�
 const r4 = await runCommand('Write-Output 中文', { timeoutMs: 20000 })
 eq('runCommand 中文不乱码', firstLine(r4), '中文')
 
+
+// ---- 输出编码（借 dsh-win32 的 sniff 形状，自己实现） ----------------------
+eq('sniff 空 -> utf8', sniffEncoding(Buffer.alloc(0)), 'utf8')
+eq('sniff 普通 utf8', sniffEncoding(Buffer.from('中文', 'utf8')), 'utf8')
+eq('sniff GBK', sniffEncoding(Buffer.from([0xc4, 0xe3, 0xba, 0xc3])), 'gbk')
+eq('sniff UTF-16LE 带 BOM', sniffEncoding(Buffer.from([0xff, 0xfe, 0x2d, 0x4e])), 'utf16le')
+eq('sniff 无 BOM 的 UTF-16LE', sniffEncoding(Buffer.from([0x2d, 0x00, 0x4e, 0x00, 0x2d, 0x00, 0x4e, 0x00])), 'utf16le')
+eq('decode GBK 中文', decodeOutput(Buffer.from([0xc4, 0xe3, 0xba, 0xc3])), '你好')
+eq('decode UTF-8 原样', decodeOutput(Buffer.from('中文', 'utf8')), '中文')
+eq('decode UTF-16LE BOM', decodeOutput(Buffer.from([0xff, 0xfe, 0x2d, 0x4e, 0x87, 0x65])), '中文')
 rmSync(dir, { recursive: true, force: true })
 
 console.log(`\n手 自检：${pass} 项过，${fails.length} 项没过`)
