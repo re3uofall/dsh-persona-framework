@@ -1,0 +1,27 @@
+{
+  "name": "dsh-persona-mod29",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "模块 29「插件」的功能实现：装上、卸下、启停、回读——每一步都能走回头路。",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT"
+}
