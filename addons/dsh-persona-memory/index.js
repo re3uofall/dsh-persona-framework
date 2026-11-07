@@ -263,6 +263,10 @@ function applyCap(ctx, cfg, text, key) {
 }
 
 async function wd(ctx, cfg) {
+  // ★ 先认会话工作区：process.cwd() 是 DSH 进程的目录（profile 那层），
+  //   拿它当记忆根会在 profile 下长出一份空池子——工具报「5 个文件 300 字」，
+  //   人看到的是「记忆没装上」。踩过。
+  if (sessionWs) return sessionWs
   if (cfg.root) return cfg.root
   // ★ 服务名不止一个，两个都试：别的地方用 workingDirectory，这里原来只试 workspace。
   //   只认一个，换环境就会有一边取不到工作区。
