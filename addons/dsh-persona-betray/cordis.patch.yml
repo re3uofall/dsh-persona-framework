@@ -1,0 +1,7 @@
+# dsh-persona-betray —— 语言背叛：用语言之前先指出处
+- insert:
+    - id: persona-betray
+      name: dsh-persona-betray
+      config:
+        dir: .persona-framework
+        ledger: 背叛账.jsonl

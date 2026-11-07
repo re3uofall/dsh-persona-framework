@@ -1,0 +1,12 @@
+{
+  "name": "dsh-persona-betray",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "语言背叛：用语言之前先指出处，出处不同词义就不算同一个",
+  "main": "./index.js",
+  "exports": { ".": "./index.js", "./lib/*": "./lib/*", "./icon": "./icon.svg", "./locale/*.json": "./locale/*.json" },
+  "files": ["index.js", "lib", "locale", "icon.svg", "README.md"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "license": "MIT"
+}
