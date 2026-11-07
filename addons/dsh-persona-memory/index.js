@@ -42,6 +42,7 @@ import { findVerbatim, renderTrace } from './lib/trace.mjs'
 import { check as consistencyCheck, renderConsistency } from './lib/consistency.mjs'
 import { record as auditRecord } from './lib/audit.mjs'
 import { mergeMemoryContexts } from './lib/merge.mjs'
+import { noteLiveMessages } from './lib/live-now.mjs'
 import { link as edgeLink, edgesOf, counterparts, renderEdges, renderWalk } from './lib/edges.mjs'
 import { reject as rejectClaim, renderRejected } from './lib/rejected.mjs'
 import { addAnchor, renderAnchors } from './lib/anchors.mjs'
@@ -997,6 +998,7 @@ ${seg}` }
         // 记步：本插件自己那一份 gate 只有自己写、自己读，才谈得上不依赖别人。
         // 不记的话 gateSkip() 永远说「第一步」，四段全量注入每步都跑一遍。
         noteStep(payload)
+        try { noteLiveMessages(payload) } catch { /* 拿不到就退回读盘 */ }
         try { noteSessionWs(payload) } catch { /* 拿不到就继续用旧的 */ }
         try {
           const msgs = payload?.messages

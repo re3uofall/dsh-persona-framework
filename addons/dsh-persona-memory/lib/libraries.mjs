@@ -21,6 +21,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { condense } from './journal.mjs'
+import { liveNowText } from './live-now.mjs'
 
 export const STIMULUS_FILE = '.persona-framework/刺激.json'
 
@@ -349,16 +350,23 @@ export function renderNowLibrary(root, cfg = {}) {
   //   判据是「停多久」：相邻两轮之间停了 `nowGapMinutes` 分钟以上，就算这一段结束了——
   //   结束的那段交给短期那格（它有天数与字数两道闸），即时只留眼前这一段。
   //   所以对话聊两小时不停，即时就有两小时；停下四十分钟再开口，即时从新的一句算起。
+  // ★ 2026-11-07 起：先读**实时**的那一份——`agent/pre-step` 交进来的 messages，
+  //   也就是这一步真正要发出去的那串话。它不经过任何外部脚本，所以「刚说完就在」。
+  //   读盘上那份 md 只是退路：实时那份拿不到（比如这一步之前还没走过 pre-step）才用。
   const gap = Math.max(5, Number(cfg.nowGapMinutes ?? 45))
-  const raw = nowDialogue(root, cfg.journalDir || 'persona-ai/knowledge/session', gap)
+  const live = liveNowText({ maxChars: Number(cfg.nowChars ?? 800) * 6 })
+  const raw = live.text ? { text: live.text, turns: live.turns, live: true }
+    : nowDialogue(root, cfg.journalDir || 'persona-ai/knowledge/session', gap)
   if (raw.text) {
-    lines.push(`**这一段对话**（逐字，不压缩；停 ${gap} 分钟以上算断开，断开的那段归短期）`, '')
-    lines.push(raw.text, '')
+    if (raw.live) {
+      lines.push(`**这一段对话**（实时：直接取这一步进来的消息，不等导入；共 ${live.turns} 条）`, '')
+      lines.push(raw.text, '')
+    } else {
+      lines.push(`**这一段对话**（逐字，不压缩；停 ${gap} 分钟以上算断开，断开的那段归短期）`, '')
+      lines.push(raw.text, '')
+    }
   } else {
-    // 读不到 ≠ 过了 45 分钟。原来这里把「阈值」当成「实际停顿」印出来，是一句假话：
-    // 流水文件每 30 分钟才从会话导一次，导之前这一段本来就不在盘上。
-    lines.push('**这一段对话**：还没读到——流水是每 30 分钟从会话里导一次的，导之前这一段不在盘上。', '')
-    lines.push('（这不是「停了很久」，只是「还没导入」。刚说的话还在手上，导入之后这一段就接着往下记。）', '')
+    lines.push('**这一段对话**：这一步还没走到 pre-step，也还没有导进来的流水——两种都没有，才空着。', '')
   }
 
   if (!keys.length) {
