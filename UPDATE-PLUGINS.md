@@ -353,3 +353,8 @@ git push origin main
 **一加七**：一个主件有仓库，七个附件都没上 GitHub。vision 没有独立的工作区目录，只活在 `addons/` 里——它还没装进 node_modules，设置页里也扫不到。
 
 改清单的规矩和改模块一样：**不删旧条，划一道线写「已迁往」**。删掉等于抹。
+## 模块类插件的命名
+
+- 模块类插件一律 `dsh-persona-module-<编号>`；没有编号的用名字（`dsh-persona-module-selfrw`、`dsh-persona-module-adapter`）。
+- 附加插件是 `dsh-persona-<器官或功能>`；两类前缀不同，装完在框架台里一眼分得开。
+- 一个模块一个包，不把两篇正文塞进一个包。

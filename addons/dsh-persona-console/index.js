@@ -129,6 +129,23 @@ function collect(cfg) {
     },
   ]
 
+  // ── 二、程序功能实现（impl/ 下框架自己的程序） ─────────────────────────────
+  let impl = []
+  const implDir = join(frameworkDir, "impl")
+  if (isDir(implDir)) {
+    impl = readdirSync(implDir)
+      .filter((f) => f.endsWith(".mjs"))
+      .map((f) => ({ id: f, file: "impl/" + f, title: f, group: "框架程序" }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+  }
+  impl.unshift({
+    id: "index.js",
+    file: "index.js",
+    title: "index.js",
+    group: "骨架",
+    desc: "总模块本体：注入、调度、工具注册。它自己不算「功能实现」，只是把实现接起来。",
+  })
+
   // ── 二、模块功能实现（模块正文） ──────────────────────────────────────────
   let modules = []
   if (isDir(modulesDir)) {
@@ -181,6 +198,7 @@ function collect(cfg) {
     addonsDir,
     counts: {
       modules: modules.length,
+      impl: impl.length,
       addons: addons.length,
       addonsOn: addons.filter((x) => x.enabled).length,
     },
@@ -192,9 +210,15 @@ function collect(cfg) {
         items: core,
       },
       {
-        id: 'modules',
-        title: '模块功能实现',
-        hint: '模块正文：每轮按配额挑几篇进上下文。不是插件，是它读的东西。',
+        id: "impl",
+        title: "程序功能实现",
+        hint: "框架自身的实现程序：每个 .mjs 一个文件，改了要重启 DSH 才生效。",
+        items: impl,
+      },
+      {
+        id: "modules",
+        title: "模块正文",
+        hint: "每轮按配额挑几篇进上下文。不是插件，是它读的东西；可以用「模块即插件」把某篇搬成独立包。",
         items: modules,
       },
       {

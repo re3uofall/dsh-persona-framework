@@ -15,7 +15,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { runSelfCheck, statePath } from '../lib/selfcheck-loop.mjs'
+import { runSelfCheck, statePath } from '../impl/selfcheck-loop.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DEFAULT_WS = 'C:\\爱思考的大肥鱼思思'

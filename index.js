@@ -1,4 +1,5 @@
-import { apply as gateApply, noteStep as gateNoteStep, ANCHOR as GATE_ANCHOR } from './lib/stepgate.mjs'
+import * as upd from './impl/update.mjs'
+import { apply as gateApply, noteStep as gateNoteStep, ANCHOR as GATE_ANCHOR } from './impl/stepgate.mjs'
 const __noH1 = (s) => String(s || '').replace(/^\s*#\s+[^\n]*\r?\n+/, '')
 /**
  * dsh-persona-framework —— host 半端
@@ -19,38 +20,38 @@ const __noH1 = (s) => String(s || '').replace(/^\s*#\s+[^\n]*\r?\n+/, '')
  */
 import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, statSync, appendFileSync } from 'node:fs'
 import { dirname, join, resolve, basename } from 'node:path'
-import { checkOptional, installCommands, renderOptional, dshRoot } from './lib/optional.mjs'
+import { checkOptional, installCommands, renderOptional, dshRoot } from './impl/optional.mjs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { checkText, renderCheck, auditStructure, renderAudit } from './lib/checks.mjs'
-import { compactIndex, digestText } from './lib/digest.mjs'
+import { checkText, renderCheck, auditStructure, renderAudit } from './impl/checks.mjs'
+import { compactIndex, digestText } from './impl/digest.mjs'
 import {
   auditSlots, findRule, parseFlags, pickSections, readFramework, resolveFile, statSig, truncate,
-} from './lib/framework.mjs'
+} from './impl/framework.mjs'
 import {
   languageBinding, readBody, readMemory, readPersona,
   readInternalIntegration, readExternalIntegration, readExperience, readTheory, readNetPool,
   accuracyRules,
   readIdentity, readResidue, mediateReality, readLexicon, synonymCheck, readPersonaBundle, detectSwirl,
   betrayAbstraction,
-} from './lib/programs.mjs'
-import { ensureWorkspace, pickPersonaFile as pickPersona, inspectWorkspace, SKELETON, POOL_PATHS } from './lib/workspace.mjs'
-import { doctorCheck, renderDoctor } from './lib/doctor.mjs'
-import { appendToPool, WRITE_TARGETS, undoWrite, undoPathOf } from './lib/poolwrite.mjs'
-import { harvestCandidates, writeCandidates } from './lib/autolex.mjs'
-import { dueReason, AUTO_EVERY, AUTO_MODES } from './lib/autosched.mjs'
-import { anchorsIn, gradeReads, basisOf } from './lib/anchor.mjs'
-import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './lib/reflect.mjs'
-import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, dueTriggers, PORT_IDS, PORTS } from './lib/trigger.mjs'
-import { frameworkLanguageCheck } from './lib/framelang.mjs'
-import { renderSelfCheck, runSelfCheck, takeUnread } from './lib/selfcheck-loop.mjs'
-import { openCommands, saveCommands, listCommands, runCommand, addCommand, stopCommand, recentRuns } from './lib/command.mjs'
-import { REFUSE_REASONS } from './lib/autonomy.mjs'
-import { lastHint, renderFuncReflect, renderTick, tick } from './lib/tick.mjs'
-import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from './lib/loop.mjs'
-import { IMPLS } from './lib/impl.mjs'
+} from './impl/programs.mjs'
+import { ensureWorkspace, pickPersonaFile as pickPersona, inspectWorkspace, SKELETON, POOL_PATHS } from './impl/workspace.mjs'
+import { doctorCheck, renderDoctor } from './impl/doctor.mjs'
+import { appendToPool, WRITE_TARGETS, undoWrite, undoPathOf } from './impl/poolwrite.mjs'
+import { harvestCandidates, writeCandidates } from './impl/autolex.mjs'
+import { dueReason, AUTO_EVERY, AUTO_MODES } from './impl/autosched.mjs'
+import { anchorsIn, gradeReads, basisOf } from './impl/anchor.mjs'
+import { reflectCriteria, reflectStructure, renderReflect, saveReflect } from './impl/reflect.mjs'
+import { explain as explainTrigger, loadTriggers, renderTriggers, runTriggers, saveTriggers, dueTriggers, PORT_IDS, PORTS } from './impl/trigger.mjs'
+import { frameworkLanguageCheck } from './impl/framelang.mjs'
+import { renderSelfCheck, runSelfCheck, takeUnread } from './impl/selfcheck-loop.mjs'
+import { openCommands, saveCommands, listCommands, runCommand, addCommand, stopCommand, recentRuns } from './impl/command.mjs'
+import { REFUSE_REASONS } from './impl/autonomy.mjs'
+import { lastHint, renderFuncReflect, renderTick, tick } from './impl/tick.mjs'
+import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from './impl/loop.mjs'
+import { IMPLS } from './impl/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '5.20.0'
+const VERSION = '5.21.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 // 插件自带的模块**正文**（85 个）。
 // 原来只有 BUNDLED_MODULES（索引），别人装了插件只能看见目录、取不到内容——
@@ -1515,6 +1516,60 @@ export function apply(ctx, config = {}) {
         whereInjected,
       ].join('\n')
       return `${head}\n\n${body}`
+    },
+  })
+
+  // ── 模块正文与实现程序：读得出来，也改得回去 ──────────────────────────────
+  // 真动手的那部分在 impl/update.mjs（框架自身的实现），这里只登记工具。
+  // 判据不是「能写」，是「写完还说得出改了哪个文件、多少字、旧稿备在哪」。
+  const updWs = () => upd.workspaceOf({ cfg, ctx, here: HERE })
+
+  register({
+    name: 'framework_module',
+    description: '模块正文的更新工具：list 列全部编号与标题／read 取一篇原文／save 整篇换掉（先留旧稿）／append 在末尾补一段。'
+      + '要加新模块就用 op=save 给一个新文件名（如 36-新模块.md）。改完要说清改了哪个文件、多少字、旧稿在哪。',
+    parameters: {
+      type: 'object',
+      properties: {
+        op: { type: 'string', enum: ['list', 'read', 'save', 'append'], description: '干什么' },
+        id: { type: 'string', description: '模块编号或文件名（如「29」「29-插件」「35-探索.md」）' },
+        text: { type: 'string', description: 'op=save/append 时要写的正文' },
+        max: { type: 'number', description: 'op=read 时最多取多少字，默认 8000' },
+      },
+      required: ['op'],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const op = String(args.op || 'list').trim()
+      const ws = updWs()
+      if (op === 'list') return upd.moduleList(ws, BUNDLED_MODULE_DIR).text
+      if (op === 'read') return upd.moduleRead({ ws, bundled: BUNDLED_MODULE_DIR, id: args.id, max: int(args.max, 500, 40000, 8000) }).text
+      const r = upd.moduleWrite({ ws, bundled: BUNDLED_MODULE_DIR, id: args.id, text: args.text, mode: op === 'append' ? 'append' : 'save' })
+      return r.text
+    },
+  })
+
+  register({
+    name: 'framework_code',
+    description: '实现程序的更新工具：list（impl/ 下有哪些程序、多少行）／read／save（整份换掉，先留旧稿，写完当场 node --check）／check。'
+      + '只碰 index.js 和 impl/ 下的 .mjs。改坏了要说出来，不要装作写成了。',
+    parameters: {
+      type: 'object',
+      properties: {
+        op: { type: 'string', enum: ['list', 'read', 'save', 'check'], description: '干什么' },
+        name: { type: 'string', description: '文件：impl/xxx.mjs 或 index.js' },
+        text: { type: 'string', description: 'op=save 时要写的整份代码' },
+        max: { type: 'number', description: 'op=read 时最多取多少字，默认 12000' },
+      },
+      required: ['op'],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const op = String(args.op || 'list').trim()
+      if (op === 'list') return upd.codeList(HERE).text
+      if (op === 'read') return upd.codeRead({ here: HERE, name: args.name, max: int(args.max, 500, 60000, 12000) }).text
+      if (op === 'check') return upd.codeCheck({ here: HERE, name: args.name }).text
+      return upd.codeWrite({ here: HERE, name: args.name, text: args.text, ws: updWs() }).text
     },
   })
 

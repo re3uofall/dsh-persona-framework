@@ -6,9 +6,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkText, renderCheck, auditStructure } from './lib/checks.mjs'
-import { auditSlots, findRule, pickSections, readFramework, splitSections, truncate, BUNDLED } from './lib/framework.mjs'
-import { languageBetrayal, readPersona, readInternalIntegration, readExternalIntegration, readExperience, readTheory } from './lib/programs.mjs'
+import { checkText, renderCheck, auditStructure } from './impl/checks.mjs'
+import { auditSlots, findRule, pickSections, readFramework, splitSections, truncate, BUNDLED } from './impl/framework.mjs'
+import { languageBetrayal, readPersona, readInternalIntegration, readExternalIntegration, readExperience, readTheory } from './impl/programs.mjs'
 
 /** Node 20.11+ 有 import.meta.dirname；旧版退到 fileURLToPath。 */
 const HERE = import.meta.dirname || dirname(fileURLToPath(import.meta.url))
