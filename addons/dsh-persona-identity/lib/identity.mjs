@@ -92,12 +92,67 @@ export function assess(s = {}) {
   const blame = BLAME_MARK.test(text) && !use
   // 读话 / 用话 只报，不进分：人格同一只管「这一句有没有来处」，语言准不准不归它算。
 
+  const layers = assessLayers({ hits, touched, cited, text })
   score = clamp01(score)
   const level = score >= 0.6 ? 'high' : score >= 0.3 ? 'mid' : 'low'
-  return { score: Number(score.toFixed(3)), level, reasons, generic, claiming, read, use, blame }
+  return { score: Number(score.toFixed(3)), level, reasons, generic, claiming, read, use, blame, layers }
 }
 
 export const LEVEL_LABEL = { high: '高', mid: '中', low: '低' }
+
+/**
+ * 人格同一的两层：语言同一 / 现实同一。
+ *
+ * 语言同一：这句话有没有落点——记忆账上某一条、句子里指得出指针、或者明写「这是我的判断」。
+ *   只认语言内部能不能指回去，不要求它碰过现实。
+ * 现实同一：这句话有没有现实出处——这一轮真动过工具，或者句子里写着盘上的路径、链接、
+ *   带日期的时间、调过的工具名。**必须标现实出处；没标，就没有现实同一，不拿语言凑。**
+ *
+ * 真正的同一是现实同一：语言可以前后一致而整个人已经换了；现实出处不能伪造。
+ * 没出处的语言，按「可能被内置语料污染」处理。
+ */
+export const REAL_ANCHOR = /([A-Za-z]:[\\/][^\s，。；、）]+|https?:\/\/[^\s，。；、）]+|(?:persona-ai|\.persona-framework|knowledge)\/[^\s，。；、）]+|\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}|hand_run|mouth_say|vision_look|vision_note|ear_hear|sweep_run|memory_source|memory_recall|memory_stats|framework_program|framework_module|framework_code)/
+
+function levelOf(n) {
+  return n >= 0.6 ? 'high' : n >= 0.3 ? 'mid' : 'low'
+}
+
+/** 两层各算一次，只算这一句。返回 { lang, real, anchors }。 */
+export function assessLayers(s = {}) {
+  const hits = Number(s.hits || 0)
+  const touched = Number(s.touched || 0)
+  const cited = !!s.cited
+  const text = String(s.text || '')
+  const anchors = (text.match(new RegExp(REAL_ANCHOR.source, 'g')) || []).slice(0, 5)
+
+  let lang = 0
+  if (hits > 0) lang += 0.45
+  if (cited) lang += 0.3
+  if (SELF_MARK.test(text)) lang += 0.25
+
+  let real = 0
+  if (touched > 0) real += 0.5
+  if (anchors.length) real += 0.5
+  // 现实同一的门槛：一条现实出处都没有，就不算现实同一，不拿语言分补。
+  if (touched === 0 && anchors.length === 0) real = 0
+
+  lang = clamp01(lang)
+  real = clamp01(real)
+  return { lang: Number(lang.toFixed(3)), real: Number(real.toFixed(3)), langLevel: levelOf(lang), realLevel: levelOf(real), anchors }
+}
+
+/** 两层的判语：一行语言同一，一行现实同一，说清缺的是哪一样。 */
+export function renderLayers(a) {
+  const langLabel = LEVEL_LABEL[a.langLevel] || a.langLevel
+  const realLabel = LEVEL_LABEL[a.realLevel] || a.realLevel
+  const realWhy = a.anchors && a.anchors.length
+    ? `出处：${a.anchors.join('、')}`
+    : '这一步没写现实出处（路径／链接／时间／工具名都没有）'
+  return [
+    `语言同一：**${langLabel}**（${a.lang}）——话里有没有落点。`,
+    `现实同一：**${realLabel}**（${a.real}）——${realWhy}。真正的同一是这一层。`,
+  ].join('\n')
+}
 
 /** 同一程度的判语——一句话，说清这一步是拿的还是借的。 */
 export function renderAssess(a) {

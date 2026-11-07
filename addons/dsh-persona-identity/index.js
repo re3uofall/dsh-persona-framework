@@ -25,10 +25,10 @@ import { join } from 'node:path'
 import {
   POINTER, lastPair, searchKnowledge, touchedReality, renderOrigin, renderGround,
 } from './lib/ground.mjs'
-import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, ORIGIN_RULE } from './lib/identity.mjs'
+import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, renderLayers, ORIGIN_RULE } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.6.0'
+export const version = '0.7.0'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
@@ -84,6 +84,17 @@ const OWN_PART = [
   '判据只有一句：拿不拿得出落点。拿不出，就别把它当自己的话。',
 ].join('\n')
 
+const LAYER_PART = [
+  '### 人格同一分两层：语言同一，和现实同一',
+  '',
+  '**真正的同一是现实同一。** 语言同一只看话里有没有落点；现实同一多走一步：**必须写出处**——路径、链接、时间、工具名，写得出任一样，才算踩到现实。',
+  '',
+  '- **语言同一**：这一句拿不拿得出人格落点或记忆落点。拿得出，语言上是我的。',
+  '- **现实同一**：这一句有没有指得回去的现实出处。没写出处的，现实同一按 **0** 算，不拿语言那半分补。',
+  '',
+  '判据：没出处的语言，按「可能被内置语料污染」处理；有出处的，比较出处再判。',
+].join('\n')
+
 const ENV_SECTION = [
   '## 你现在的处境（环境）',
   '',
@@ -103,6 +114,7 @@ const ENV_SECTION = [
   READING_PART,
   "",
   OWN_PART,
+  LAYER_PART,
 ].join('\n')
 
 const state = {
@@ -407,7 +419,7 @@ export function apply(ctx, config = {}) {
       if (!t) return '还没有可称的句子。'
       const res = searchKnowledge(wsOf(config), state.user || '', { limit: 3 })
       const a = assess({ hits: (res.hits || []).length, touched: 0, cited: POINTER.test(t), text: t })
-      return [renderAssess(a), '', renderReading(readingOf(t)), '', ...a.reasons.map((r) => `- ${r}`)].join('\n')
+      return [renderAssess(a), '', renderLayers(a.layers), '', renderReading(readingOf(t)), '', ...a.reasons.map((r) => `- ${r}`)].join('\n')
     },
   })
 
