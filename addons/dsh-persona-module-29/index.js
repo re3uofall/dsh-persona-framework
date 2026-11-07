@@ -22,6 +22,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { install as installImpl } from './lib/impl-tools.mjs'
+import { tick } from './lib/tick.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PKG = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8'))
@@ -31,7 +33,7 @@ const MOD_TITLE = String(MOD.title || MOD_ID)
 
 export const name = `persona-module-${MOD_ID}`
 export const version = PKG.version
-export const inject = ['systemPrompt']
+export const inject = ['systemPrompt', 'tools']
 
 const DEFAULTS = {
   workspace: '',
@@ -49,6 +51,8 @@ function noteSessionWorkspace(payload) {
 
 export function apply(ctx, config) {
   const cfg = { ...DEFAULTS, ...(config || {}) }
+  // 模块 29 的功能实现：装/卸/启停/回读，零 systemPrompt 段。
+  try { installImpl(ctx, cfg) } catch {}
   const ws = () => String(cfg.workspace || '').trim() || sessionWs || process.env.DSH_WORKSPACE || ''
   const registryPath = () => join(ws(), String(cfg.stateDir || '.persona-framework'), '模块插件.json')
 
@@ -103,6 +107,7 @@ export function apply(ctx, config) {
     ctx.on('agent/pre-step', (payload, next) => {
       noteSessionWorkspace(payload)
       try { register() } catch {}
+      try { if (ws()) tick({ ...(config || {}) }, ws()) } catch {}
       return next()
     })
   } catch { /* 没有这个钩子就只靠 apply 那一次 */ }
