@@ -23,8 +23,8 @@ import { sectionsOf } from './trace.mjs'
 
 export const DEFAULT_LIVE = {
   on: true,
-  limit: 4, // 最多摆几条
-  maxChars: 900, // 这一段总共多少字
+  limit: 8, // 最多摆几条（2026-11-07 由 4 改 8：条数多、单条短）
+  maxChars: 1600, // 这一段总共多少字（8 × 200）
   days: 3, // 只扫最近几天
   merge: true, // 相邻的几条并成一件事
   minLen: 12, // 太短的一节不当一条（标题空壳）
@@ -73,7 +73,7 @@ export function collectDocs(root, { days = 3 } = {}) {
 const META_LINE = /^[-*]\s*(tags|kind|source|updated|title|date|id|at|from|to)\s*:/i
 
 /** 压成一行：说话人 + 前多少字。 */
-function oneLine(body, max = 160) {
+function oneLine(body, max = 200) {
   const t = String(body || '')
     .replace(/\r\n?/g, '\n')
     .split('\n')
@@ -110,7 +110,7 @@ export function liveMemory(root, query, opts = {}) {
     .filter((d) => ranked.has(d.key))
     .map((d) => ({ d, s: ranked.get(d.key) }))
     .sort((a, b) => b.s - a.s)
-    .slice(0, Math.max(1, Number(cfg.limit) || 4))
+    .slice(0, Math.max(1, Number(cfg.limit) || 8))
     .map(({ d }) => ({ pointer: d.pointer, day: d.day, no: d.no, line: oneLine(d.body) }))
 
   if (!cfg.merge || hits.length < 2) return hits
@@ -131,7 +131,7 @@ export function liveMemory(root, query, opts = {}) {
 }
 
 /** 摆成一段。空数组返回空串——不产出「暂无」这种占位。 */
-export function renderLive(hits, { maxChars = 900 } = {}) {
+export function renderLive(hits, { maxChars = 1600 } = {}) {
   if (!Array.isArray(hits) || !hits.length) return ''
   const lines = ['## 实时记忆（按这一句浮上来的）', '']
   let used = 0

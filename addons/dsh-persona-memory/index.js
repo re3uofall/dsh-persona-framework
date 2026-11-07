@@ -616,7 +616,7 @@ export function apply(ctx, config = {}) {
           { key: 'short', label: '短期记忆', chars: Number(cfg.shortChars ?? 20000), note: '只摆最近几天，超了截断' },
           { key: 'other', label: '其他记忆', chars: Number(cfg.maxOtherChars ?? 3000), note: '只摆标题行' },
           { key: 'long', label: '长期记忆', chars: 0, note: '全部摆（条目少才允许）' },
-          { key: 'live', label: '实时检索', chars: Number(cfg.live?.maxChars ?? 900), note: '撞上的几条，带指针' },
+          { key: 'live', label: '实时检索', chars: Number(cfg.live?.maxChars ?? 1600), note: '撞上的几条，带指针' },
           { key: 'now', label: '最近这一阵', chars: Number(cfg.nowChars ?? 800), note: '刚浮上来的几条' },
         ]
         return { text: renderSlimReport(rows, { days, overdue, index, budgets }) }
