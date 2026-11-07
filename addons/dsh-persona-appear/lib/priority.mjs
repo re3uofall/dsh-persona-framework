@@ -115,6 +115,9 @@ export function presenceOf(ws) {
 
 /** 一行「在场」：有数报数，没有就写不知道，不写成 0。 */
 export function presentLine(p = {}) {
+  // 默认参数只兜 undefined，不兜 null：段先于 runPriority 渲染时 presence 就是 null，
+  // 那时读 p['persona'] 会抛 Cannot read properties of null —— 于是整轮对话直接崩。
+  if (!p) p = {}
   const part = (key, ok) => {
     if (p[key] === null || p[key] === undefined) return `${labelOf(key)}：不知道`
     if (key === 'persona') return `${labelOf(key)}：${p[key] ? '在' : '不在'}`

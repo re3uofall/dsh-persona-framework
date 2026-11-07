@@ -101,7 +101,7 @@ function writeState(p, state) {
   writeFileSync(p, JSON.stringify(state, null, 2) + '\n', 'utf8')
 }
 // ── 优先级：每一轮自己算一遍、自己记一行，不等我想起它 ────────────────
-let priorityNow = { at: '', presence: null, wrote: false, error: '' }
+let priorityNow = { at: '', presence: {}, wrote: false, error: '' }
 
 function ledgerPathOf(cfg) {
   return join(cfg.workspace || guessWorkspace(), cfg.stateDir, LEDGER_FILE)

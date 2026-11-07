@@ -207,6 +207,7 @@ order: gateOrder(root, 'persona-memory:short', 25)
 
 ## 更新记录
 
+- 2026-11-07　0.7.1　修一个整轮崩溃：段先于 `runPriority` 渲染时 `presence` 还是 `null`，`presentLine(null)` 去读 `p['persona']`，抛 `Cannot read properties of null (reading 'persona')`，宿主整轮失败。现在 `presentLine` 兜 `null`（写「不知道」，不写成 0），`priorityNow.presence` 初值改成 `{}`。
 - 2026-11-07　0.7.0　加优先级：六个台阶（人格 > 长期 > 即时 > 短期 > 其他 > 靠内置语料的非同一），段 `实时环境:priority` order 3，每轮真写一行 `优先级账.jsonl`；工具 `appear_priority` 能裁能看账。
 - 2026-11-07　0.6.0　实时环境段末尾恒带一行工具手柄（`appear_status` / `appear_mute` / `appear_unmute` / `appear_order` / `appear_inject`）；段名统一改成 `实时环境:appear`。
 - 2026-11-06　0.5.0　加设置页（四个可调项、白名单、写前留 .bak）；实时注入这一路改成每轮现读配置。
