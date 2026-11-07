@@ -1402,13 +1402,18 @@ export function apply(ctx, config = {}) {
 
   // ── 程序模块（programs/）：框架自身的功能实现，各注自己那一段 ─────────────
   try {
+    // 每轮注入太多：程序模块正文只摆前 1200 字，余下的指回原件。
+    const CAP = 1200
+    const capBody = (s, id) => (s && s.length > CAP
+      ? `${s.slice(0, CAP)}\n\n（只摆前 ${CAP} 字；全文 ${s.length} 字，在 programs/${id}/module.md。）`
+      : s)
     for (const prog of listPrograms()) {
       if (!prog.body()) continue
       ctx.effect(() => ctx.systemPrompt.section({
         name: `模块:${prog.id}`,
         order: prog.order,
         interpolate: false,
-        text: () => prog.body(),
+        text: () => capBody(prog.body(), prog.id),
       }))
     }
   } catch { /* 一个程序模块坏了不该把总模块拖下水 */ }

@@ -115,7 +115,9 @@ export function apply(ctx, config) {
         name: `模块:${MOD_ID}`,
         order: Number(cfg.order) || 205,
         interpolate: false,
-        text: () => body(),
+        text: () => { const b = body(); const CAP = 1200; return b && b.length > CAP ? b.slice(0, CAP) + `
+
+（只摆前 ${CAP} 字；全文 ${b.length} 字，在 module.md。）` : b },
       })
       return () => {
         unregister()
