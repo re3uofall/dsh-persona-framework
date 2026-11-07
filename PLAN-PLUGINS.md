@@ -486,7 +486,7 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | 插件 | 一句话 | 状态 | 可抄件 | 抄哪一样 |
 | --- | --- | --- | --- | --- |
 | `dsh-persona-hearing` 耳 | 声音落成带时间的字 | 未动工 | `dsh-ears` ★27 / `dsh-voice-mode` ★28 | 本地 Whisper + 云端双路；流式听写与打断 |
-| `dsh-persona-hand` 手 | 说出「做了什么」，不是「打算做什么」 | 未动工 | **`dsh-codex-style-computer-use` ★6**（已装 `dsh-computer-use-win` + `wincu`） | **回读验证**：动作之后回去看一眼真的变了没 |
+| `dsh-persona-hand` 手 | 说出「做了什么」，不是「打算做什么」 | **已装 0.1.0**（真跑 + 手账 + 动过没说的注一行；先写账再说话） | **`dsh-codex-style-computer-use` ★6**（已装 `dsh-computer-use-win` + `wincu`） | **回读验证**：动作之后回去看一眼真的变了没 |
 | `dsh-persona-heart` 心 | 要什么、什么分寸、什么时候说不 | 未动工 | `dsh-cerebrum`、`dsh-persona-dafeiyu` ★99、`dsh-soul` ★9 | 情绪状态的存储；人设存哪、多份不打架 |
 | `dsh-persona-brain` 脑 | 拆成几步、每步怎么验、卡在哪步 | 未动工 | `dsh-decision-layer` ★1、**`dsh-auto-review` ★247** | 高风险检查 + 复核留痕、复核不过不放行 |
 | `dsh-persona-eat` 吃 | 这一顿吃了多少、还剩多少 | 先不急 | `dsh-bottom-info-bar` ★54、`dsh-credits` ★3、`@kenz1117/dsh-ui-usage-billing` ★95、`@sligqoer/dsh-usage-stats` ★3、`dsh-plugin-sidebar-balance` | 真余额从哪读、几个数对不上听谁的 |
@@ -494,12 +494,12 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 | `dsh-persona-gradient` 梯度 | 别在长流水里变成另一个人 | **已装 0.1.0**（只报数） | **`dsh-auto-review` ★247**、`dsh-decision-layer` ★1 | 外部只读复核；重复循环检测 |
 | `dsh-persona-active` 主动 | 没人推的时候自己起个念 | 未动工 | `dsh-global-todo` ★11、`dsh-project-brain` ★91、`dsh-focus-notify` | 念的落处（跨会话待办 + **人确认完成**）；缺口的来源 |
 | `dsh-persona-company` 陪伴 | 认得出对面的持续状态 | 未动工 | **`dsh-whale-chan` ★1**、`dsh-project-brain` ★91、`whale-girl` ★403 | **可关闭的主动陪伴**（默认关）；持续状态记事 |
-| `dsh-persona-freedom` | 自己的时间、空间、静默、自选 | **已装 0.2.0** | `dsh-proactive` 0.3.2、`@ds-hu/dsh-auto-task-center` 0.5.0、`dsh-calendar` 0.14.5、`dsh-cost-voice` 1.1.1、`dsh-pomodoro-timer` 1.0.1 | quiet hours、投递口、空闲时段、分段 |
+| `dsh-persona-freedom` | 自己的时间、空间、静默、自选 | **已装 0.4.0**（13 工具：空档/此刻/简报/周账/随想/每日重复） | `dsh-proactive` 0.3.2、`@ds-hu/dsh-auto-task-center` 0.5.0、`dsh-calendar` 0.14.5、`dsh-cost-voice` 1.1.1、`dsh-pomodoro-timer` 1.0.1 | quiet hours、投递口、空闲时段、分段 |
 | `dsh-persona-energy` | 吃睡作息合成一个 0..1 电量 | **已装 0.4.0** | **市场上没有**，自创：人体三套供能 + 昼夜节律 + 短板取最小 | — |
 | `dsh-persona-body` 身体 | **和人格、记忆同一层**：在哪儿、够得着什么、动了付什么 | **只有计划**（第十八节） | `dsh-ops`、`wincu`、`dsh-independent-input` | 通道怎么不抢别人；代价怎么报 |
 | `dsh-persona-home` 家 | **和人格、记忆同一层**：东西放哪儿、归谁、能不能搬 | **只有计划**（第十九节） | 无现成件，自创 | 可移植六条（路径/名字/布局/找不到要说话/.bak/默认值） |
 
-**能先动的三个：手、freedom、梯度。** 手工具都在、回执当场看得见；freedom 的现成件最多；梯度的形状最清楚（外部复核）。
+**能先动的三个：手、freedom、梯度。**（手已落地 0.1.0，freedom 已到 0.4.0）手工具都在、回执当场看得见；freedom 的现成件最多；梯度的形状最清楚（外部复核）。
 
 **卡在数从哪来的两个：吃、睡。** 拿不到真余额就不许编一个像的。
 
