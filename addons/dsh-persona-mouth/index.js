@@ -45,7 +45,17 @@ export function apply(ctx, config) {
   const logPath = () => join(stateDir(), '嘴账.jsonl')
   const pendingPath = () => join(stateDir(), '嘴账状态.json')
 
-  const textOutput = (text) => ({ text: String(text) })
+  const textOutput = {
+    schema: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '给模型看的结果正文' } },
+      required: ['text'],
+      additionalProperties: false,
+    },
+    render(_args, value) {
+      return [{ type: 'text', text: String(value?.text ?? '') }]
+    },
+  }
 
   const reg = (spec) =>
     ctx.effect(() =>
