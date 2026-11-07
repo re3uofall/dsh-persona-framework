@@ -41,9 +41,12 @@ import {
   renderDue,
   selectItem,
 } from './lib/free.mjs'
+import { DEFAULT_WINDOW, planOf, renderPlan } from './lib/plan.mjs'
+import { addSpace, defaultSpaces, findSpace, isolationCheck, normalizeSpaces, probeSpace, renderSpaces } from './lib/space.mjs'
+import { busyState } from './lib/busy.mjs'
 
 export const name = 'persona-freedom'
-export const version = '0.1.0'
+export const version = '0.2.0'
 export const inject = ['tools', 'systemPrompt']
 
 const DEFAULTS = {
@@ -95,6 +98,7 @@ export function apply(ctx, config) {
   const cfg = pickCfg(config)
   const ws = () => cfg.workspace || guessWorkspace()
   const statePath = () => join(ws(), cfg.stateDir, '自由账.json')
+  const spacePath = () => join(ws(), cfg.stateDir, '空间.json')
 
   const read = () => {
     try {
@@ -114,6 +118,32 @@ export function apply(ctx, config) {
     } catch {
       return false
     }
+  }
+
+  const readSpaces = () => {
+    try {
+      const f = spacePath()
+      if (!existsSync(f)) return defaultSpaces()
+      return normalizeSpaces(JSON.parse(readFileSync(f, 'utf8')))
+    } catch {
+      return defaultSpaces()
+    }
+  }
+  const writeSpaces = (state) => {
+    try {
+      const f = spacePath()
+      mkdirSync(dirname(f), { recursive: true })
+      writeFileSync(f, JSON.stringify(state, null, 2), 'utf8')
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** 师父常用的那三块地：不算我的空间，落在里面就是出界。 */
+  const forbiddenDirs = () => {
+    const home = process.env.USERPROFILE || ''
+    return home ? [join(home, 'Desktop'), join(home, 'Documents'), join(home, 'Downloads')] : []
   }
 
   const reg = (spec) =>
@@ -143,16 +173,17 @@ export function apply(ctx, config) {
         kind: { type: 'string', enum: ['fixed', 'elastic'], description: 'fixed=有钟点的事；elastic=抽空做、做没做都行' },
         text: { type: 'string', description: '这件事是什么，一句' },
         at: { type: 'string', description: 'kind=fixed 时必填，HH:MM，如 09:30' },
+        minutes: { type: 'number', description: '这段占多久（分钟，5–600，默认 30）；只对 fixed 有用，排表用它算空档' },
       },
       required: ['kind', 'text'],
       additionalProperties: false,
     },
-    run: ({ kind, text, at }) => {
+    run: ({ kind, text, at, minutes }) => {
       const state = read()
-      const res = addItem(state, { kind, text, at })
+      const res = addItem(state, { kind, text, at, minutes })
       if (!res.ok) return res.why
       write(res.state)
-      return `记上了（${kind === 'fixed' ? `固定事，${String(at).trim()}` : '弹性事，不催'}）：${res.item.text}\n\n${describe(res.state)}`
+      return `记上了（${kind === 'fixed' ? `固定事，${String(at).trim()}${minutes ? `，${minutes} 分钟` : ''}` : '弹性事，不催'}）：${res.item.text}\n\n${describe(res.state)}`
     },
   })
 
@@ -237,6 +268,106 @@ export function apply(ctx, config) {
       const next = { ...state, dnd: { ...state.dnd, ...want } }
       write(next)
       return `改好了。\n${describe(next)}`
+    },
+  })
+
+  reg({
+    name: 'free_plan',
+    description:
+      '看今天的时间骨架：固定事各占哪一段、中间还剩多少纯粹的空档、密度多少。只读。空档是排出来的，不是没排满。',
+    parameters: {
+      type: 'object',
+      properties: {
+        wake: { type: 'string', description: '几点算醒（HH:MM，默认 08:00）' },
+        sleep: { type: 'string', description: '几点算睡（HH:MM，默认 23:30；跨零点允许）' },
+      },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const state = read()
+      const window = {}
+      if (args.wake) window.wake = String(args.wake)
+      if (args.sleep) window.sleep = String(args.sleep)
+      return renderPlan(planOf(state, Date.now(), Object.keys(window).length ? { window } : {}))
+    },
+  })
+
+  reg({
+    name: 'free_space',
+    description:
+      '我自己的空间（自由空间）：list 看有哪几块 / add 划一块新的（computer 给目录、browser 给 ego space）/ check 查隔离得好不好、能不能用 / mkdir 把缺的目录建出来。别拿它启动任何东西——启动归手。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'add', 'check', 'mkdir'], description: 'list / add / check / mkdir' },
+        key: { type: 'string', description: '哪一块（add 时是新名字，其余是已有名字）' },
+        kind: { type: 'string', enum: ['computer', 'browser'], description: 'add 时必填：computer=自己的电脑（目录），browser=自己的浏览器（ego space）' },
+        label: { type: 'string', description: 'add 时：给人看的名字' },
+        path: { type: 'string', description: 'add 时（computer 必填）：放东西的目录，相对工作区或绝对路径' },
+        space: { type: 'string', description: 'add 时（browser 用）：ego 的任务空间名' },
+        note: { type: 'string', description: 'add 时：这块是干什么用的、什么不许碰' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const list = readSpaces()
+      const action = String(args.action || 'list')
+      const workspace = ws()
+      if (action === 'list') return renderSpaces(list, { workspace })
+      if (action === 'add') {
+        const res = addSpace(list, {
+          key: args.key,
+          kind: args.kind,
+          label: args.label,
+          path: args.path,
+          space: args.space,
+          note: args.note,
+        })
+        if (!res.ok) return res.why
+        if (res.item.kind === 'computer') {
+          const chk = isolationCheck(res.item.path, { workspace, forbidden: forbiddenDirs() })
+          if (!chk.ok) return `没加：${chk.why}`
+        }
+        writeSpaces(res.state)
+        return `划出一块了：${res.item.label}（${res.item.kind}）\n\n${renderSpaces(res.state, { workspace })}`
+      }
+      const target = findSpace(list, args.key)
+      if (!target) return `没有「${String(args.key || '').trim()}」这块。先 list 看一眼。`
+      if (action === 'check') {
+        const p = probeSpace(target, { workspace })
+        return p.ok ? `能用：${target.label} —— ${p.why}${p.abs ? `\n${p.abs}` : ''}` : `还不能用：${target.label} —— ${p.why}`
+      }
+      if (action === 'mkdir') {
+        if (target.kind !== 'computer') return '浏览器那块没有目录可建。'
+        const chk = isolationCheck(target.path, { workspace, forbidden: forbiddenDirs() })
+        if (!chk.ok) return `不建：${chk.why}`
+        try {
+          mkdirSync(chk.abs, { recursive: true })
+          return `建好了：${chk.abs}`
+        } catch (e) {
+          return `没建成：${e && e.message ? e.message : String(e)}`
+        }
+      }
+      return 'action 只有 list / add / check / mkdir。'
+    },
+  })
+
+  reg({
+    name: 'free_busy',
+    description:
+      '现在有没有人在用这台电脑（看距上一次真实键鼠输入多久，缓存 20 秒）。动鼠标键盘之前先问它：有人在用就只走后台通道，别抢光标焦点。',
+    parameters: {
+      type: 'object',
+      properties: {
+        force: { type: 'boolean', description: 'true = 不吃缓存，当场重查（约慢半秒）' },
+      },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const r = busyState({ force: args.force === true })
+      if (!r.ok) return `查不到：${r.why}。那就按「有人在用」办——只走后台通道，先别动光标。`
+      return r.hint
     },
   })
 

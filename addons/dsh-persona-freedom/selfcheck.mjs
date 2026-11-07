@@ -1,6 +1,7 @@
 /**
  * selfcheck.mjs —— freedom 的自检。`node selfcheck.mjs`，全绿再往下。
- * 只测纯逻辑（lib/free.mjs），不碰 fs、不碰 ctx。
+ * 只测纯逻辑（lib/free.mjs / plan.mjs / space.mjs），不碰 fs、不碰 ctx。
+ * busy.mjs 要起 PowerShell，联调时手动跑，不塞进自检。
  */
 import {
   addItem,
@@ -18,7 +19,10 @@ import {
   selectItem,
   todayItems,
   DEFAULT_DND,
+  clampMinutes,
 } from './lib/free.mjs'
+import { planOf, renderPlan } from './lib/plan.mjs'
+import { addSpace, defaultSpaces, findSpace, isolationCheck, normalizeSpaces, probeSpace } from './lib/space.mjs'
 
 let pass = 0
 const fails = []
@@ -169,6 +173,51 @@ eq(up.items[0].at, null, '钟点写坏的固定事：钟点清空，条目留着
 ok(normalizeState(null).items.length === 0, 'null 认成空账')
 ok(normalizeState({ dnd: { start: '25:00' } }).dnd.start === DEFAULT_DND.start, '坏钟点回默认')
 eq(normalizeState({ dnd: { on: false } }).dnd.on, false, '关着就保持关着')
+
+// ---- 排表与留白（plan.mjs） ----
+const pState = (() => {
+  let st = emptyState()
+  st = addItem(st, { kind: 'fixed', text: '写周报', at: '09:00', minutes: 60 }, T0900).state
+  st = addItem(st, { kind: 'fixed', text: '看论文', at: '14:00', minutes: 90 }, T0900).state
+  st = addItem(st, { kind: 'elastic', text: '整理书架' }, T0900).state
+  return st
+})()
+const plan = planOf(pState, T0900)
+eq(plan.fixed, 2, '排表：两段固定事')
+eq(plan.busyMinutes, 150, '排表：固定事共占 150 分钟')
+ok(plan.freeMinutes > 0, '排表：有空档')
+ok(plan.blocks.filter((b) => b.kind === 'free').length >= 3, '排表：醒来前、两段之间、最后段之后都算空档')
+ok(plan.density > 0 && plan.density < 1, '排表：密度在 0 和 1 之间')
+eq(plan.elastic.length, 1, '排表：弹性事单独列，不占格子')
+ok(renderPlan(plan).includes('○ 空的'), '排表：空档要显式写出来')
+ok(planOf(emptyState(), T0900).freeMinutes > 0, '排表：一件没有时整天都是空的')
+const conflict = (() => {
+  let st = emptyState()
+  st = addItem(st, { kind: 'fixed', text: 'A', at: '09:00', minutes: 90 }, T0900).state
+  st = addItem(st, { kind: 'fixed', text: 'B', at: '10:00', minutes: 30 }, T0900).state
+  return planOf(st, T0900)
+})()
+eq(conflict.conflicts.length, 1, '排表：撞车要标出来，不偷偷合并')
+eq(clampMinutes('abc'), 30, '时长读不懂就按 30 分钟')
+eq(clampMinutes(9999), 600, '时长上限 600 分钟')
+
+// ---- 空间与隔离（space.mjs） ----
+const sp0 = defaultSpaces()
+eq(sp0.spaces.length, 2, '默认两块：自己的电脑 + 自己的浏览器')
+ok(probeSpace(sp0.spaces[0], { workspace: 'C:/ws' }).ok === false, '目录还没建时 check 说不能用的原因')
+const ins = isolationCheck('C:/Users/x/Desktop/y', { workspace: 'C:/ws', forbidden: ['C:/Users/x/Desktop'] })
+ok(ins.ok === false && ins.why.includes('出界'), '落在桌面里就是出界')
+ok(isolationCheck('C:/ws', { workspace: 'C:/ws' }).ok === false, '工作区根本身不算我的空间')
+ok(isolationCheck('C:/other/x', { workspace: 'C:/ws' }).ok === false, '工作区外面不算')
+ok(isolationCheck('mine', { workspace: 'C:/ws' }).ok === true, '工作区里的相对目录算')
+const spAdd = addSpace(sp0, { key: 'lab', kind: 'computer', label: '实验台', path: 'mine' })
+ok(spAdd.ok === true && spAdd.state.spaces.length === 3, '能划出一块新的')
+ok(addSpace(spAdd.state, { key: 'lab', kind: 'computer', path: 'mine2' }).ok === false, '同名不重复加')
+ok(addSpace(sp0, { key: 'b', kind: 'browser' }).ok === true, '浏览器那块可以不给目录')
+ok(addSpace(sp0, { key: 'c', kind: 'computer' }).ok === false, '自己的电脑必须给目录')
+ok(findSpace(spAdd.state, '实验台')?.key === 'lab', '按名字也找得到')
+eq(normalizeSpaces({ spaces: [{ key: 'x' }] }).spaces[0].kind, 'computer', '认不出的 kind 回 computer')
+eq(normalizeSpaces(null).spaces.length, 2, '坏账回默认两块')
 
 // ---- 结果 ----
 if (fails.length) {

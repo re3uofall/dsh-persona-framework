@@ -27,6 +27,13 @@ export const DEFAULT_DND = {
 
 export const KINDS = ['fixed', 'elastic']
 
+/** 固定事占多久：5 分钟到 10 小时，整数；没写或读不懂就是 30 分钟。 */
+export function clampMinutes(v) {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return 30
+  return Math.max(5, Math.min(600, Math.round(n)))
+}
+
 export function readClock(text) {
   const m = CLOCK.exec(String(text ?? '').trim())
   if (!m) return null
@@ -91,7 +98,7 @@ export function newId(now = Date.now()) {
  * 加一件事。kind=fixed 必须带钟点（HH:MM）；elastic 不许带钟点——
  * 弹性事一旦有了钟点，它就不是弹性的了，是「我给自己派的活」。
  */
-export function addItem(state, { kind, text, at }, now = Date.now()) {
+export function addItem(state, { kind, text, at, minutes }, now = Date.now()) {
   const body = String(text ?? '').trim()
   if (!body) return { ok: false, why: '这件事得有个说法，空的记不了。' }
   if (!KINDS.includes(kind)) return { ok: false, why: 'kind 只有 two 种：fixed（有钟点）或 elastic（做没做都行）。' }
@@ -110,6 +117,8 @@ export function addItem(state, { kind, text, at }, now = Date.now()) {
     kind,
     text: body,
     at: kind === 'fixed' ? String(at).trim() : null,
+    // 固定事占多久。没写就是半小时——写死一个数，好让「排表」可判。
+    minutes: kind === 'fixed' ? clampMinutes(minutes) : null,
     created: new Date(now).toISOString(),
     doneDays: [],
     remindedDays: [],
@@ -240,7 +249,8 @@ export function normalizeState(raw) {
         id: typeof it.id === 'string' ? it.id : newId(),
         kind: KINDS.includes(it.kind) ? it.kind : 'elastic',
         text: it.text,
-        at: it.kind === 'fixed' && readClock(it.at) !== null ? it.at : it.kind === 'fixed' ? null : null,
+        at: it.kind === 'fixed' && readClock(it.at) !== null ? it.at : null,
+        minutes: it.kind === 'fixed' ? clampMinutes(it.minutes) : null,
         created: typeof it.created === 'string' ? it.created : new Date().toISOString(),
         doneDays: Array.isArray(it.doneDays) ? it.doneDays : [],
         remindedDays: Array.isArray(it.remindedDays) ? it.remindedDays : [],
