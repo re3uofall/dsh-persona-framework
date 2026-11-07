@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#12233b"/>
+  <!-- 眼：上下眼睑 -->
+  <path d="M8 32 Q32 12 56 32 Q32 52 8 32 Z" fill="none" stroke="#6fb6f2" stroke-width="3" stroke-linejoin="round"/>
+  <!-- 瞳 -->
+  <circle cx="32" cy="32" r="8.5" fill="none" stroke="#eaf4ff" stroke-width="3"/>
+  <circle cx="32" cy="32" r="3.2" fill="#eaf4ff"/>
+  <!-- 被调用才看：右下角一撇，表示不是常开 -->
+  <path d="M46 50 L54 58" stroke="#f2a36f" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
+</svg>

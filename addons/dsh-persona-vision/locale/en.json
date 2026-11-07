@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Organ · Eye",
+    "description": "An organ you call: it sees once per call (vision_look inspects one screen, vision_note records one line). Keeps only what changed, says \"unchanged\" when nothing did, and writes a record you can trace back. No always-on recording; with no call, it does not pretend to have seen anything."
+  }
+}

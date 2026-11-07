@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Mouth",
+    "title": "Organ · Mouth",
     "description": "Actually sends a sentence (outbox / command / HTTP) and records it with the channel receipt: to whom, via which channel, whether it landed. Anything sent but not yet spoken about gets one line next step — write the ledger first, then speak. No retry, no guessing a channel."
   }
 }
