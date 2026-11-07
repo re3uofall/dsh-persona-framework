@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Module · Plugins",
-    "description": "Functional implementation of module 29: install, remove, enable and disable packages, reading the real state back after every step."
-  }
-}
