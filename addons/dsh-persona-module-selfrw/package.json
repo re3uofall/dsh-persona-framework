@@ -1,0 +1,31 @@
+{
+  "name": "dsh-persona-module-selfrw",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "模块「自读写」长成一个插件：在别人的机器上读文件、写文件，读要说得清位置、写要留得下退路。",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "module": {
+      "id": "selfrw",
+      "title": "自读写"
+    }
+  },
+  "exports": {
+    ".": "./index.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "module.md",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale",
+    "README.md"
+  ]
+}

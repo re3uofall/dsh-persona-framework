@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Module · Self Read/Write",
+    "description": "A module as a plugin: the self read/write body is injected by its own package."
+  }
+}

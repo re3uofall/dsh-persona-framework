@@ -1,0 +1,5 @@
+- insert:
+    - id: persona-module-adapter
+      name: dsh-persona-module-adapter
+      config:
+        order: 205
