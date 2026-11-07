@@ -785,11 +785,11 @@ vision 已经占住了「看」。加上这四个，进（看、听）、出（�
 
 | 部分 | 今天 | 它从哪来 |
 | --- | --- | --- |
-| 一、总模块插件 | 本体 `dsh-persona-framework` 5.22.0 ＋ 97 篇模块正文 ＋ 程序模块两个（自读写 `programs/selfrw/`、适配 `programs/adapter/`，各带一份正文） | 工作区根（不在 bundles 里，靠 link 依赖加载）＋ `persona-ai/modules/*.md` ＋ `programs/<id>/` |
-| 二、模块功能实现 | 实现程序本身：总模块的 `impl/*.mjs` 37 支 ＋ 两个程序模块各自的 `impl.mjs` | 框架自身：`impl/` 与 `programs/<id>/impl.mjs` |
+| 一、总模块插件 | 本体 `dsh-persona-framework` 5.22.0 ＋ 97 篇模块正文 ＋ 三个模块（程序模块 `impl/`、自读写 `programs/selfrw/`、适配 `programs/adapter/`，后两个各带一份正文） | 工作区根（不在 bundles 里，靠 link 依赖加载）＋ `persona-ai/modules/*.md` ＋ `programs/<id>/` |
+| 二、模块功能实现 | 实现程序本身：总模块的 `impl/*.mjs` 37 支 ＋ 三个模块各自的程序功能实现（框架程序收在 `impl/`，自读写与适配各一份 `programs/<id>/impl.mjs`） | 框架自身：`impl/` 与 `programs/<id>/impl.mjs` |
 | 三、附加插件 | 18 个包，17 个已登记 | `addons/*` + `dsh.profile.bundles` |
 
-> 面板上三部分就是这三行：第一部分列本体、97 篇正文和两个程序模块；第二部分只列实现程序（`impl/*.mjs` 与 `programs/<id>/impl.mjs`）；第三部分是附加插件。
+> 面板上三部分就是这三行：第一部分列本体、97 篇正文和三个并列的模块（程序模块、自读写、适配）；第二部分只列实现程序（`impl/*.mjs` 与 `programs/<id>/impl.mjs`）；第三部分是附加插件。
 >
 > 口径的来路：师父先说「总模块 / 程序模块 / 程序功能实现三者都是框架自己的功能实现」，再说「第二部分是模块功能实现不是模块正文」，最后说「模块正文放第一部分」。程序模块**不是附加插件**——它们是框架自己的实现，所以从 `addons/` 搬进了 `programs/`。
 

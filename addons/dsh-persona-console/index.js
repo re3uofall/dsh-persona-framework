@@ -165,7 +165,7 @@ function collect(cfg) {
           desc: String(meta.note ?? ""),
           enabled: true,
           detail: "程序模块：正文 programs/" + d + "/module.md，实现 programs/" + d + "/" + implFile,
-          group: "程序模块",
+          group: "模块",
         }
       })
       .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
@@ -225,6 +225,7 @@ function collect(cfg) {
     counts: {
       modules: modules.length,
       programs: programs.length,
+      programModules: programs.length + 1,
       impl: impl.length,
       addons: addons.length,
       addonsOn: addons.filter((x) => x.enabled).length,
@@ -233,13 +234,21 @@ function collect(cfg) {
       {
         id: "core",
         title: "总模块插件",
-        hint: "第一部分：本体（注入与调度）＋ 模块正文（每轮按配额挑几篇进上下文）＋ 程序模块（自读写、适配：框架自己的程序，各带一份正文）。",
+        hint: "第一部分：本体（注入与调度）＋ 模块正文（每轮按配额挑几篇进上下文）＋ 三个模块——程序模块、自读写模块、适配模块；前一个是框架自己的程序，后两个各带一份正文。",
         items: [
           ...core,
+          {
+            id: "module:program",
+            title: "程序模块",
+            group: "模块",
+            file: "impl/",
+            desc: "框架自己的程序：注入骨架、模块调度、配额、工具——全部收在 impl/ 里，由它自带的那一份实现跑。",
+            detail: "程序功能实现：impl/*.mjs",
+          },
           ...programs.map((p) => ({
             id: "program:" + p.id,
             title: p.title,
-            group: "程序模块",
+            group: "模块",
             file: p.file,
             desc: p.desc,
             detail: "正文 programs/" + p.id + "/module.md",
@@ -251,7 +260,16 @@ function collect(cfg) {
         id: "impl",
         title: "模块功能实现",
         hint: "第二部分：实现程序本身——总模块的 impl/*.mjs，加上每个程序模块自己的 impl.mjs。改了这一层要重启 DSH 才生效。",
-        items: impl,
+        items: [
+          ...impl,
+          ...programs.map((p) => ({
+            id: "programimpl:" + p.id,
+            title: p.title + " · 程序功能实现",
+            group: "程序模块的实现",
+            file: p.file,
+            desc: "程序模块「" + p.title + "」自己的程序功能实现。",
+          })),
+        ],
       },
       {
         id: "addons",
