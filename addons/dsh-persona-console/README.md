@@ -7,7 +7,7 @@
 | 组 | 里面是什么 | 判据 |
 | --- | --- | --- |
 | **总模块插件** | 本体 `dsh-persona-framework` + `persona-ai/modules/*.md` 的模块正文（现在 97 篇，按编号排）+ 三个模块（程序模块 `impl/`、自读写 `programs/selfrw/`、适配 `programs/adapter/`，后两个各带一份正文） | 本体只有一个；正文不是插件，是本体每轮按配额挑进去读的东西；程序模块是框架自己的程序，不算附加插件 |
-| **模块功能实现** | **人格框架自身的实现**——框架的全部程序都在这里：`impl/*.mjs` 与 `programs/<id>/impl.mjs`，按原话是一整份，不按「谁的」再切 | 改了这一层要重启 DSH 才生效 |
+| **模块功能实现** | **功能实现那一层**：真去做、落盘、不给人格字（判据见 `GUIDE-FEATURES.md` 零之五）。代码在 `impl/*.mjs` 与 `programs/<id>/impl.mjs`，每个模块各有自己的一份，不并成「框架的」一桶 | 改了这一层要重启 DSH 才生效 |
 | **附加插件** | `dsh-persona-framework/addons/*`（现在 18 个） | 「已登记」= 在 `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` 里；没登记就显示空心圈 |
 
 ## 为什么单独一页
