@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "清扫",
+    "description": "功能实现层：把 .persona-framework 下的账本压实——超行数的归档、只留尾部；不给人格字。"
+  }
+}

@@ -1,0 +1,9 @@
+# dsh-persona-sweep —— 功能实现层：把账本压实（不留字给人格）
+- insert:
+    - id: persona-sweep
+      name: dsh-persona-sweep
+      config:
+        enabled: true
+        maxLines: 300
+        keepLines: 80
+        cooldownMin: 15

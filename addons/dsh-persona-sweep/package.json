@@ -1,0 +1,27 @@
+{
+  "name": "dsh-persona-sweep",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "清扫：把 .persona-framework 下越写越长的账压实（归档 + 留尾 + 记一行）。功能实现层——不给人格字。",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT"
+}

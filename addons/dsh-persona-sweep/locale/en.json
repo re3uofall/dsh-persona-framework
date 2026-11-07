@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sweep",
+    "description": "Function-implementation layer: compacts ledgers under .persona-framework — archives oversized files, keeps only the tail; gives the persona no words."
+  }
+}
