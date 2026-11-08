@@ -36,6 +36,7 @@ import {
 } from './impl/programs.mjs'
 import { ensureWorkspace, pickPersonaFile as pickPersona, inspectWorkspace, SKELETON, POOL_PATHS } from './impl/workspace.mjs'
 import { doctorCheck, renderDoctor } from './impl/doctor.mjs'
+import { envCheck, renderEnvCheck } from './impl/envcheck.mjs'
 import { appendToPool, WRITE_TARGETS, undoWrite, undoPathOf } from './impl/poolwrite.mjs'
 import { harvestCandidates, writeCandidates } from './impl/autolex.mjs'
 import { dueReason, AUTO_EVERY, AUTO_MODES } from './impl/autosched.mjs'
@@ -3213,7 +3214,9 @@ export function apply(ctx, config = {}) {
       if (!ws || !existsSync(ws)) {
         try { ws = await ctx.workingDirectory.ensure(exec?.agent, exec?.signal) } catch { ws = process.cwd() }
       }
-      return renderDoctor(doctorCheck({ workspace: ws, dshRoot: dshRoot(), version: VERSION }))
+      const report = renderDoctor(doctorCheck({ workspace: ws, dshRoot: dshRoot(), version: VERSION }))
+      // 环境这一层单独列：它说的是「站得下吗」，不是「插件都在吗」
+      return report + renderEnvCheck(envCheck({ workspace: ws }))
     },
   })
 
