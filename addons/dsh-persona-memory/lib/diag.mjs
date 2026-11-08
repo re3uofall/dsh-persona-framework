@@ -68,8 +68,10 @@ export function diagnoseFile({ path, size }) {
     if (dup) issues.push({ kind: 'dup', why: `${dup} 行与上一行完全相同` })
     if (!lastEmpty && text.length) issues.push({ kind: 'truncated', why: '最后一行没有换行结尾（可能写到一半断了）' })
   } else {
+    const first = (lines[0] || '').trim()
+    const ledger = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(first) || /^-\s/.test(first)
     const heads = lines.filter((l) => /^#{1,3}\s/.test(l)).length
-    if (text.length && !heads) issues.push({ kind: 'shape', why: '没有一个标题（不像一篇正文）' })
+    if (text.length && !heads && !ledger) issues.push({ kind: 'shape', why: '没有一个标题（不像一篇正文）' })
     if (!lastEmpty && text.length && !/\n\s*$/.test(text.slice(-2))) issues.push({ kind: 'truncated', why: '结尾没有换行（可能被截断）' })
   }
   return { path, size, ok: issues.length === 0, lines: lines.length, issues }
