@@ -62,6 +62,7 @@ export function summarizeUsage(events, opts = {}) {
 
   const sum = { messages: rows.length, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, fresh: 0 }
   const models = new Map()
+  const byTurnMap = new Map()
   let turns = 0
   let lastTurn = null
   for (const r of rows) {
@@ -77,6 +78,16 @@ export function summarizeUsage(events, opts = {}) {
     m.total += r.total
     m.fresh += r.fresh
     models.set(k, m)
+    if (r.turn !== null) {
+      const t = byTurnMap.get(r.turn) || { turn: r.turn, messages: 0, total: 0, fresh: 0, cacheRead: 0, cacheWrite: 0, steps: 0 }
+      t.messages += 1
+      t.total += r.total
+      t.fresh += r.fresh
+      t.cacheRead += r.cacheRead
+      t.cacheWrite += r.cacheWrite
+      if (r.step !== null && r.step > t.steps) t.steps = r.step
+      byTurnMap.set(r.turn, t)
+    }
     if (r.turn !== null && r.turn !== lastTurn) {
       turns += 1
       lastTurn = r.turn
@@ -95,6 +106,9 @@ export function summarizeUsage(events, opts = {}) {
     avgPerMessage,
     avgPerTurn,
     models: [...models.values()].sort((a, b) => b.total - a.total),
+    // 按轮归因：抄 meow-cachebilling 的「按请求拆」——总数说不出哪一段真在花钱，轮能。
+    byTurn: [...byTurnMap.values()].sort((a, b) => b.fresh - a.fresh),
+    byTurnCount: byTurnMap.size,
     last: rows.length ? rows[rows.length - 1] : null,
     first: rows.length ? rows[0] : null,
   }

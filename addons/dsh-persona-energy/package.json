@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-energy",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "把吃、睡、耗压成一个 0..1 的电量：三个槽各按自己的半衰期衰减，合成时取短板，再乘昼夜节律",
   "type": "module",

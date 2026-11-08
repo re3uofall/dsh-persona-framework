@@ -466,6 +466,13 @@ export function apply(ctx, config) {
           lines.push(`- ${m.key}：${m.messages} 条 / ${fmtTokens(m.total)}，其中新付 ${fmtTokens(m.fresh)}`)
         }
       }
+      // 按轮归因：只报最贵的几轮，省得把整本账倒出来
+      if (sum.byTurn && sum.byTurn.length > 1) {
+        lines.push('', '最贵的几轮（按新付排）：')
+        for (const t of sum.byTurn.slice(0, 5)) {
+          lines.push(`- 第 ${t.turn} 轮：${t.messages} 条 / 新付 ${fmtTokens(t.fresh)} / 缓存读 ${fmtTokens(t.cacheRead)} / 缓存写 ${fmtTokens(t.cacheWrite)}`)
+        }
+      }
       // 靶子在哪儿：缓存写高＝前缀老在变；新付占比高＝真在长内容
       const freshShare = sum.total ? sum.fresh / sum.total : 0
       lines.push('', '该往哪儿省（按这张账看）：')
