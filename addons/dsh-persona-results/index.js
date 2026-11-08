@@ -6,7 +6,7 @@
  * 它做三件事：
  *   1. **收**：她调 `result_write` 交一条（标题、类型、正文），追加进
  *      `persona-ai/growth/成果/成果.jsonl`，一行一条，不重写旧行。
- *   2. **看**：`/api/dsh-persona-results` 把账本吐成 JSON，侧栏的「成果」面板 fetch 它。
+ *   2. **看**：`/api/persona-results` 把账本吐成 JSON，侧栏的「成果」面板 fetch 它。
  *   3. **提醒**：每轮在提示词里挂一小段——想住了一个判断再交，别交流水账。
  *
  * 只写自己的成果文件；v3.1 人格原稿一个字不动。
@@ -284,7 +284,7 @@ export function apply(ctx, config = {}) {
   // ── 面板的数据口 ────────────────────────────────────────────────────────────
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
-    path: '/api/dsh-persona-results',
+    path: '/api/persona-results',
     handler(req, res) {
       try {
         const items = readAll().slice(-cfg.maxEntries).reverse()

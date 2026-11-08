@@ -12,7 +12,7 @@
  * 它做四件事：
  *   1. **记**：`diary_write` 记一笔，带档位与分类，追加不覆盖。
  *   2. **看**：`diary_list` 按档、按类、按词翻。
- *   3. **摆**：`/api/dsh-persona-diary` 把日记读成 JSON，侧栏面板分档、筛类、搜词。
+ *   3. **摆**：`/api/persona-diary` 把日记读成 JSON，侧栏面板分档、筛类、搜词。
  *   4. **提醒**：提示词里挂一小段——有心得才记，别凑数。
  *
  * 只往两本日记里追加，不重写旧日记；人格原稿一个字不动。
@@ -523,7 +523,7 @@ export function apply(ctx, config = {}) {
   //   ?limit=N              截到多少条（默认 maxEntries）
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
-    path: '/api/dsh-persona-diary',
+    path: '/api/persona-diary',
     handler(req, res) {
       try {
         let query = {}
