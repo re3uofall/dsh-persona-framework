@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-console",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "人格框架台：第一部分本体与模块正文，第二部分模块功能实现（探索/成果/日记/清扫的实现件都在这一栏，无独立包的标功能已实现），第三部分其余附加插件",
   "type": "module",

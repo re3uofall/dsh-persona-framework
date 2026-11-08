@@ -1,5 +1,5 @@
 /**
- * dsh-persona-mod29 —— 模块 29（插件）的功能实现层
+ * dsh-persona-plugin —— 《插件》这一篇的功能实现层
  * ============================================================================
  * 只干一件事：把「装/卸/启停/回读插件」做成工具，外加每 10 分钟对一次
  * 「装了没登进 bundles／登了没装」的漂移账。
@@ -23,7 +23,7 @@ import { tick } from './lib/tick.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PKG = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8'))
 
-export const name = 'dsh-persona-mod29'
+export const name = 'dsh-persona-plugin'
 export const version = PKG.version
 export const inject = ['tools']
 

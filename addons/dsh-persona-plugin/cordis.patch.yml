@@ -1,0 +1,7 @@
+# dsh-persona-plugin —— 《插件》这一篇的功能实现层
+# 只挂工具与触发器，不注正文。
+- insert:
+    - id: plugin
+      name: dsh-persona-plugin
+      config:
+        stateDir: '.persona-framework'

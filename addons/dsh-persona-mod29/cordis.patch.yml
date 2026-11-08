@@ -1,7 +1,0 @@
-# dsh-persona-mod29 —— 模块 29（插件）的功能实现层
-# 只挂工具与触发器，不注正文。
-- insert:
-    - id: mod29
-      name: dsh-persona-mod29
-      config:
-        stateDir: '.persona-framework'

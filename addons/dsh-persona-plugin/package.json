@@ -1,9 +1,9 @@
 {
-  "name": "dsh-persona-mod29",
+  "name": "dsh-persona-plugin",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "模块 29（插件）的功能实现：装、卸、启停、回读，外加每 10 分钟一次的漂移账。不注正文。",
+  "description": "插件这一篇的功能实现：装、卸、启停、回读，外加每 10 分钟一次的漂移账。不注正文。",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",

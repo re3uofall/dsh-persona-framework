@@ -218,6 +218,9 @@ function collect(cfg) {
 
   // 第二部分只摆「功能实现」，不摆插件包：插件一律归第三部分（将来有了单独的实现插件，也仍归第三部分）。
   const otherAddons = addons.slice()
+  // 模块类插件里真改状态的实现件（不是把正文再注一遍的那种）：第二部分写「功能已实现」，要写出包名。
+  const IMPL_PKGS = new Set(["dsh-persona-plugin"])
+  const moduleImpls = addons.filter((x) => IMPL_PKGS.has(x.pkg))
 
   return {
     ok: true,
@@ -231,7 +234,7 @@ function collect(cfg) {
       programs: programs.length,
       programModules: programs.length + 1,
       impl: impl.length,
-      implAddons: 0,
+      implAddons: moduleImpls.length,
       addons: addons.length,
       addonsOn: addons.filter((x) => x.enabled).length,
     },
@@ -264,7 +267,7 @@ function collect(cfg) {
       {
         id: "impl",
         title: "模块功能实现",
-        hint: "第二部分：模块功能实现——一个模块一条，只写「这条已经实现了」，不列插件包。这一栏没有可启停的东西；真去启停插件，看第三部分。改了这一层要重启 DSH 才生效。",
+        hint: "第二部分：模块功能实现——一个模块一条，只写「这条已经实现了」，不列插件包。这一栏没有可启停的东西；真去启停插件，看第三部分。真改状态的模块类实现件会写出插件包名。改了这一层要重启 DSH 才生效。",
         items: [
           {
             id: "impl:program",
@@ -280,6 +283,15 @@ function collect(cfg) {
             group: "功能实现",
             file: p.file,
             desc: "模块「" + p.title + "」自己的功能实现：真去做、落盘，不给人格字。",
+          })),
+          ...moduleImpls.map((x) => ({
+            id: "impl:pkg:" + x.pkg,
+            title: x.title + " · 功能已实现",
+            group: "功能实现",
+            file: x.dir,
+            desc: x.desc,
+            detail: "插件包 " + x.pkg,
+            enabled: x.enabled,
           })),
           {
             id: "impl:explore",
