@@ -17,6 +17,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 export const name = 'dsh-persona-console'
+export const version = '0.3.3'
 export const inject = ['webServer']
 
 const API = '/api/persona-console'

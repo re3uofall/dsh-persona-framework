@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-affect",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "人格框架附加插件：情绪。评估 → 情绪原型 → PAD → 四种调质，会退、会被顶起来，每轮注入一句。",
   "type": "module",
   "main": "index.js",

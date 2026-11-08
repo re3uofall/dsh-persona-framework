@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path'
 import { Affect, DIMS, MOD_LABELS } from './lib/affect.mjs'
 
 export const name = 'persona-affect'
+export const version = '0.1.1'
 export const inject = ['tools', 'systemPrompt']
 
 const DEFAULTS = {

@@ -28,6 +28,7 @@ import { describeImage } from './lib/describe.mjs'
 import { appendVisionRecord } from './lib/ledger.mjs'
 
 export const name = 'persona-vision'
+export const version = '0.1.2'
 export const inject = ['tools']
 
 const DEFAULTS = {
