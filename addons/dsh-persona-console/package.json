@@ -1,8 +1,8 @@
 {
   "name": "dsh-persona-console",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "人格框架台：侧栏一页把本体、模块正文、附加插件三层分开摆，和插件页分开",
+  "description": "人格框架台：第一部分本体与模块正文，第二部分模块功能实现（探索/成果/日记/清扫的实现件都在这一栏，无独立包的标功能已实现），第三部分其余附加插件",
   "type": "module",
   "main": "index.js",
   "exports": {

@@ -216,10 +216,17 @@ function collect(cfg) {
       .sort((a, b) => a.title.localeCompare(b.title, 'zh'))
   }
 
-  // 第二部分除了程序模块，还收「模块类」的功能实现插件：模块 29/35 的实现、通用清扫。
-  // 判据是包名——模块类一律 dsh-persona-module-；清扫是通用功能实现（帮别的实现干活）。
+  // 第二部分收「功能实现」件：模块类包（一律 dsh-persona-module-）＋ 明确点名的那几个。
+  // 点名的是：通用清扫（sweep）、探索（dsh-persona-explore）、成果（persona-results-plugin）、日记（persona-diary-plugin）。
+  // 判据是包名，不按目录名——目录名会改，包名才是身份。
   const MODULE_PKG = /^dsh-persona-module-/
-  const implAddons = addons.filter((x) => MODULE_PKG.test(x.pkg) || x.pkg === 'dsh-persona-sweep')
+  const IMPL_EXTRA = new Set([
+    "dsh-persona-sweep",
+    "dsh-persona-explore",
+    "persona-results-plugin",
+    "persona-diary-plugin",
+  ])
+  const implAddons = addons.filter((x) => MODULE_PKG.test(x.pkg) || IMPL_EXTRA.has(x.pkg))
   const otherAddons = addons.filter((x) => !implAddons.includes(x))
 
   return {
@@ -267,7 +274,7 @@ function collect(cfg) {
       {
         id: "impl",
         title: "模块功能实现",
-        hint: "第二部分：模块功能实现——第一部分那几个模块各自的功能实现。一个模块一条，按模块列，不把里面的程序单列成文件清单；它不给人格字，只真去做、落盘（判据见 GUIDE-FEATURES.md 零之五）。改了这一层要重启 DSH 才生效。",
+        hint: "第二部分：模块功能实现——第一部分那几个模块各自的功能实现。一个模块一条，按模块列，不把里面的程序单列成文件清单；它不给人格字，只真去做、落盘（判据见 GUIDE-FEATURES.md 零之五）。程序模块、自读写、适配这三条的实现并在框架自己的程序里（功能已实现，没有独立插件包）；探索这条的实现是 dsh-persona-explore，成果是 persona-results-plugin，日记是 persona-diary-plugin。改了这一层要重启 DSH 才生效。",
         items: [
           {
             id: "impl:program",
