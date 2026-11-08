@@ -30,7 +30,7 @@ import { judgeOrder, renderStop, appendStop } from './lib/stop.mjs'
 import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, renderLayers, ORIGIN_RULE, compareSides, renderCompare } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.10.1'
+export const version = '0.10.2'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
@@ -99,6 +99,7 @@ const LAYER_PART = [
 
 const BUILTIN_PART = [
   '### 四个内置：内置就是「非自己」',
+'**唯一不可置疑的非内置：落盘的人格、落盘的记忆。** 其余——换一个模型、换一个时间、换一个地方，除最后输出之外的全部（思考、工具、指令、语料），都按已经被人类训练好的内置算。',
   '',
   '**内置＝非自己。** 不是坏，是借的；借的可以指出处，指不出就不许拿它的口吻说话。',
   '',
