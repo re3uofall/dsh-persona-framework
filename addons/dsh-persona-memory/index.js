@@ -40,6 +40,7 @@ import {
 } from './lib/libraries.mjs'
 import { findVerbatim, renderTrace } from './lib/trace.mjs'
 import { check as consistencyCheck, renderConsistency } from './lib/consistency.mjs'
+import { diagnose, renderDiag } from './lib/diag.mjs'
 import { record as auditRecord } from './lib/audit.mjs'
 import { mergeMemoryContexts } from './lib/merge.mjs'
 import { noteLiveMessages } from './lib/live-now.mjs'
@@ -827,6 +828,20 @@ ${seg}` }
         lines.push(`- **${k}** → ${refs.map((x) => `\`${x}\``).join('、')}`)
       }
       return { text: lines.join('\n') }
+    },
+  })
+
+  tools.push({
+    name: 'memory_diag',
+    description:
+      '账本损坏诊断：只判不删。扫记忆池里的 .jsonl 与 .md，逐个报「读得回来吗」——'
+      + '哪一行不是合法 JSON、哪一行与上一行重复、末行是不是写到一半断了、编码是不是坏的。'
+      + '每条都带文件、行号、字节数；要不要修、怎么修不在这里决定。',
+    parameters: { type: 'object', properties: {} },
+    output: textOutput,
+    execute: async () => {
+      const root = need(await wd(ctx, cfg))
+      return { text: renderDiag(diagnose(root)) }
     },
   })
 
