@@ -41,6 +41,7 @@ import {
 import { findVerbatim, renderTrace } from './lib/trace.mjs'
 import { check as consistencyCheck, renderConsistency } from './lib/consistency.mjs'
 import { diagnose, renderDiag } from './lib/diag.mjs'
+import { capVerdict, renderCapVerdict } from './lib/cap.mjs'
 import { record as auditRecord } from './lib/audit.mjs'
 import { mergeMemoryContexts } from './lib/merge.mjs'
 import { noteLiveMessages } from './lib/live-now.mjs'
@@ -648,8 +649,14 @@ export function apply(ctx, config = {}) {
       execute: async (args = {}) => {
         const root = need(await wd(ctx, cfg))
         const rows = measureLayers(root, layersOf(cfg))
-        const preview = `会写 persona-ai/knowledge/INDEX.md：${rows.length} 层、${rows.reduce((n, r) => n + r.files, 0)} 个文件、${(rows.reduce((n, r) => n + r.bytes, 0) / 1024).toFixed(1)} KB。`
-        if (args.apply !== true) return { text: preview + '\n\n要真写：memory_index({apply:true})' }
+        const totalFiles = rows.reduce((n, r) => n + r.files, 0)
+        const totalBytes = rows.reduce((n, r) => n + r.bytes, 0)
+        const preview = `会写 persona-ai/knowledge/INDEX.md：${rows.length} 层、${totalFiles} 个文件、${(totalBytes / 1024).toFixed(1)} KB。`
+        const verdict = capVerdict({ files: totalFiles, bytes: totalBytes })
+        const capLine = renderCapVerdict(verdict)
+        if (args.apply !== true) return { text: preview + '\n' + capLine + '\n\n要真写：memory_index({apply:true})' }
+        // 硬上限：超了就不写，先减重（抄 dsh-engramory 的「上限由工具守卫强制」）
+        if (!verdict.ok) return { text: capLine }
         const r = rebuildIndex(root, (cfg.knowledgeDir || 'persona-ai/knowledge'))
         return {
           text: `索引重建好了：${r.domains} 个域、${r.files} 个文件、${(r.bytes / 1024).toFixed(1)} KB。\n落到：${r.file.replace(/\\/g, '/')}\n它不进前缀，所以不花每轮的 token。`,
