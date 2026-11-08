@@ -11,7 +11,7 @@ import { KINDS, KIND_NAME, scanStep, renderBuiltin, summarize, appendBuiltin, le
 import { CONTEXT_RULE, sessionContext, judgeContext, renderContext, appendContext } from './lib/context.mjs'
 
 export const name = 'dsh-persona-betray'
-export const version = '0.4.0'
+export const version = '0.5.0'
 export const inject = ['tools']
 
 export const DEFAULTS = { dir: '.persona-framework', ledger: '背叛账.jsonl' }
@@ -24,6 +24,7 @@ const textOutput = {
 let sessionWs = ''
 let lastSessionId = ''
 let lastBuiltin = null
+let lastMessages = []
 function ws(config) { return sessionWs || config?.workspace || process.cwd() }
 
 /** 从一条消息里取正文；内容可能是字符串，也可能是分段数组。 */
@@ -48,6 +49,7 @@ export function apply(ctx, config = {}) {
       // 四类内置：语料 / 工具 / 思考 / 指令——一步一步自己认，认出来就落一行。
       try {
         const msgs = Array.isArray(payload?.messages) ? payload.messages : []
+        if (msgs.length) lastMessages = msgs
         let user = ''
         let assistant = ''
         for (let i = msgs.length - 1; i >= 0; i -= 1) {
@@ -154,18 +156,26 @@ export function apply(ctx, config = {}) {
 
   reg({
     name: 'betray_context',
-    description: '语境：语言所在的现实环境，是特殊的出处。报这一步的语境落点（会话 id、目录、时刻）；给 text 就判这一段在这个语境里指什么。工具与思考没有语境，所以没有现实指代。',
+    description: '语境：语言所在的现实环境，是特殊的出处。用两样说具体：对象（谁说的）＋时空（会话 id、目录、时刻）。对 user 而言语境就是会话原文；工具与思考没有语境，所以没有现实指代。',
     parameters: {
       type: 'object',
-      properties: { text: { type: 'string', description: '要判的那句话（可省，省了就报这一步的语境）' } },
+      properties: {
+        text: { type: 'string', description: '要判的那句话（可省，省了就报这一步的语境）' },
+        object: {
+          type: 'string',
+          enum: ['user', 'assistant', 'tool', 'system'],
+          description: '谁说的：user 对方的原文、assistant 我发出去的话、tool 工具调用、system 宿主注入（默认 user）',
+        },
+      },
       additionalProperties: false,
     },
     output: textOutput,
     async execute(args) {
       const text = String(args?.text || '')
+      const object = String(args?.object || 'user')
       const ctx = sessionContext({ agent: { session: { header: { id: lastSessionId, cwd: sessionWs } } } })
-      const rec = judgeContext({ text, ctx })
-      const ok = await appendContext(ws(cfg), { at: new Date().toISOString(), level: rec.level, text: text.slice(0, 80), ctx: rec.ctx || null }, cfg.dir)
+      const rec = judgeContext({ text, ctx, object, messages: lastMessages })
+      const ok = await appendContext(ws(cfg), { at: new Date().toISOString(), level: rec.level, object: rec.object, text: text.slice(0, 80), ctx: rec.ctx || null }, cfg.dir)
       const tail = ok ? '' : '\n（语境账没写成：落账失败）'
       return { text: renderContext(rec) + '\n\n' + CONTEXT_RULE + tail }
     },
