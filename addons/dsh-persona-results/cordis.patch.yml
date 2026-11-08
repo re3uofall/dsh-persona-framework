@@ -10,7 +10,7 @@
       name: dsh-persona-results
       config:
         # 人格根目录（`persona-ai` 那一层）。留空则从会话工作区推 `persona-ai`。
-        personaDir: ''
+        personaDir: 'C:/爱思考的大肥鱼思思/persona-ai'
 
         # 成果账本：一行一条 JSONL
         resultsFile: 'growth/成果/成果.jsonl'
