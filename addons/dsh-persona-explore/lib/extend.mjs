@@ -90,6 +90,18 @@ function collectData(p, opts) {
   }
 }
 
+  const textOutput = {
+    schema: {
+      type: 'object',
+      properties: { text: { type: 'string' } },
+      required: ['text'],
+      additionalProperties: false,
+    },
+    render(_args, value) {
+      return [{ type: 'text', text: String(value?.text ?? '') }]
+    },
+  }
+
 export function install(ctx, { cfg, p, warn }) {
   const opts = { ...DEFAULTS, dir: cfg.homeDir || DEFAULTS.dir }
   const fireFile = () => ledgerPath(p?.homeDir || '', opts)
@@ -293,17 +305,6 @@ export function install(ctx, { cfg, p, warn }) {
   }
 
   // ── 工具：探索三维目录 / 出一趟的计划 / 手动看一眼触发 ──────────────────
-  const textOutput = {
-    schema: {
-      type: 'object',
-      properties: { text: { type: 'string' } },
-      required: ['text'],
-      additionalProperties: false,
-    },
-    render(_args, value) {
-      return [{ type: 'text', text: String(value?.text ?? '') }]
-    },
-  }
 
   try {
     ctx.effect(() =>
