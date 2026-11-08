@@ -189,9 +189,13 @@ export function apply(ctx, config = {}) {
     try { console.warn('[dsh-persona-diary]', errText(error)) } catch { /* 控制台都没了就算了 */ }
   }
 
+  // 会话真实工作区：pre-step 带 header.cwd，比 ctx.get('workspace') 更准（后者可能是 profile 目录）。
+  let sessionCwd = ''
+
   /** 人格目录：显式配置 > 环境变量 > 会话工作区下的 persona-ai。 */
   const resolveDir = () => {
     const tries = []
+    if (sessionCwd) tries.push(join(sessionCwd, 'persona-ai'))
     if (cfg.personaDir) tries.push(String(cfg.personaDir))
     if (process.env.DSH_PERSONA_DIR) tries.push(process.env.DSH_PERSONA_DIR)
     try {
@@ -214,9 +218,25 @@ export function apply(ctx, config = {}) {
     return hit
   }
 
-  const dir = resolveDir()
-  const diaryDir = dir ? join(dir, cfg.diaryDir) : ''
+  let dir = resolveDir()
+  let diaryDir = dir ? join(dir, cfg.diaryDir) : ''
   if (!diaryDir) warn('没有找到人格目录：请在 patch 的 config.personaDir 里指到 persona-ai 那一层')
+
+
+  // 首步拿到会话目录后重算一次：工具和侧栏接口读的是同一份 diaryDir。
+  try {
+    ctx.on('agent/pre-step', (payload, next) => {
+      try {
+        const c = payload?.agent?.session?.header?.cwd
+        if (c && String(c) !== sessionCwd) {
+          sessionCwd = String(c)
+          const d = resolveDir()
+          if (d) { dir = d; diaryDir = join(d, cfg.diaryDir) }
+        }
+      } catch { /* 拿不到就保持原样 */ }
+      return next()
+    })
+  } catch { /* 没有 pre-step 也能跑 */ }
 
   /** 某一档的目录；`未标` 是根目录本身。 */
   const dirOf = (sub) => (sub ? join(diaryDir, sub) : diaryDir)

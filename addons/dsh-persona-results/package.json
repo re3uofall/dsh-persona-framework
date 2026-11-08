@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-results",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "description": "成果收进侧栏：交出去的判断，一条一个标题，面板里看得见",
   "type": "module",
