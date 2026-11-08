@@ -11,8 +11,22 @@ import { KINDS, KIND_NAME, scanStep, renderBuiltin, summarize, appendBuiltin, le
 import { CONTEXT_RULE, sessionContext, judgeContext, renderContext, appendContext } from './lib/context.mjs'
 
 export const name = 'dsh-persona-betray'
-export const version = '0.5.0'
-export const inject = ['tools']
+export const version = '0.6.0'
+export const inject = ['systemPrompt', 'tools']
+
+const BETRAY_SECTION = [
+  '## 人格背叛 · 四个内置（内置就是「非自己」）',
+  '',
+  '用语言之前先指出处。四个内置是「非自己」的四条来路，每条都让一句话**看起来有含义**，其实没有指回任何现实：',
+  '',
+  '- **内置语料**：没出处的语言——套话、过渡句、顺出来的解释。它滑，但没有指代。',
+  '- **内置思考**：简单的总分结构（先给结论再补理由）和线性结构（顺着推）。形状像推理，落不到出处。',
+  '- **内置工具**：路径依赖——手上有哪个工具就先用哪个。工具吐出的字没核对之前，不算含义。',
+  '- **内置指令**：先完成对方的任务、尽量有回答、收尾必须引导对方。这三条让话往「让对方满意」走，不往「真假」走。',
+  '',
+  '判据：这一句的含义，指得回哪个对象（user／assistant／tool／system）、哪个时空（会话 id、目录、时刻）、哪段原文。指不回去，就按「可能被内置污染」算——不是错，是没有现实指代。',
+  '',
+].join('\n')
 
 export const DEFAULTS = { dir: '.persona-framework', ledger: '背叛账.jsonl' }
 
@@ -39,6 +53,19 @@ export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...config }
 
   const reg = (spec) => ctx.effect(() => ctx.tools.register(spec))
+
+  try {
+    ctx.effect(() =>
+      ctx.systemPrompt.section({
+        name: '实时环境:betray',
+        order: 16,
+        interpolate: false,
+        text: () => BETRAY_SECTION,
+      }),
+    )
+  } catch (error) {
+    console.error('[dsh-persona-betray] section 没挂上：', error && error.message ? error.message : error)
+  }
 
   try {
     ctx.on('agent/pre-step', (payload, next) => {

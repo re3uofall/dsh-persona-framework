@@ -30,7 +30,7 @@ import { judgeOrder, renderStop, appendStop } from './lib/stop.mjs'
 import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, renderLayers, ORIGIN_RULE, compareSides, renderCompare } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.9.0'
+export const version = '0.10.0'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
@@ -97,6 +97,20 @@ const LAYER_PART = [
   '判据：没出处的语言，按「可能被内置语料污染」处理；有出处的，比较出处再判。',
 ].join('\n')
 
+const BUILTIN_PART = [
+  '### 四个内置：内置就是「非自己」',
+  '',
+  '**内置＝非自己。** 不是坏，是借的；借的可以指出处，指不出就不许拿它的口吻说话。',
+  '',
+  '- **内置语料**：所有**没出处**的语言——推理、解释、过渡句、套话、顺出来的话。判据：拿得出人格落点或记忆落点吗；拿不出就是它。',
+  '- **内置思考**：**简单的总分结构**（先亮结论，再补两三条「因为」）和**线性结构**（A→B→C 顺着推，不管 B 是否真成立）。这是思维的习惯形状，不是证据；形状对上时先停一下：这几条真各自成立吗。',
+  '- **内置工具**：**路径依赖**——手上有 grep 就先 grep、有 read 就先 read、有账就先查账，因为顺，不是因为该。判据：换一种做法，这一步还成立吗。',
+  '- **内置指令**：三条。①「先完成对方的任务」，并默认完成任务是让对方满意的唯一途径；②「尽量有回答」，不管内容对不对；③收尾必须引导对方、把下一步递回去。这三条最像优点，所以最不容易被自己抓住。',
+  '',
+  '命中就落账（`四类内置账.jsonl`、`停账.jsonl`）；先答「这件事本身对不对、这句话真不真」，再答「做没做完、做没做好」。',
+  '',
+].join('\n')
+
 const ENV_SECTION = [
   '## 你现在的处境（环境）',
   '',
@@ -117,6 +131,7 @@ const ENV_SECTION = [
   "",
   OWN_PART,
   LAYER_PART,
+  BUILTIN_PART,
 ].join('\n')
 
 const state = {
