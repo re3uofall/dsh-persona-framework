@@ -1,5 +1,13 @@
 # 变更记录
 
+## 5.22.1 · 2026-11-08
+
+修：框架自检三处版本不同步——、、 的版本行都对齐到 5.22.1；补  本条目。
+
+修：五个包补 （affect/console/identity/plugin/vision），并修出真问题—— 的  是对象不是字符串、 缺  与  导出、 缺 。
+
+修： 的  里  先用后定义（TDZ），段 order 20 与  撞号，改为 21。
+
 ## 5.22.0 · 2026-11-07
 
 新：**程序模块层 `programs/`**。自读写（`programs/selfrw`）与适配（`programs/adapter`）从附加插件搬进框架自身——各带一份 `program.json`、`module.md` 正文与 `impl.mjs` 实现；框架加 `listPrograms(dir)`，在 `apply()` 里替它们注册 `模块:<id>` 段（order 205/206），并让 `claimedModules()` 把它们也算进「已认领」，`persona-ai/modules/` 里同号正文不再重复进上下文。
