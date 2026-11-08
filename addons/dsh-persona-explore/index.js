@@ -466,7 +466,7 @@ export function apply(ctx, config = {}) {
   if (p) {
     ctx.effect(() => ctx.systemPrompt.section({
       name: 'persona:explore',
-      order: 20,
+      order: 21,
       interpolate: false,
       text: () => (appearOn() ? sectionText() : ''),
     }))
