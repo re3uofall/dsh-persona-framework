@@ -1,8 +1,8 @@
 {
   "name": "dsh-persona-explore",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
-  "description": "主动探索：范围/方式/平台三维目录可增改（explore_plan action=edit），四条触发器真落账，左侧栏一页看留下的判断、队列与触发账",
+  "description": "主动探索：范围/方式/平台三维目录可增改；触发器六条（队列空/连续无留/超期/骰子/一次性唤醒/闲置/二次触发）真落账；左侧栏一页看判断、队列与触发账",
   "type": "module",
   "main": "index.js",
   "exports": {

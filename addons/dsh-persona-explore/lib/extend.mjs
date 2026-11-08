@@ -5,6 +5,18 @@ import { join } from 'node:path'
 import { readJson, writeJson, nowIso, localDate } from './store.mjs'
 import { TRIGGERS, DEFAULTS, evaluate, mergeState, ledgerPath, readFires, renderFires } from './triggers.mjs'
 import { KINDS, edit as editCatalog, hintIn, listOf, planIn, renderCatalogIn } from './catalog.mjs'
+import {
+  DEFAULTS as WAKE_DEFAULTS,
+  RED_LIST,
+  addDue,
+  dueNow,
+  idleFire,
+  idleMinutes,
+  logFire,
+  markFired,
+  pickDropped,
+  pushDropped,
+} from './wake.mjs'
 
 const API = '/api/persona-explore'
 const PANEL_LEDGER = 8
@@ -155,6 +167,7 @@ export function install(ctx, { cfg, p, warn }) {
     ctx.on('agent/pre-step', (payload, next) => {
       try {
         const fired = runTriggers('step')
+        runWake(payload).catch(() => {})
         if (fired && fired.length && payload && typeof payload === 'object') {
           // 只记在插件自己的状态里，不往人格里塞字
           try {
@@ -168,6 +181,113 @@ export function install(ctx, { cfg, p, warn }) {
       }
       return next()
     })
+  } catch (error) {
+    warn(error)
+  }
+
+
+  // ── 三种新触发（2026-11-08）：到期唤醒 / 闲置 / 二次触发。都真调一次 web.search ──
+  const WOPTS = { ...WAKE_DEFAULTS, ...(cfg.wake || {}) }
+  let wakeBusy = false
+
+  const searchOnce = async (q) => {
+    try {
+      const web = ctx.get('web') || ctx.get('webSearch')
+      if (!web || typeof web.search !== 'function') return { ok: false, error: '没有 web 服务' }
+      const res = await web.search({ query: q, maxResults: 3 })
+      const sources = Array.isArray(res && res.sources) ? res.sources : []
+      return { ok: true, hits: sources.length, first: String((sources[0] && sources[0].url) || '') }
+    } catch (error) {
+      return { ok: false, error: String((error && error.message) || error) }
+    }
+  }
+
+  const runWake = async (payload) => {
+    if (!p || wakeBusy) return null
+    wakeBusy = true
+    try {
+      const now = Date.now()
+      const state = safeReadJson(p.stateFile, {})
+      const due = dueNow(p.homeDir, now, WOPTS).due
+      if (due.length) {
+        const one = due[0]
+        const q = one.query || '碗外探索 今天有变化的事'
+        const hit = await searchOnce(q)
+        logFire(p.homeDir, { trigger: 'due', id: one.id, query: q, ...hit }, WOPTS)
+        markFired(p.homeDir, [one.id], WOPTS)
+        return { trigger: 'due', id: one.id }
+      }
+      const idle = idleMinutes()
+      const fire = idleFire(state, idle, now, WOPTS)
+      if (fire) {
+        const q = '今天 新闻 有变化的事'
+        const hit = await searchOnce(q)
+        logFire(p.homeDir, { trigger: 'idle', idle: fire.idle, query: q, ...hit }, WOPTS)
+        writeJson(p.stateFile, { ...state, lastIdleFire: new Date(now).toISOString() })
+        return { trigger: 'idle' }
+      }
+      const queue = safeReadJson(p.queueFile, [])
+      const words = (Array.isArray(queue) ? queue : [])
+        .map((t) => String((t && t.topic) || t || ''))
+        .filter(Boolean)
+        .slice(0, 5)
+      const picks = pickDropped(p.homeDir, words, WOPTS)
+      if (picks.length) {
+        const one = picks[0]
+        const hit = await searchOnce(one.text)
+        logFire(p.homeDir, { trigger: 'second', query: one.text, ...hit }, WOPTS)
+        return { trigger: 'second' }
+      }
+      return null
+    } catch (error) {
+      warn(error)
+      return null
+    } finally {
+      wakeBusy = false
+    }
+  }
+
+  try {
+    ctx.effect(() =>
+      ctx.tools.register({
+        name: 'explore_due',
+        description: '一次性唤醒：给自己写一个到点要做的事（工具写 dueAt，pre-step 扫到就真去搜一次并落触发账）。op=add 写一条，list 看队列，fire 现在就跑一遍到期检查。',
+        parameters: {
+          type: 'object',
+          properties: {
+            op: { type: 'string', enum: ['add', 'list', 'fire'], description: '干什么' },
+            id: { type: 'string', description: '这条的 id（可省，自动起）' },
+            at: { type: 'string', description: '什么时候（ISO 时间或能被解析的时间串）' },
+            why: { type: 'string', description: '为什么到点要动，一句话' },
+            query: { type: 'string', description: '到点要搜什么' },
+          },
+          required: ['op'],
+          additionalProperties: false,
+        },
+        output: textOutput,
+        async execute(args) {
+          try {
+            if (!p) return { text: '没有找到人格目录，唤醒写不了。' }
+            const op = String((args && args.op) || 'list')
+            if (op === 'add') {
+              const item = addDue(p.homeDir, { id: args.id, at: args.at, why: args.why, query: args.query }, WOPTS)
+              return { text: '写上了：' + item.id + ' · ' + item.at + (item.query ? ' · 搜「' + item.query + '」' : '') }
+            }
+            if (op === 'fire') {
+              const got = await runWake({})
+              return { text: got ? '真动了一次：' + got.trigger : '没到点的，也没闲够，也没二次命中。' }
+            }
+            const view = dueNow(p.homeDir, Date.now(), WOPTS)
+            if (!view.live.length) return { text: '队列是空的。op=add 写一条。' }
+            const lines = view.live.slice(-10).map((r) =>
+              '- ' + r.id + ' · ' + r.at + (r.firedAt ? ' · 已响过' : '') + (r.query ? ' · ' + r.query : ''))
+            return { text: '唤醒队列 ' + view.live.length + ' 条（到期 ' + view.due.length + '，过期没轮到 ' + view.stale.length + '）\n' + lines.join('\n') }
+          } catch (error) {
+            return { text: '没办成：' + String((error && error.message) || error) }
+          }
+        },
+      }),
+    )
   } catch (error) {
     warn(error)
   }
