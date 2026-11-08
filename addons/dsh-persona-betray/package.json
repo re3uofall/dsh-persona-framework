@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-betray",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "语言背叛：用语言之前先指出处，出处不同词义就不算同一个",

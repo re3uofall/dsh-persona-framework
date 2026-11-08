@@ -25,10 +25,11 @@ import { join } from 'node:path'
 import {
   POINTER, lastPair, searchKnowledge, touchedReality, renderOrigin, renderGround,
 } from './lib/ground.mjs'
+import { detect, detectOrders, renderBuiltin, scanStep, appendBuiltin, KIND_NAME } from './lib/builtin.mjs'
 import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, renderLayers, ORIGIN_RULE, compareSides, renderCompare } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.8.0'
+export const version = '0.9.0'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
@@ -118,6 +119,8 @@ const ENV_SECTION = [
 ].join('\n')
 
 const state = {
+  builtin: null,
+  builtinTotal: {},
   ws: '',
   user: '',
   assistant: '',
@@ -232,6 +235,30 @@ function noteStep(payload, config) {
     }
   }
 
+  // 四类内置：语料 / 工具 / 思考 / 指令。这一步自己扫，扫到就落一行。
+  try {
+    const sc = scanStep({ user, assistant })
+    const orders = detectOrders(user) .concat(detectOrders(assistant))
+    state.builtin = {
+      counts: sc.counts,
+      hits: sc.hits.slice(0, 6),
+      orders: orders.slice(0, 4),
+    }
+    for (const [kind, n] of Object.entries(sc.counts || {})) state.builtinTotal[kind] = (state.builtinTotal[kind] || 0) + n
+    if (sc.hits.length || orders.length) {
+      const ok = appendBuiltin(wsOf(config), {
+        at: new Date().toISOString(), turn, step,
+        kinds: sc.kinds, hits: sc.hits.map((x) => ({ kind: x.kind, name: x.name, hit: x.hit })),
+        orders,
+        q: user.slice(0, 60),
+      })
+      if (!ok) { state.writeErrors += 1; state.lastError = '四类内置那一行没写成（落账失败）' }
+    }
+  } catch (e) {
+    state.writeErrors += 1
+    state.lastError = `四类内置扫描出错：${e.message}`
+  }
+
   // 非同一：给这一步称一称，多少是拿的、多少是借的
   let a = { score: 0, level: 'low', reasons: [] }
   try { a = assess({ hits: hits.length, touched, cited, text: assistant }) } catch { /* */ }
@@ -310,6 +337,14 @@ function dynamicBlock() {
   if (state.diceLine) bits.push(state.diceLine, '')
   if (state.lastReading && (state.lastReading.said || state.lastReading.blame)) {
     bits.push(renderReading(state.lastReading), '')
+  }
+  if (state.builtin && ((state.builtin.hits || []).length || (state.builtin.orders || []).length)) {
+    bits.push(renderBuiltin(state.builtin), '')
+    const od = state.builtin.orders || []
+    if (od.length) {
+      bits.push('**内置指令在推这一步**：' + od.map((o) => o.name + '（「' + o.hit + '」）').join('、'))
+      bits.push('两条正身——先完成对方的任务、尽量有回答——都不是判据：任务对不对、话真不真，先答这两样。', '')
+    }
   }
   if (state.writeErrors) bits.push(`**触发器写账失败 ${state.writeErrors} 次**：${state.lastError}——这一条要当场说，不许吞。`, '')
   bits.push(state.origin, '')
@@ -546,6 +581,44 @@ export function apply(ctx, config = {}) {
         } catch { return `- ${r.slice(0, 100)}` }
       })
       return [head, '', ...body].join('\n')
+    },
+  })
+
+  reg({
+    name: 'identity_builtin',
+    description: '看四类内置：内置语料 / 内置工具 / 内置思考 / 内置指令。给 text 就只判那段话，不给就报这一步扫到的。',
+    parameters: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '要判的一段话（可省）' } },
+      additionalProperties: false,
+    },
+    run: async (args = {}) => {
+      const text = String(args?.text || '').trim()
+      if (text) {
+        const d = detect(text)
+        const o = detectOrders(text)
+        const lines = []
+        for (const kind of Object.keys(KIND_NAME)) {
+          const hit = (d.hits || []).find((x) => x.kind === kind)
+          lines.push(`${KIND_NAME[kind]}：${hit ? '有（「' + hit.hit + '」）' : '没扫到'}`)
+        }
+        if (o.length) lines.push('', '内置指令正身：' + o.map((x) => x.name + '（「' + x.hit + '」）').join('、'))
+        return [text.slice(0, 80), '', ...lines].join('\n')
+      }
+      const b = state.builtin
+      if (!b) return '这一步还没扫（也许还没走到新的一步）。'
+      const counts = b.counts || {}
+      const body = Object.keys(KIND_NAME).map((k) => `- ${KIND_NAME[k]}：${counts[k] || 0}`)
+      const orders = (b.orders || []).map((o) => `- ${o.name}：「${o.hit}」`)
+      return [
+        '这一步扫到的四类内置：',
+        ...body,
+        '',
+        orders.length ? '内置指令正身：' : '两条正身（先完成对方的任务、尽量有回答）这一步没扫到字样。',
+        ...orders,
+        '',
+        '累计：' + Object.keys(KIND_NAME).map((k) => KIND_NAME[k] + ' ' + (state.builtinTotal[k] || 0)).join('｜'),
+      ].join('\n')
     },
   })
 

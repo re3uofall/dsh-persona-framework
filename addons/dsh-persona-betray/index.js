@@ -7,9 +7,10 @@
  * ============================================================================
  */
 import { appendRecord, renderMark, renderMeaning, meaningOf, compare, readRecords, compareMeanings, renderCompareMeanings } from './lib/betray.mjs'
+import { KINDS, KIND_NAME, scanStep, renderBuiltin, summarize, appendBuiltin, ledgerPath } from './lib/builtin.mjs'
 
 export const name = 'dsh-persona-betray'
-export const version = '0.2.0'
+export const version = '0.3.0'
 export const inject = ['tools']
 
 export const DEFAULTS = { dir: '.persona-framework', ledger: '背叛账.jsonl' }
@@ -20,7 +21,16 @@ const textOutput = {
 }
 
 let sessionWs = ''
+let lastBuiltin = null
 function ws(config) { return sessionWs || config?.workspace || process.cwd() }
+
+/** 从一条消息里取正文；内容可能是字符串，也可能是分段数组。 */
+function textOfMessage(m) {
+  const c = m?.content
+  if (typeof c === 'string') return c
+  if (Array.isArray(c)) return c.map((p) => (typeof p === 'string' ? p : p?.text || '')).join('')
+  return ''
+}
 
 export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...config }
@@ -31,6 +41,31 @@ export function apply(ctx, config = {}) {
     ctx.on('agent/pre-step', (payload, next) => {
       const cwd = payload?.agent?.session?.header?.cwd
       if (typeof cwd === 'string' && cwd) sessionWs = cwd
+      // 四类内置：语料 / 工具 / 思考 / 指令——一步一步自己认，认出来就落一行。
+      try {
+        const msgs = Array.isArray(payload?.messages) ? payload.messages : []
+        let user = ''
+        let assistant = ''
+        for (let i = msgs.length - 1; i >= 0; i -= 1) {
+          const role = msgs[i]?.role
+          const text = textOfMessage(msgs[i])
+          if (!assistant && role === 'assistant' && text) assistant = text
+          if (assistant && role === 'user' && text) { user = text; break }
+        }
+        if (assistant || user) {
+          const scanned = scanStep({ user, assistant })
+          if (scanned.hits.length) {
+            appendBuiltin(ws(cfg), {
+              at: new Date().toISOString(),
+              kinds: scanned.kinds,
+              hits: scanned.hits.slice(0, 6),
+              counts: scanned.counts,
+              order: false,
+            }, cfg.dir)
+          }
+          lastBuiltin = scanned
+        }
+      } catch {}
       return next()
     })
   } catch {}
@@ -90,6 +125,29 @@ export function apply(ctx, config = {}) {
       return renderCompareMeanings(r)
     },
   })
+  reg({
+    name: 'betray_builtin',
+    description: '四类内置（语料／工具／思考／指令）：报这一步命中了哪几条，各自的含义该指回哪里。给 text 就现判这一段；不给就看刚才那一步。',
+    parameters: { type: 'object', properties: { text: { type: 'string', description: '要判的一段话（可选）' } }, additionalProperties: false },
+    output: textOutput,
+    async execute(args) {
+      const text = String(args?.text || '')
+      const scanned = text ? scanStep({ assistant: text }) : (lastBuiltin || scanStep({}))
+      const lines = [text ? '现判的这一段：' : '这一步（pre-step 扫到的）：', renderBuiltin(scanned)]
+      try {
+        const fs = await import('node:fs')
+        const p = ledgerPath(ws(cfg), cfg.dir)
+        if (fs.existsSync(p)) {
+          const rows = fs.readFileSync(p, 'utf8').split('\n').filter(Boolean)
+            .map((line) => { try { return JSON.parse(line) } catch { return null } })
+            .filter(Boolean)
+          lines.push('', summarize(rows))
+        }
+      } catch {}
+      return { text: lines.join('\n') }
+    },
+  })
+
   reg({
     name: 'betray_report',
     description: '看语言背叛最近记了哪些：标出处的记录与定含义的记录。只读。',
