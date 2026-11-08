@@ -6,10 +6,10 @@
 
 | 改什么 | 看哪一份 | 一句话说清它管什么 |
 | --- | --- | --- |
-| **模块正文**（88 篇 md） | [UPDATE-MODULES.md](UPDATE-MODULES.md) | 七节齐、版本记录对、目录同步 |
+| **模块正文**（97 篇 md） | [UPDATE-MODULES.md](UPDATE-MODULES.md) | 七节齐、版本记录对、目录同步 |
 | **功能实现**（`lib/impl.mjs` 里那段） | [GUIDE-FEATURES.md](GUIDE-FEATURES.md) | 不给人格字、三条判据、四层（元胞／组织／功能实现／调节） |
 | **框架本体**（`index.js`、`lib/`、`config.json`） | [UPDATE-CORE.md](UPDATE-CORE.md) | 注入怎么改、程序怎么接、配置怎么加、改完怎么重载才算上桌 |
-| **附加插件**（`addons/` 那六个包） | [UPDATE-PLUGINS.md](UPDATE-PLUGINS.md) | 认清哪份是活的、同步、只推插件 |
+| **附加插件**（`addons/` 那 19 个包） | [UPDATE-PLUGINS.md](UPDATE-PLUGINS.md) | 认清哪份是活的、同步、只推插件 |
 | **框架本体发版** | [UPDATE-GUIDE.md](UPDATE-GUIDE.md) | 版本号、`release-check`、打包发布 |
 
 **本体和发版是两件事，别搅**：本体管「框架怎么跑」（注入、程序、配置、前端），发版管「框架怎么发出去」（版本号、体检、打包）。一次改动可能两样都要走，但顺序是先本体跑通，再发版。
