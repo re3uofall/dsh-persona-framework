@@ -216,18 +216,8 @@ function collect(cfg) {
       .sort((a, b) => a.title.localeCompare(b.title, 'zh'))
   }
 
-  // 第二部分收「功能实现」件：模块类包（一律 dsh-persona-module-）＋ 明确点名的那几个。
-  // 点名的是：通用清扫（sweep）、探索（dsh-persona-explore）、成果（persona-results-plugin）、日记（persona-diary-plugin）。
-  // 判据是包名，不按目录名——目录名会改，包名才是身份。
-  const MODULE_PKG = /^dsh-persona-module-/
-  const IMPL_EXTRA = new Set([
-    "dsh-persona-sweep",
-    "dsh-persona-explore",
-    "persona-results-plugin",
-    "persona-diary-plugin",
-  ])
-  const implAddons = addons.filter((x) => MODULE_PKG.test(x.pkg) || IMPL_EXTRA.has(x.pkg))
-  const otherAddons = addons.filter((x) => !implAddons.includes(x))
+  // 第二部分只摆「功能实现」，不摆插件包：插件一律归第三部分（将来有了单独的实现插件，也仍归第三部分）。
+  const otherAddons = addons.slice()
 
   return {
     ok: true,
@@ -241,7 +231,7 @@ function collect(cfg) {
       programs: programs.length,
       programModules: programs.length + 1,
       impl: impl.length,
-      implAddons: implAddons.length,
+      implAddons: 0,
       addons: addons.length,
       addonsOn: addons.filter((x) => x.enabled).length,
     },
@@ -274,7 +264,7 @@ function collect(cfg) {
       {
         id: "impl",
         title: "模块功能实现",
-        hint: "第二部分：模块功能实现——第一部分那几个模块各自的功能实现。一个模块一条，按模块列，不把里面的程序单列成文件清单；它不给人格字，只真去做、落盘（判据见 GUIDE-FEATURES.md 零之五）。程序模块、自读写、适配这三条的实现并在框架自己的程序里（功能已实现，没有独立插件包）；探索这条的实现是 dsh-persona-explore，成果是 persona-results-plugin，日记是 persona-diary-plugin。改了这一层要重启 DSH 才生效。",
+        hint: "第二部分：模块功能实现——一个模块一条，只写「这条已经实现了」，不列插件包。这一栏没有可启停的东西；真去启停插件，看第三部分。改了这一层要重启 DSH 才生效。",
         items: [
           {
             id: "impl:program",
@@ -291,16 +281,38 @@ function collect(cfg) {
             file: p.file,
             desc: "模块「" + p.title + "」自己的功能实现：真去做、落盘，不给人格字。",
           })),
-          // 模块类插件（模块 29/35）与通用清扫：它们是把某一篇讲的事真做出来的实现件。
-          ...implAddons.map((x) => ({
-            id: "impl:pkg:" + x.pkg,
-            title: x.title + " · 功能实现",
+          {
+            id: "impl:explore",
+            title: "探索 · 功能实现",
             group: "功能实现",
-            file: x.dir,
-            desc: (x.desc ? x.desc + " " : "") + "包：" + x.pkg + (x.version ? "（" + x.version + "）" : ""),
-            detail: "插件包 " + x.pkg,
-            enabled: x.enabled,
-          })),
+            file: "knowledge/web/",
+            desc: "功能已完成：搜、读原文、留判断、排方向四件事都能做，落在 knowledge/web/ 与 explore/ 的队列、触发账里。",
+            detail: "功能已完成（没有独立插件包）",
+          },
+          {
+            id: "impl:results",
+            title: "成果 · 功能实现",
+            group: "功能实现",
+            file: "growth/成果/",
+            desc: "功能已完成：一条一句标题、正文写骨架／判断／还欠什么，落成长条账。",
+            detail: "功能已完成（没有独立插件包）",
+          },
+          {
+            id: "impl:diary",
+            title: "日记 · 功能实现",
+            group: "功能实现",
+            file: "growth/日记/",
+            desc: "功能已完成：公开／私密／记录三本分开写，带日期与出处。",
+            detail: "功能已完成（没有独立插件包）",
+          },
+          {
+            id: "impl:sweep",
+            title: "通用清扫 · 功能实现",
+            group: "功能实现",
+            file: "addons/dsh-persona-sweep/",
+            desc: "功能已完成：账本超过阈值就归档留尾，落清扫账。",
+            detail: "功能已完成（没有独立插件包）",
+          },
         ],
       },
       {
