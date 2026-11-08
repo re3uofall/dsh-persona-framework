@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Module 29 implementation",
+    "description": "Implementation for the plugins module: install, remove, enable, disable, verify; every 10 minutes checks bundles vs dependencies drift. No prompt text."
+  }
+}

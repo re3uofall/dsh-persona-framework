@@ -1,0 +1,19 @@
+{
+  "name": "dsh-persona-mod29",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "模块 29（插件）的功能实现：装、卸、启停、回读，外加每 10 分钟一次的漂移账。不注正文。",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": ["index.js", "lib", "locale", "icon.svg", "cordis.patch.yml"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  },
+  "license": "MIT"
+}
