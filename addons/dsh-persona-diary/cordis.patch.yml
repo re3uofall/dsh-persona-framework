@@ -10,7 +10,7 @@
       name: dsh-persona-diary
       config:
         # 人格根目录（`persona-ai` 那一层）。留空则从会话工作区推 `persona-ai`。
-        personaDir: 'C:/爱思考的大肥鱼思思/persona-ai'
+        personaDir: ''
 
         # 日记目录，相对人格根目录；和 growth.py 的睡前自审写在同一本里
         diaryDir: 'growth/日记'

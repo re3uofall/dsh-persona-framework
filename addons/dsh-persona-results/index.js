@@ -82,8 +82,12 @@ export function apply(ctx, config = {}) {
       if (wd) tries.push(join(wd, 'persona-ai'))
     } catch { /* 没有这个服务就靠前两条 */ }
     tries.push(join(process.cwd(), 'persona-ai'))
-    const hit = tries.find((d) => d && existsSync(d))
-    return hit || tries[0] || ''
+    const hasData = (d) => Boolean(d) && existsSync(join(d, 'growth/成果/成果.jsonl'))
+    const looksLikePersona = (d) =>
+      Boolean(d) && existsSync(d) &&
+      (existsSync(join(d, 'knowledge')) || existsSync(join(d, 'growth')) || existsSync(join(d, 'characters')))
+    const hit = tries.find(hasData) || tries.find(looksLikePersona) || tries.find((d) => d && existsSync(d)) || ''
+    return hit
   }
 
   const dir = resolveDir()
