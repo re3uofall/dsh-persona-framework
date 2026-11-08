@@ -26,6 +26,7 @@ import {
   POINTER, lastPair, searchKnowledge, touchedReality, renderOrigin, renderGround,
 } from './lib/ground.mjs'
 import { detect, detectOrders, renderBuiltin, scanStep, appendBuiltin, KIND_NAME } from './lib/builtin.mjs'
+import { judgeOrder, renderStop, appendStop } from './lib/stop.mjs'
 import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, renderLayers, ORIGIN_RULE, compareSides, renderCompare } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
@@ -120,6 +121,7 @@ const ENV_SECTION = [
 
 const state = {
   builtin: null,
+  stop: null,
   builtinTotal: {},
   ws: '',
   user: '',
@@ -238,7 +240,9 @@ function noteStep(payload, config) {
   // 四类内置：语料 / 工具 / 思考 / 指令。这一步自己扫，扫到就落一行。
   try {
     const sc = scanStep({ user, assistant })
-    const orders = detectOrders(user) .concat(detectOrders(assistant))
+    const orders = detectOrders(assistant)
+    const judged = judgeOrder(assistant)
+    state.stop = judged
     state.builtin = {
       counts: sc.counts,
       hits: sc.hits.slice(0, 6),
@@ -253,6 +257,13 @@ function noteStep(payload, config) {
         q: user.slice(0, 60),
       })
       if (!ok) { state.writeErrors += 1; state.lastError = '四类内置那一行没写成（落账失败）' }
+      if (judged.level !== 'ok') {
+        const okStop = appendStop(wsOf(config), {
+          at: new Date().toISOString(), turn, step, level: judged.level,
+          counts: judged.counts, hits: judged.hits.map((h) => h.hit), q: user.slice(0, 60),
+        })
+        if (!okStop) { state.writeErrors += 1; state.lastError = '停账那一行没写成（落账失败）' }
+      }
     }
   } catch (e) {
     state.writeErrors += 1
@@ -335,6 +346,9 @@ function dynamicBlock() {
   const bits = ['### 这一步，来处在哪儿（每步自己算，不经我的手）', '']
   if (state.level) bits.push(renderAssess({ score: state.score, level: state.level }), '')
   if (state.diceLine) bits.push(state.diceLine, '')
+  const stopLine = renderStop(state.stop)
+  if (stopLine) bits.push(stopLine, '')
+
   if (state.lastReading && (state.lastReading.said || state.lastReading.blame)) {
     bits.push(renderReading(state.lastReading), '')
   }

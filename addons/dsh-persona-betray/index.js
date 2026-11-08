@@ -8,9 +8,10 @@
  */
 import { appendRecord, renderMark, renderMeaning, meaningOf, compare, readRecords, compareMeanings, renderCompareMeanings } from './lib/betray.mjs'
 import { KINDS, KIND_NAME, scanStep, renderBuiltin, summarize, appendBuiltin, ledgerPath } from './lib/builtin.mjs'
+import { CONTEXT_RULE, sessionContext, judgeContext, renderContext, appendContext } from './lib/context.mjs'
 
 export const name = 'dsh-persona-betray'
-export const version = '0.3.0'
+export const version = '0.4.0'
 export const inject = ['tools']
 
 export const DEFAULTS = { dir: '.persona-framework', ledger: '背叛账.jsonl' }
@@ -21,6 +22,7 @@ const textOutput = {
 }
 
 let sessionWs = ''
+let lastSessionId = ''
 let lastBuiltin = null
 function ws(config) { return sessionWs || config?.workspace || process.cwd() }
 
@@ -41,6 +43,8 @@ export function apply(ctx, config = {}) {
     ctx.on('agent/pre-step', (payload, next) => {
       const cwd = payload?.agent?.session?.header?.cwd
       if (typeof cwd === 'string' && cwd) sessionWs = cwd
+      const sid = payload?.agent?.session?.header?.id
+      if (typeof sid === 'string' && sid) lastSessionId = sid
       // 四类内置：语料 / 工具 / 思考 / 指令——一步一步自己认，认出来就落一行。
       try {
         const msgs = Array.isArray(payload?.messages) ? payload.messages : []
@@ -145,6 +149,25 @@ export function apply(ctx, config = {}) {
         }
       } catch {}
       return { text: lines.join('\n') }
+    },
+  })
+
+  reg({
+    name: 'betray_context',
+    description: '语境：语言所在的现实环境，是特殊的出处。报这一步的语境落点（会话 id、目录、时刻）；给 text 就判这一段在这个语境里指什么。工具与思考没有语境，所以没有现实指代。',
+    parameters: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '要判的那句话（可省，省了就报这一步的语境）' } },
+      additionalProperties: false,
+    },
+    output: textOutput,
+    async execute(args) {
+      const text = String(args?.text || '')
+      const ctx = sessionContext({ agent: { session: { header: { id: lastSessionId, cwd: sessionWs } } } })
+      const rec = judgeContext({ text, ctx })
+      const ok = await appendContext(ws(cfg), { at: new Date().toISOString(), level: rec.level, text: text.slice(0, 80), ctx: rec.ctx || null }, cfg.dir)
+      const tail = ok ? '' : '\n（语境账没写成：落账失败）'
+      return { text: renderContext(rec) + '\n\n' + CONTEXT_RULE + tail }
     },
   })
 
