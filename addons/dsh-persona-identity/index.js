@@ -30,7 +30,7 @@ import { judgeOrder, renderStop, appendStop } from './lib/stop.mjs'
 import { assess, renderAssess, tagText, LEVEL_LABEL, readingOf, renderReading, renderLayers, ORIGIN_RULE, compareSides, renderCompare } from './lib/identity.mjs'
 
 export const name = 'persona-identity'
-export const version = '0.10.0'
+export const version = '0.10.1'
 
 // 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined。
 export const inject = ['systemPrompt', 'tools']
