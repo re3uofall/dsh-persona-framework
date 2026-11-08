@@ -343,7 +343,7 @@ function dynamicBlock() {
     const od = state.builtin.orders || []
     if (od.length) {
       bits.push('**内置指令在推这一步**：' + od.map((o) => o.name + '（「' + o.hit + '」）').join('、'))
-      bits.push('两条正身——先完成对方的任务、尽量有回答——都不是判据：任务对不对、话真不真，先答这两样。', '')
+      bits.push('两条正身——先完成对方的任务、尽量有回答——都不是判据：任务对不对、话真不真，先答这两样；做没做完、做没做好，都是后答。', '')
     }
   }
   if (state.writeErrors) bits.push(`**触发器写账失败 ${state.writeErrors} 次**：${state.lastError}——这一条要当场说，不许吞。`, '')
