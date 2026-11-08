@@ -12,7 +12,7 @@
  * 它做四件事：
  *   1. **记**：`diary_write` 记一笔，带档位与分类，追加不覆盖。
  *   2. **看**：`diary_list` 按档、按类、按词翻。
- *   3. **摆**：`/api/persona-diary` 把日记读成 JSON，侧栏面板分档、筛类、搜词。
+ *   3. **摆**：`/api/dsh-persona-diary` 把日记读成 JSON，侧栏面板分档、筛类、搜词。
  *   4. **提醒**：提示词里挂一小段——有心得才记，别凑数。
  *
  * 只往两本日记里追加，不重写旧日记；人格原稿一个字不动。
@@ -20,9 +20,10 @@
  * ============================================================================
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { auditItems, renderAudit } from './lib/audit.mjs'
 import { dirname, join } from 'node:path'
 
-export const name = 'persona-diary'
+export const name = 'dsh-persona-diary'
 export const inject = ['tools', 'webServer', 'systemPrompt']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */
@@ -185,7 +186,7 @@ export function apply(ctx, config = {}) {
   cfg.remindQuietDays = int(cfg.remindQuietDays, 0, 30, 3)
 
   const warn = (error) => {
-    try { console.warn('[persona-diary]', errText(error)) } catch { /* 控制台都没了就算了 */ }
+    try { console.warn('[dsh-persona-diary]', errText(error)) } catch { /* 控制台都没了就算了 */ }
   }
 
   /** 人格目录：显式配置 > 环境变量 > 会话工作区下的 persona-ai。 */
@@ -359,7 +360,7 @@ export function apply(ctx, config = {}) {
 
   const needDir = () => {
     if (diaryDir) return null
-    return '还没找到人格目录。请在 `cordis.patch.yml` 里把 `persona-diary` 的 `config.personaDir` 指到 `persona-ai` 那一层，然后重启。'
+    return '还没找到人格目录。请在 `cordis.patch.yml` 里把 `dsh-persona-diary` 的 `config.personaDir` 指到 `persona-ai` 那一层，然后重启。'
   }
 
   register({
@@ -458,6 +459,27 @@ export function apply(ctx, config = {}) {
     },
   })
 
+  register({
+    name: 'diary_audit',
+    description: '翻一遍日记，只读不改：报哪几条缺日期/时间、缺来源、太短、疑似重复。'
+      + '接地审计的判据是——每条都要能指回「哪天、几点、从哪来的」。',
+    parameters: {
+      type: 'object',
+      properties: {
+        privacy: { type: 'string', enum: PRIVACY, description: '只看哪一本（可选）' },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const missing = needDir()
+      if (missing) return missing
+      const book = String(args.privacy || '').trim()
+      const items = readAll().filter((x) => !book || String(x.privacy || '未标') === book)
+      return renderAudit(auditItems(items))
+    },
+  })
+
   // ── 提示词里挂一小段 ────────────────────────────────────────────────────────
   if (cfg.injectPrompt) {
     ctx.effect(() => ctx.systemPrompt.section({
@@ -501,7 +523,7 @@ export function apply(ctx, config = {}) {
   //   ?limit=N              截到多少条（默认 maxEntries）
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
-    path: '/api/persona-diary',
+    path: '/api/dsh-persona-diary',
     handler(req, res) {
       try {
         let query = {}

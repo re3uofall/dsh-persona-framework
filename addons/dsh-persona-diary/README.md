@@ -75,11 +75,11 @@
 - 下面一排类别片（带条数）+ 一个搜索框；点类别筛，再点一下取消；搜索框右边出现「清」。
 - 按天分组、时间倒序；每条是「类别 + 时间 +（来源）+ 正文」，全展开，不用点。
 - 私密与早先的条目带小标记，边框也浅一格。
-- 刷新按钮重新拉一次；数据从 `/api/persona-diary` 一次取全量，筛在前端做，点一下立刻变。
+- 刷新按钮重新拉一次；数据从 `/api/dsh-persona-diary` 一次取全量，筛在前端做，点一下立刻变。
 
 ## 配置
 
-全在 `cordis.patch.yml` 里 `persona-diary` 那一行的 `config`，改完重启 DSH：
+全在 `cordis.patch.yml` 里 `dsh-persona-diary` 那一行的 `config`，改完重启 DSH：
 
 | 键 | 默认 | 说明 |
 |---|---|---|
@@ -91,7 +91,7 @@
 
 ## 接口
 
-`GET /api/persona-diary`，可带：
+`GET /api/dsh-persona-diary`，可带：
 
 | 参数 | 作用 |
 |---|---|
@@ -110,8 +110,8 @@ node --check client.js
 node selfcheck.mjs          # 临时目录里跑，不碰真实日记
 
 # 装好之后，看路由吐不吐东西
-Invoke-RestMethod ($env:DSH_WEB_URL + '/api/persona-diary')
-Invoke-RestMethod ($env:DSH_WEB_URL + '/api/persona-diary?privacy=公开')
+Invoke-RestMethod ($env:DSH_WEB_URL + '/api/dsh-persona-diary')
+Invoke-RestMethod ($env:DSH_WEB_URL + '/api/dsh-persona-diary?privacy=公开')
 ```
 
 装好后最直接的验证：

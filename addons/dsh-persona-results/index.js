@@ -6,7 +6,7 @@
  * 它做三件事：
  *   1. **收**：她调 `result_write` 交一条（标题、类型、正文），追加进
  *      `persona-ai/growth/成果/成果.jsonl`，一行一条，不重写旧行。
- *   2. **看**：`/api/persona-results` 把账本吐成 JSON，侧栏的「成果」面板 fetch 它。
+ *   2. **看**：`/api/dsh-persona-results` 把账本吐成 JSON，侧栏的「成果」面板 fetch 它。
  *   3. **提醒**：每轮在提示词里挂一小段——想住了一个判断再交，别交流水账。
  *
  * 只写自己的成果文件；v3.1 人格原稿一个字不动。
@@ -14,9 +14,10 @@
  * ============================================================================
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { findItem, renderSearch, renderShow, searchItems } from './lib/query.mjs'
 import { dirname, join } from 'node:path'
 
-export const name = 'persona-results'
+export const name = 'dsh-persona-results'
 export const inject = ['tools', 'webServer', 'systemPrompt']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */
@@ -61,7 +62,7 @@ export function apply(ctx, config = {}) {
   cfg.injectPrompt = cfg.injectPrompt !== false
 
   const warn = (error) => {
-    try { console.warn('[persona-results]', errText(error)) } catch { /* 控制台都没了就算了 */ }
+    try { console.warn('[dsh-persona-results]', errText(error)) } catch { /* 控制台都没了就算了 */ }
   }
 
   /** 人格目录：显式配置 > 环境变量 > 会话工作区下的 persona-ai。 */
@@ -149,7 +150,7 @@ export function apply(ctx, config = {}) {
 
   const needDir = () => {
     if (file) return null
-    return '还没找到人格目录。请在 `cordis.patch.yml` 里把 `persona-results` 的 `config.personaDir` 指到 `persona-ai` 那一层，然后重启。'
+    return '还没找到人格目录。请在 `cordis.patch.yml` 里把 `dsh-persona-results` 的 `config.personaDir` 指到 `persona-ai` 那一层，然后重启。'
   }
 
   register({
@@ -190,6 +191,48 @@ export function apply(ctx, config = {}) {
       append(item)
       const count = readAll().length
       return `交上去了（第 ${count} 条）：${title}\n侧栏的「成果」面板里能看到。`
+    },
+  })
+
+  register({
+    name: 'result_show',
+    description: '按 id 或标题里几个字，取一条成果的全文。',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: '那一条的 id，或者标题里几个字' },
+      },
+      required: ['key'],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const missing = needDir()
+      if (missing) return missing
+      const key = String(args.key || '').trim()
+      if (!key) return '给个 id 或标题里几个字。'
+      return renderShow(findItem(readAll(), key))
+    },
+  })
+
+  register({
+    name: 'result_search',
+    description: '按词搜成果：标题、正文、标签、类型都算；只列摘要，要全文用 result_show。',
+    parameters: {
+      type: 'object',
+      properties: {
+        q: { type: 'string', description: '要找的词' },
+        kind: { type: 'string', enum: KINDS, description: '只看这一类（可选）' },
+        limit: { type: 'number', description: '最多几条，1–50，默认 10' },
+      },
+      required: ['q'],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const missing = needDir()
+      if (missing) return missing
+      const q = String(args.q || '').trim()
+      if (!q) return '搜什么？给个词。'
+      return renderSearch(searchItems(readAll(), { q, kind: args.kind, limit: args.limit }), q)
     },
   })
 
@@ -241,7 +284,7 @@ export function apply(ctx, config = {}) {
   // ── 面板的数据口 ────────────────────────────────────────────────────────────
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
-    path: '/api/persona-results',
+    path: '/api/dsh-persona-results',
     handler(req, res) {
       try {
         const items = readAll().slice(-cfg.maxEntries).reverse()

@@ -45,11 +45,11 @@ persona-ai/growth/成果/
 - 侧栏最下面一排图标里多一枚书签，标签「成果」。
 - 打开后按时间倒序摆，每张卡片是「类型 + 标题 + 时间」，点一下展开正文；再点收起。
 - 空态：「还没交过东西。她想完了，自己会来交。」
-- 刷新按钮重新拉一次；数据从 `/api/persona-results` 取，不轮询。
+- 刷新按钮重新拉一次；数据从 `/api/dsh-persona-results` 取，不轮询。
 
 ## 配置
 
-全在 `cordis.patch.yml` 里 `persona-results` 那一行的 `config`，改完重启 DSH：
+全在 `cordis.patch.yml` 里 `dsh-persona-results` 那一行的 `config`，改完重启 DSH：
 
 | 键 | 默认 | 说明 |
 |---|---|---|
@@ -67,7 +67,7 @@ node --check index.js
 node --check client.js
 
 # 装好之后，看路由吐不吐东西
-Invoke-RestMethod ($env:DSH_WEB_URL + '/api/persona-results')
+Invoke-RestMethod ($env:DSH_WEB_URL + '/api/dsh-persona-results')
 ```
 
 装好后最直接的验证：
