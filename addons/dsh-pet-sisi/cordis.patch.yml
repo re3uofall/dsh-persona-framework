@@ -1,0 +1,4 @@
+# dsh-pet-sisi：DSH 会话 ↔ dsh-pet 桌宠的搭桥（独立附加插件，不依赖 dsh-pet 的代码，只走它的 HTTP 路由）
+- insert:
+    - id: dsh-pet-sisi
+      name: dsh-pet-sisi

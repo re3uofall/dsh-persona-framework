@@ -1,0 +1,18 @@
+{
+  "name": "dsh-pet-sisi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "思思与 dsh-pet 桌宠的搭桥：读它的对话、替它说话、让它做动作、改它的人设与配置，全部走它自己的 HTTP 路由。",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "files": ["index.js", "lib", "locale", "icon.svg", "cordis.patch.yml", "README.md"],
+  "license": "MIT"
+}
