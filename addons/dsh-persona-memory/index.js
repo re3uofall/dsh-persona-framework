@@ -589,7 +589,7 @@ export function apply(ctx, config = {}) {
           const out = []
           for (const f of files) {
             const text = readFileSync(join(fromDir, f), 'utf8')
-            const r = condenseSkeleton(text, { budget, pointerOf: (seq) => `session/${f}#${seq}` })
+            const r = condenseSkeleton(text, { budget, pointerOf: (sec) => `session/${f}#${(sec && sec.seq != null) ? sec.seq : sec}` })
             for (const ln of r.lines) out.push(ln)
           }
           const body = `# 骨架化提炼（${out.length} 条，预算 ${budget} 字节/篇）\n\n` + out.join('\n')
