@@ -1,0 +1,9 @@
+# 未来失认：单独的代价账插件（与 dsh-persona-futurealsome 用文件当契约，不互相 import）
+- insert:
+    - id: persona-futurenotme
+      name: dsh-persona-futurenotme
+      config:
+        workspace: ''
+        dir: .persona-framework
+        minSettled: 4
+        warnRate: 0.5

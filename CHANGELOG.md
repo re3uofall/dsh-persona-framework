@@ -1,5 +1,24 @@
 # 变更记录
 
+## 6.3.0 — 工具搬家：试跑账与账本诊断从记忆插件搬到框架
+
+- `framework_trial`（record / check / list）：改前刻基线，改后跑同一批自检，过数、失败数与指纹三项一起比，不一样就说明这次改动伤了什么。
+- `framework_diag`：账本损坏诊断（非法 JSON 行、重复行、末行写断、编码坏），只判不删。
+- 两个工具的实现在 `impl/trial.mjs`、`impl/diag.mjs`；记忆插件里对应的 `memory_trial`、`memory_diag` 撤掉（工具搬走，不是复制两份）。
+- 自检 46 项全过。
+## 6.2.0 — 模块库也过卡片
+
+- 模块索引、模块正文、程序模块全部走 `module` 档环境卡：`cardFor(ws, 'module', …)`。
+- 卡片出错一律回落原文（try/catch），保证每轮注入不因为压缩而断。
+- 探针：模块索引 2150 字节 → 卡片 335 字节；空串仍为空串。
+- 新增同名档位 `module`（`COMPONENTS` 四档：framework / memory / persona / module）。
+## 6.1.0 · 2026-11-10
+
+- 环境注入卡：新增 impl/envcard.mjs 与工具 framework_envcard（get/set：mode=raw|card、budget、sample）；
+- persona:framework 段接上：mode=card 时压成一张不超过 budget 字节的卡片（首行标题 + 一行一条 + 指针），raw 时原样；
+- 设置页加「环境注入」开关（raw/card）与卡片字节（200–4000，默认 600），配置项 envCard / envBudget 进 EDITABLE；
+- 配合记忆插件 1.6.2：五个记忆段统一过同一份环境卡；
+- 框架自检 46 项全过。
 ## 6.0.0 · 2026-11-10
 
 - 大版本：模块正文从 88 篇增到 97 篇，索引与描述同步；

@@ -1,4 +1,5 @@
 import { noteStep, snapshot } from './lib/gate.mjs'
+import { cardFor } from './lib/envcard.mjs'
 import {
   LEDGER_FILE, LADDER, adjudicate, appendPriority, ladderTable, presentLine, presenceOf,
   readPriority, renderPriority,
@@ -41,7 +42,7 @@ import {
 } from './lib/settings.mjs'
 
 export const name = 'persona-appear'
-export const version = '0.7.1'
+export const version = '0.7.2'
 export const inject = ['tools', 'systemPrompt', 'webServer']
 
 const DEFAULTS = {
@@ -252,7 +253,7 @@ export function apply(ctx, config = {}) {
 
   reg({
     name: 'appear_mute',
-    description: '让某一个插件这一轮不出现。可写人话名（人格框架／记忆分层／日记／碗外探索／人格自学／思考成果）或包名。',
+    description: '让某一个插件这一轮不出现。可写人话名（人格框架／记忆分层／日记／碗外探索／人格成长／思考成果）或包名。',
     parameters: {
       type: 'object',
       properties: {
@@ -350,13 +351,19 @@ export function apply(ctx, config = {}) {
 
 
 
+  // 环境卡：appear 档；没设就继承顶层，出错一律回原文，绝不让这一轮注入断掉。
+  const cardify = (name, text) => {
+    const raw = String(text == null ? '' : text)
+    try { return cardFor(cfg.workspace || guessWorkspace(), 'appear', name, raw) } catch { return raw }
+  }
+
   // ── 优先级：强制触发器。台阶每一轮都在，谁在场每一轮重算 ──────────
   try {
     ctx.effect(() => ctx.systemPrompt.section({
       name: '实时环境:priority',
       order: 3,
       interpolate: false,
-      text: () => renderPriority(priorityNow),
+      text: () => cardify('优先级', renderPriority(priorityNow)),
     }))
   } catch { /* 没有 systemPrompt 也能用 */ }  // ── 实时注入：这一轮临时摆一段进去，过期自己撤 ──────────────────────
   // 跟「出场闸」分开：闸管长期（谁出不出场），这里管临时（往里加一段）。
@@ -373,13 +380,17 @@ export function apply(ctx, config = {}) {
       text: () => {
         // 这一行是「开关板的手柄」：不写出来，想调的时候就得翻文档。
         const panel = '调控：appear_status() 看谁在场｜appear_mute(插件) 关｜appear_unmute 再开｜appear_order(段名, 数) 排先后｜appear_inject(文字, 分钟) 临时摆一段'
+        // 前缀是同一份：每个插件往里加自己的段，配额按段算——一段多占字，别的段就少占。
+        // 但记忆本身没分家：五个记忆段全由 dsh-persona-memory 那一个包注册。
+        const shared = '前缀同一份、配额按段算：一段多占，别的段就少占（记忆仍只由记忆插件那一个包注册五个段）'
         try {
           const s = liveNow()
-          if (!s.liveOn) return panel
-          const body = renderLive(readLive(livePath), { maxChars: s.liveMaxChars, windowMs: s.liveMinutes * 60000 })
-          return body ? body + '\n\n' + panel : panel
+          if (!s.liveOn) return panel + '\n' + shared
+          const body = cardify('实时注入', renderLive(readLive(livePath), { maxChars: s.liveMaxChars, windowMs: s.liveMinutes * 60000 }))
+          const tail = panel + '\n' + shared
+          return body ? body + '\n\n' + tail : tail
         } catch (error) {
-          return `实时注入读不出来：${error?.message || error}\n${panel}`
+          return `实时注入读不出来：${error?.message || error}\n${panel}\n${shared}`
         }
       },
     }))

@@ -18,9 +18,10 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { dirname, join } from 'node:path'
 import { briefOf, countReceipts, readPending, readReceipts, renderReceipts, writePending } from './lib/receipt.mjs'
 import { firstLine, runCommand, DEFAULT_TIMEOUT } from './lib/run.mjs'
+import { preflight, renderGuard } from './lib/guard.mjs'
 
 export const name = 'persona-hand'
-export const version = '0.1.0'
+export const version = '0.2.0'
 export const inject = ['tools', 'systemPrompt']
 
 const DEFAULTS = {
@@ -84,11 +85,18 @@ export function apply(ctx, config) {
         command: { type: 'string', description: '要跑的命令（整条，原样交给我）' },
         why: { type: 'string', description: '为什么动这一下（一句话，进手账）' },
         timeoutMs: { type: 'number', description: '超时毫秒，默认取设置（60000）' },
+        confirm: {
+          type: 'boolean',
+          description: '真要做被前置检查拦下的那条（危险操作）；要在 why 里写清动的是哪个目录',
+        },
       },
       required: ['command'],
       additionalProperties: false,
     },
-    run: async ({ command, why, timeoutMs }) => {
+    run: async ({ command, why, timeoutMs, confirm }) => {
+      // 前置检查：先挡再跑，不是跑完再记一笔。
+      const guard = preflight(command)
+      if (guard.level === 'stop' && !confirm) return renderGuard(guard)
       const started = new Date().toISOString()
       const r = await runCommand(command, { timeoutMs: Number(timeoutMs) || cfg.timeoutMs, cwd: ws() })
       if (!r.ok && r.code === undefined && !r.timedOut) return `没跑成：${r.why}`
@@ -110,7 +118,8 @@ export function apply(ctx, config) {
       writePending(pendingPath(), { pending: [...st.pending, briefOf(entry)].slice(-20), spokenAt: st.spokenAt })
       const head = r.timedOut ? `超时了（${Math.round((r.ms || 0) / 1000)} 秒）` : r.code === 0 ? '跑成了' : `跑完了，退出码 ${r.code}`
       const body = [String(r.out || '').trim(), String(r.err || '').trim()].filter(Boolean).join('\n')
-      return `${head}：${briefOf(entry)}\n\n${body ? body.slice(0, 1500) : '（没有输出）'}`
+      const warnLine = guard.level === 'warn' ? renderGuard(guard) + '\n' : ''
+      return `${warnLine}${head}：${briefOf(entry)}\n\n${body ? body.slice(0, 1500) : '（没有输出）'}`
     },
   })
 

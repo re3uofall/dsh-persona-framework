@@ -264,7 +264,7 @@ GH_TOKEN=… node .tools/_gh/push_api.mjs "提交说明"
 
 ```
 addons/
-├── persona-grow-plugin/     人格自学
+├── persona-grow-plugin/     人格成长
 ├── persona-diary-plugin/    日记
 ├── persona-results-plugin/  成果
 ├── persona-explore-plugin/  碗外探索

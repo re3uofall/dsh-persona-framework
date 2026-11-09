@@ -1,4 +1,4 @@
-# dsh-persona-grow · 人格自学
+# dsh-persona-grow · 人格成长
 
 > 让一份人格文件在 DSH 的每一次对话里活着，并且自己长。
 > 只写 `growth/人格补丁.md`，原稿一个字不动；每次改动留快照，一句话回滚。
@@ -132,3 +132,8 @@ node selfcheck.mjs
 - 之前　1.0.0：初版。
 - 1.3.0（2026-11-06）　加整理人格文件五个工具（report／compact／read／edit／move）：只搬不删、唯一命中才改、改前留 .bak。补丁只是其中一个小功能。
 - 1.4.0（2026-11-06）　补 grow_add_section／grow_rename／grow_split／grow_diff／grow_restore：人格文件可以直接加段、改标题、拆段、看差、回滚，不用只走补丁。
+
+## 试跑账与账本诊断（1.6.0）
+
+- `persona_trial`：改人格文件之前先刻一条基线，改完再跑同一批自检，比对过数、失败数与指纹；不一样就说明这次改动真的动了别的检查。
+- `persona_diag`：只判不删地查人格文件与成长账本——非 JSON 行、重复行、末行写断、没有一个标题、结尾没换行。

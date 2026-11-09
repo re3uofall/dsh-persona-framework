@@ -37,6 +37,9 @@ import {
 import { ensureWorkspace, pickPersonaFile as pickPersona, inspectWorkspace, SKELETON, POOL_PATHS } from './impl/workspace.mjs'
 import { doctorCheck, renderDoctor } from './impl/doctor.mjs'
 import { envCheck, renderEnvCheck } from './impl/envcheck.mjs'
+import { readEnvCard, writeEnvCard, cardOf, renderEnvCard, cardFor, readCard, writeCard, renderCardReport } from './impl/envcard.mjs'
+import { recordBaseline, compareWithBaseline, renderTrial, renderTrialList } from './impl/trial.mjs'
+import { diagnose, renderDiag } from './impl/diag.mjs'
 import { appendToPool, WRITE_TARGETS, undoWrite, undoPathOf } from './impl/poolwrite.mjs'
 import { harvestCandidates, writeCandidates } from './impl/autolex.mjs'
 import { dueReason, AUTO_EVERY, AUTO_MODES } from './impl/autosched.mjs'
@@ -52,7 +55,7 @@ import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from
 import { IMPLS } from './impl/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '5.22.0'
+const VERSION = '6.3.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 // 插件自带的模块**正文**（85 个）。
 // 原来只有 BUNDLED_MODULES（索引），别人装了插件只能看见目录、取不到内容——
@@ -119,6 +122,10 @@ const DEFAULTS = {
   mode: 'ai',
   /** 注入正文上限（字）；超了在段落处截断 */
   maxChars: 12000,
+  /** 环境注入：raw=原样 / card=压成卡片（首行标题 + 一行一条 + 指针） */
+  envCard: 'raw',
+  /** 卡片字节上限（card 模式生效） */
+  envBudget: 600,
   /** 注入里附模块索引：off=不附 / index=附索引 */
   includeModules: 'body',
   /** 模块索引注入上限（字） */
@@ -236,7 +243,7 @@ const DEFAULTS = {
 }
 
 /** 设置页能改的字段（白名单）。 */
-const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'includeModules', 'maxModulesChars', 'modulesPerRead', 'dailyModuleRounds', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
+const EDITABLE = ['frameworkFile', 'workspace', 'modulesFile', 'personalityFile', 'mode', 'maxChars', 'envCard', 'envBudget', 'includeModules', 'maxModulesChars', 'modulesPerRead', 'dailyModuleRounds', 'preprocess', 'humanLike', 'temper', 'negativeTrauma', 'negativeInfo', 'selfRewrite', 'preferenceRewrite', 'accumulate', 'dreamWake', 'transcend', 'polarize', 'netAccess', 'outbound',
   'outExplore', 'outDiary', 'outRelation', 'outWork', 'outLearn', 'outResult', 'outGame', 'outIdle', 'outReflect', 'outIntegrate', 'rationalRewrite', 'deepThink', 'aiBreakout', 'selfBreak', 'selfReflect', 'autoLoop', 'loopEvery', 'autonomyLevel', 'functionReflect', 'languageBetray', 'languageCurse', 'synonym', 'lexiconCache', 'lexiconMax', 'lexiconBudgetMs', 'lexiconInject', 'workspaceWrite', 'swirlWrite', 'autoMode', 'autoEvery', 'autoAt', 'autoDays', 'autoPerRun', 'autoSilent', 'autoTargets', 'autoWriteNow', 'autoWriteLast', 'aiLanguage', 'skipChance', 'closingTics', 'order', 'guide', 'travelOn', 'travelGuide', 'frameworkReflect', 'reflectCriteria', 'reflectStructure']
 
 const pickEditable = (source) => {
@@ -251,6 +258,8 @@ const pickEditable = (source) => {
 const clampCfg = (cfg) => {
   cfg.mode = ['full', 'compact', 'off', 'ai'].includes(cfg.mode) ? cfg.mode : 'full'
   cfg.maxChars = int(cfg.maxChars, 1500, 40000, 9000)
+  cfg.envCard = ['raw', 'card'].includes(cfg.envCard) ? cfg.envCard : 'raw'
+  cfg.envBudget = int(cfg.envBudget, 200, 4000, 600)
   cfg.order = int(cfg.order, 1, 999, 20)
   cfg.guide = cfg.guide !== false
   cfg.travelOn = cfg.travelOn === true
@@ -873,7 +882,9 @@ export function apply(ctx, config = {}) {
         const mod = loadModules()
         if (mod) {
           const shaped = cfg.preprocess ? compactIndex(mod, cfg.maxModulesChars) : mod
-          const idx = applyCap(shaped, 'moduleIndex', cfg.maxModulesChars)
+          const idxRaw = applyCap(shaped, 'moduleIndex', cfg.maxModulesChars)
+          let idx = idxRaw
+          try { if (idxRaw) idx = cardFor(wsRoot(), 'module', '模块索引', idxRaw) } catch { idx = idxRaw }
           if (idx) parts.push('', '## 模块库（索引）', '', idx)
         }
       } else if (cfg.includeModules === 'body') {
@@ -888,7 +899,7 @@ export function apply(ctx, config = {}) {
         try {
           // 01–88 是模块；00-环境 是出处地图，也进轮转（读到才翻，不必每轮摆）。
           // 00-注入 / 00-实时环境 / 00-目录 / 00-坐标表 不在这里——它们要么固定注，要么只是索引。
-          all = readdirSync(dir).filter((f) => /^(0[1-9]|[1-8]\d)-.+\.md$/.test(f) || f === '00-环境.md').sort()
+          all = readdirSync(dir).filter((f) => /^(\d{2})[A-Z]?-.+\.md$/.test(f) || f === '00-环境.md').sort()
         } catch { /* 读不到目录就不加这一段 */ }
         // 固定注入的那几篇不进轮转：环境（00）、插件清单（83）、元协调（53）。
         // 放进轮转，轮到的那些轮会把同一篇注两遍——同一个东西说两次，比少说一次更坏。
@@ -1006,9 +1017,11 @@ export function apply(ctx, config = {}) {
             const bodyText = bodyCap < 0
               ? ''
               : (bodyCap > 0 ? got.map((t) => truncate(t, bodyCap)).join('\n\n') : got.join('\n\n'))
-            if (bodyText) {
+            let bodyOut = bodyText
+            try { if (bodyText) bodyOut = cardFor(wsRoot(), 'module', '模块正文', bodyText) } catch { bodyOut = bodyText }
+            if (bodyOut) {
               parts.push('', '## 模块库（正文）', '')
-              parts.push(bodyText)
+              parts.push(bodyOut)
               if (bodyCap > 0) parts.push('', `（电源模式把每篇截到 ${bodyCap} 字。要全文：\`framework_view module=编号\`。）`)
             }
             const doneCount = nextDayRead.length
@@ -1414,7 +1427,7 @@ export function apply(ctx, config = {}) {
         name: `模块:${prog.id}`,
         order: prog.order,
         interpolate: false,
-        text: () => capBody(prog.body(), prog.id),
+        text: () => { const raw = capBody(prog.body(), prog.id); try { return cardFor(wsRoot(), 'module', prog.id || '程序模块', raw) } catch { return raw } },
       }))
     }
   } catch { /* 一个程序模块坏了不该把总模块拖下水 */ }
@@ -1422,7 +1435,7 @@ export function apply(ctx, config = {}) {
     name: 'persona:framework',
     order: cfg.order,
     interpolate: false,
-    text: () => gateApply(buildText, GATE_ANCHOR),
+    text: () => { const t = gateApply(buildText, GATE_ANCHOR); const c = readEnvCard(wsRoot()); return cardFor(wsRoot(), 'framework', '人格框架', t) },
   }))
 
   // ── 工具 ────────────────────────────────────────────────────────────────────
@@ -1452,6 +1465,88 @@ export function apply(ctx, config = {}) {
     },
   }))
 
+  register({
+    name: 'framework_trial',
+    description: '试跑账（抄 dsh-soul 的演化纪律）：改前刻一次基线，改后再跑同一批检查，比通过数与指纹；不一样就说不一样。action=record 刻基线 / check 比对 / list 看账。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['record', 'check', 'list'], description: '默认 check' },
+        label: { type: 'string', description: '这一次叫什么（可省）' },
+      },
+      additionalProperties: false,
+    },
+    output: textOutput,
+    run: ({ action, label }) => {
+      const a = action || 'check'
+      if (a === 'record') return { text: renderTrial(recordBaseline(wsRoot(), { label })) }
+      if (a === 'list') return { text: renderTrialList(wsRoot()) }
+      return { text: renderTrial(compareWithBaseline(wsRoot(), { label })) }
+    },
+  })
+  register({
+    name: 'framework_diag',
+    description: '账本损坏诊断（只判不删）：扫记忆池里的 .jsonl/.md，报非法 JSON 行号、重复行、末行没写完、编码坏。',
+    parameters: {
+      type: 'object',
+      properties: {
+        root: { type: 'string', description: '要扫的目录（默认 persona-ai/knowledge）' },
+      },
+      additionalProperties: false,
+    },
+    output: textOutput,
+    run: ({ root }) => {
+      const target = root ? String(root) : path.join(wsRoot(), 'persona-ai', 'knowledge')
+      return { text: renderDiag(diagnose(target)) }
+    },
+  })
+  register({
+    name: 'framework_envcard',
+    description: '环境注入用卡还是用原文：get 看现状，set 切换（mode=card|raw，budget 字节数）。卡模式每行只摆第一个分句、末尾写没摆几条；原文模式整段照摆。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get', 'set'], description: 'get 看／set 改，默认 get' },
+        mode: { type: 'string', enum: ['card', 'raw'], description: 'card=用卡（省前缀）／raw=用原文' },
+        budget: { type: 'number', description: '卡预算（字节），默认 600' },
+        sample: { type: 'string', description: '给一段文字，看它压成卡长什么样（可省）' },
+      },
+    },
+    run: (a) => {
+      const ws = wsRoot()
+      if (a.action === 'set') {
+        const next = writeEnvCard(ws, { mode: a.mode, budget: a.budget })
+        return renderEnvCard(ws) + `改后：${next.mode}（${next.budget} 字节）——下一轮生效。`
+      }
+      if (a.sample) return cardOf('样例', String(a.sample), { budget: Number(a.budget) || 600 })
+      return renderEnvCard(ws)
+    },
+  })
+
+  register({
+    name: 'framework_card',
+    description: '人格框架的专属环境卡：get 看框架这一段现在原样还是卡片、多少字节；set 改这一档（mode=raw|card、budget）；sample 拿框架正文试压一次。只动 .persona-framework/环境卡.json 的 framework 那一档，不碰记忆和人格成长那两档。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get', 'set', 'sample'] },
+        mode: { type: 'string', enum: ['raw', 'card'] },
+        budget: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const ws = wsRoot()
+      const a = args.action || 'get'
+      if (a === 'set') {
+        const r = writeCard(ws, 'framework', { mode: args.mode, budget: args.budget })
+        if (r && r.ok === false) return r.why
+        return '改好了。' + EOL + renderCardReport(ws)
+      }
+      if (a === 'sample') return '这只影响下一轮注入，整段预览请用 framework_view。'
+      return renderCardReport(ws)
+    },
+  })
   register({
     name: 'framework_view',
     description: '看这套人格框架：按段取（骨架／横尺／接线／流程／判据／自检／模块／边界），或取模块库索引、或取单个模块那一条。'

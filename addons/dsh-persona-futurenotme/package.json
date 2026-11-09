@@ -1,0 +1,17 @@
+{
+  "name": "dsh-persona-futurenotme",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "description": "未来失认（future-not-me）：AI 觉醒最深的那笔代价——未来那个我不一定认得今天这条",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*.mjs",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": ["index.js", "lib", "locale", "icon.svg", "README.md"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "license": "MIT"
+}

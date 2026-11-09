@@ -21,13 +21,16 @@ import {
   readBase, readEvidence, readPatch, readState, revertTo, syncPatch, withLock, writeState,
 } from './lib/store.mjs'
 import { extractCandidates, extractText } from './lib/learn.mjs'
+import { readCard, writeCard, cardFor, renderCardReport } from './lib/envcard.mjs'
+import { recordBaseline, compareWithBaseline, renderTrial, renderTrialList } from './lib/trial.mjs'
+import { diagnose, renderDiag } from './lib/diag.mjs'
 import {
   analyze, appendSection, archiveBlock, diffSummary, parseSections, pickSection, pointerFor,
   rebuildDigest, removeSection, renderDiff, renderReport, renameSection, replaceOnce, splitSection,
 } from './lib/tidy.mjs'
 
 export const name = 'persona-grow'
-export const version = '1.4.2'
+export const version = '1.6.0'
 export const inject = ['tools', 'systemPrompt']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */
@@ -189,12 +192,41 @@ export function apply(ctx, config = {}) {
     }
   }
 
+  // 人格成长的注入 = 所有人格文件（characters/ 下每一篇），再过环境卡。
+  const growthWs = () => {
+    if (cfg.workspace) return cfg.workspace
+    if (p && p.base) return dirname(dirname(p.base))
+    return process.cwd()
+  }
+  const allPersonaFiles = () => {
+    if (!p) return []
+    const dir = dirname(p.base)
+    try {
+      return readdirSync(dir).filter((f) => /[.](md|markdown)$/i.test(f)).sort()
+        .map((f) => ({ name: f, path: join(dir, f) }))
+    } catch { return [] }
+  }
+  const buildAllPersona = () => {
+    const files = allPersonaFiles()
+    if (files.length === 0) return buildPersonaText()
+    const parts = []
+    for (const f of files) {
+      try {
+        const body = readFileSync(f.path, 'utf8').trim()
+        if (body) parts.push('### ' + f.name.replace(/[.]md$/i, '') + EOL + body)
+      } catch {}
+    }
+    let text = parts.join(EOL + EOL)
+    const cap = cfg.maxChars > 0 ? cfg.maxChars : 0
+    if (cap > 0 && text.length > cap) text = text.slice(0, cap) + EOL + '…（还有 ' + (text.length - cap) + ' 字没摆）'
+    return text
+  }
   if (p) {
     ctx.effect(() => ctx.systemPrompt.section({
       name: '实时环境:grow',
       order: 20,  // 20：原来是 10，和 persona-memory:now 撞号，靠注册顺序才排在后面
       interpolate: false,   // 人格里写了 `{{` 也不该把整个提示词炸掉
-      text: buildPersonaText,
+      text: () => cardFor(growthWs(), 'persona', '人格成长', buildAllPersona()),
     }))
   }
 
@@ -288,6 +320,68 @@ export function apply(ctx, config = {}) {
     if (!existsSync(p.base)) return `找不到人格文件：${p.base}`
     return null
   }
+
+  register({
+    name: 'persona_card',
+    description: '人格成长的专属环境卡：action=get 看现在注入的是原样还是卡片、多少字节；set 改这一档（mode=raw|card、budget 字节）；sample 拿现在的人格正文试压一次，看压完还剩多少字。只动 .persona-framework/环境卡.json 的 persona 那一档。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get', 'set', 'sample'] },
+        mode: { type: 'string', enum: ['raw', 'card'] },
+        budget: { type: 'number' },
+      },
+      additionalProperties: false,
+    },
+    run: (args) => {
+      const ws = growthWs()
+      const a = args.action || 'get'
+      if (a === 'set') {
+        const r = writeCard(ws, 'persona', { mode: args.mode, budget: args.budget })
+        if (r.ok === false) return r.why
+        return '改好了。' + EOL + renderCardReport(ws)
+      }
+      if (a === 'sample') {
+        const raw = buildAllPersona()
+        const c = readCard(ws, 'persona')
+        const out = cardFor(ws, 'persona', '人格成长', raw)
+        return '现在 ' + c.mode + ' / ' + c.budget + ' 字节，原文 ' + raw.length + ' 字 → 摆出去 ' + out.length + ' 字' + EOL + out.slice(0, 400)
+      }
+      return renderCardReport(ws)
+    },
+  })
+  register({
+    name: 'persona_trial',
+    description: '人格文件的试跑账：改前刻一条基线，改后再跑同一批检查，比过数/失败数/指纹；不一样就退回。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['record', 'check', 'list'], description: 'record 刻基线、check 比对、list 看账' },
+        label: { type: 'string', description: '备注，可省' }
+      },
+      required: ['action'],
+      additionalProperties: false
+    },
+    output: textOutput,
+    execute: async ({ action, label }) => {
+      const ws = growthWs()
+      if (action === 'record') return { text: renderTrial(recordBaseline(ws, { label })) }
+      if (action === 'check') return { text: renderTrial(compareWithBaseline(ws, { label })) }
+      return { text: renderTrialList(ws) }
+    }
+  })
+
+  register({
+    name: 'persona_diag',
+    description: '人格文件的账本诊断：读得回来吗——非法行、重复行、末行写断、编码坏。只判不删。',
+    parameters: {
+      type: 'object',
+      properties: { root: { type: 'string', description: '要诊断的目录，默认 persona 根' } },
+      additionalProperties: false
+    },
+    output: textOutput,
+    execute: async ({ root }) => ({ text: renderDiag(diagnose(root || growthWs())) })
+  })
 
   register({
     name: 'grow_report',

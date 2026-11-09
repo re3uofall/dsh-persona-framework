@@ -1,4 +1,5 @@
 import { gateSkip, noteStep } from './lib/gate.mjs'
+import { buildCard, renderCard, loadUses, noteShown, noteUse, renderUseReport, collectPools } from './lib/card.mjs'
 /**
  * dsh-persona-memory —— host 半端
  * ============================================================================
@@ -23,13 +24,14 @@ import { gateSkip, noteStep } from './lib/gate.mjs'
  * 配置全部走 `cordis.patch.yml` 里这一行的 `config`。
  * ============================================================================
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { FIELDS, SETTINGS_DIR, SETTINGS_FILE, normalizePatch, normalizeStored, pickCurrent } from './lib/settings.mjs'
 import {
   DEFAULT_LAYERS, archiveOld, recall, renderArchive, renderPools, renderRecall, scanPools,
 } from './lib/pools.mjs'
 import { condenseJournal, excerpt, renderCondense } from './lib/journal.mjs'
+import { condenseSkeleton } from './lib/skeleton.mjs'
 import { decideWrite, explain as explainGate } from './lib/writegate.mjs'
 import {
   renderReinforce, saveReinforce, scoreFiles, DEFAULT_SUBJECTS, loadReinforce,
@@ -43,6 +45,7 @@ import { check as consistencyCheck, renderConsistency } from './lib/consistency.
 import { diagnose, renderDiag } from './lib/diag.mjs'
 import { capVerdict, renderCapVerdict } from './lib/cap.mjs'
 import { record as auditRecord } from './lib/audit.mjs'
+import { compareWithBaseline, recordBaseline, renderTrial, renderTrialList } from './lib/trial.mjs'
 import { mergeMemoryContexts } from './lib/merge.mjs'
 import { noteLiveMessages } from './lib/live-now.mjs'
 import { link as edgeLink, edgesOf, counterparts, renderEdges, renderWalk } from './lib/edges.mjs'
@@ -53,9 +56,10 @@ import { countOverdue, measureLayers, rebuildIndex, renderSlimReport } from './l
 import { reflect as reflectOnce, renderReflect } from './lib/reflect.mjs'
 import { renderFlywheel } from './lib/flywheel.mjs'
 import { DEFAULT_LIVE, liveMemory, renderLive } from './lib/live.mjs'
+import { wrapWithCard, readEnvCard, cardOf, cardFor, renderEnvCard, writeEnvCard } from './lib/envcard.mjs'
 
 export const name = 'persona-memory'
-export const version = '1.5.4'
+export const version = '1.6.1'
 // systemPrompt 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
 // 下面那几处 `ctx.effect(() => ctx.systemPrompt.section(...))` 会抛 TypeError 被 catch 吞掉——
 // 表现就是「插件 active、自测全过、渲染得出内容，但注入里一个字都没有」。
@@ -570,11 +574,31 @@ export function apply(ctx, config = {}) {
           from: { type: 'string', description: '流水目录（相对工作区），默认 persona-ai/knowledge/session' },
           to: { type: 'string', description: '写到哪，默认 persona-ai/knowledge/chat' },
           dryRun: { type: 'boolean', description: '默认 true（只看不写）' },
+          mode: { type: 'string', enum: ['line', 'skeleton'], description: 'line=一行一条（默认）；skeleton=骨架化（四类节点，按字节买，预算内挑）' },
+          budget: { type: 'number', description: 'skeleton 模式的字节预算，默认 1200' },
         },
       },
       output: textOutput,
       execute: async (args = {}) => {
         const root = need(await wd(ctx, cfg))
+        if (args.mode === 'skeleton') {
+          const fromDir = join(root, args.from || 'persona-ai/knowledge/session')
+          const toDir = join(root, args.to || 'persona-ai/knowledge/chat')
+          const budget = Number(args.budget) > 0 ? Number(args.budget) : 1200
+          const files = existsSync(fromDir) ? readdirSync(fromDir).filter((f) => f.endsWith('.md')).sort() : []
+          const out = []
+          for (const f of files) {
+            const text = readFileSync(join(fromDir, f), 'utf8')
+            const r = condenseSkeleton(text, { budget, pointerOf: (seq) => `session/${f}#${seq}` })
+            for (const ln of r.lines) out.push(ln)
+          }
+          const body = `# 骨架化提炼（${out.length} 条，预算 ${budget} 字节/篇）\n\n` + out.join('\n')
+          if (args.dryRun !== false) return { text: body }
+          mkdirSync(toDir, { recursive: true })
+          const file = join(toDir, '骨架.md')
+          writeFileSync(file, body + '\n', 'utf8')
+          return { text: `写进 ${file}：${out.length} 条` }
+        }
         const r = condenseJournal(root, {
           from: args.from, to: args.to,
           dryRun: args.dryRun !== false && cfg.dryRunDefault !== false ? args.dryRun !== false : args.dryRun === true,
@@ -853,6 +877,82 @@ ${seg}` }
     },
   })
 
+  tools.push({
+    name: 'memory_card',
+    description:
+      '记忆卡片：一次只摆一张小卡（默认 600 字节，标题＋指针），细节留在本地按指针回捞。'
+      + 'action=build 组卡（顺带记一次「露过脸」）/ use 记一次真被翻回去用 / report 看使用账。'
+      + '判据是「被展示不等于被使用」：露脸不算数，真回捞才算。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['build', 'use', 'report'], description: '默认 build' },
+        budget: { type: 'number', description: '这张卡多少字节，默认 600' },
+        pointer: { type: 'string', description: 'action=use 时要记的那条指针' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    output: textOutput,
+    execute: async (args = {}) => {
+      const root = need(await wd(ctx, cfg))
+      const action = args.action || 'build'
+      if (action === 'use') {
+        if (!args.pointer) return { text: '没给指针：用记不了。' }
+        noteUse(root, args.pointer, {})
+        return { text: `记下了：${args.pointer} 真被翻回去用过一次。` }
+      }
+      if (action === 'report') {
+        return { text: renderUseReport(loadUses(root, {})) }
+      }
+      const items = collectPools(root, { maxFiles: 400 })
+      const card = buildCard(items, { budget: args.budget || 600, uses: loadUses(root, {}) }, Date.now())
+      noteShown(root, card.shown, {})
+      return { text: renderCard(card) || '池子里没捞到能摆上卡片的东西。' }
+    },
+  })
+
+  tools.push({
+    name: 'memory_trial',
+    description:
+      '成对回放：改之前跑一遍这个包的自检并刻下来，改完再跑同一批，跟刻下来的比——'
+      + '过的项、没过的项、输出指纹，一样才算过；不一样就不留。'
+      + 'action=record 刻基线 / check 比一次 / list 看试跑账。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['record', 'check', 'list'], description: 'record 刻基线，check 比一次，list 看账' },
+        label: { type: 'string', description: '这一次改动的名字，默认 before；改完再用同一个 label 去比' },
+      },
+    },
+    output: textOutput,
+    execute: async ({ action = 'list', label = 'before' }) => {
+      const root = need(await wd(ctx, cfg))
+      if (action === 'record') {
+        const row = recordBaseline(root, { label })
+        return { text: '已刻基线：过 ' + (row.pass ?? '?') + '、没过 ' + (row.fail ?? '?') + '｜指纹 ' + row.hash + (row.tail ? '\n最后一行：' + row.tail : '') }
+      }
+      if (action === 'check') {
+        return { text: renderTrial(compareWithBaseline(root, { label })) }
+      }
+      return { text: renderTrialList(root) }
+    },
+  })
+  // 环境卡：五个记忆段统一过这一道闸（raw 原样／card 压成卡）
+  const cardify = (name, fn) => () => {
+    try {
+      const text = typeof fn === 'function' ? fn() : String(fn || '')
+      // 记忆走自己的档：环境卡.json 的 components.memory，缺省落回顶层
+      return cardFor(resolveRoot(ctx, live()), 'memory', name, text)
+    } catch { return '' }
+  }
+
+  // 环境卡：记忆段可按 .persona-framework/环境卡.json 的 mode 压成卡片或原样注入
+  const section = (opts) => ctx.systemPrompt.section({
+    ...opts,
+    text: cardify(opts.name || "记忆", opts.text),
+  })
+
   for (const t of tools) ctx.tools?.register?.(t)
 
   // ── 加固账自动刷新 ──────────────────────────────────────────────────────
@@ -904,7 +1004,7 @@ ${seg}` }
 
   if (cfg.injectNow !== false) {
     try {
-      ctx.effect(() => ctx.systemPrompt.section({
+      ctx.effect(() => section({
         name: 'persona-memory:now',
         order: baseOrder,
         interpolate: false,
@@ -924,7 +1024,7 @@ ${seg}` }
 
   if (cfg.injectTemp !== false) {
     try {
-      ctx.effect(() => ctx.systemPrompt.section({
+      ctx.effect(() => section({
         name: 'persona-memory:short',
         order: baseOrder + 15, // 10 → 25：让开人格原文件的 20/22
         interpolate: false,
@@ -942,7 +1042,7 @@ ${seg}` }
     } catch { /* 没有 systemPrompt 也能用 */ }
 
     try {
-      ctx.effect(() => ctx.systemPrompt.section({
+      ctx.effect(() => section({
         name: 'persona-memory:other',
         order: baseOrder + 20, // 10 → 30：其他记忆排在短期之后
         interpolate: false,
@@ -961,7 +1061,7 @@ ${seg}` }
     } catch { /* 没有 systemPrompt 也能用 */ }
 
     try {
-      ctx.effect(() => ctx.systemPrompt.section({
+      ctx.effect(() => section({
         name: 'persona-memory:long-term',
         order: baseOrder + 13, // 10 → 23：**紧紧跟在人格原文件（20/22）后面**，排在短期（25）之前
         interpolate: false,

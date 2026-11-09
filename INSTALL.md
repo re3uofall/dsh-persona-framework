@@ -7,7 +7,7 @@
 ```
 dsh-persona-framework/     人格框架（只有框架，不含人格）
 dsh-persona-memory/        记忆分层：流水／判断／理论分层，按预算取
-persona-grow-plugin/       人格自学：每轮注入人格，从纠正里长新条目
+persona-grow-plugin/       人格成长：每轮注入人格，从纠正里长新条目
 persona-diary-plugin/      日记：还没成型的那点心得
 persona-results-plugin/    成果：交出去的判断
 persona-explore-plugin/    碗外探索：自己搜、读、留
