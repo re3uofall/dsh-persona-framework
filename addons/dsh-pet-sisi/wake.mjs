@@ -1,0 +1,121 @@
+/**
+ * 唤醒触发器：面板里师父一开口，就把本会话叫醒。
+ *
+ * 为什么要有这一条：dsh-pet 的路由只会把话写进它自己的 memory.json，
+ * DSH 不会因此开一轮。所以这里盯 memory.json，发现新的 user 消息就
+ * ① 写 pet-inbox.json（下一轮段落里会摆出来「师父刚打了什么」），
+ * ② 调 ctx.agents.resume({ resumeSessionId }) 试图把会话叫起来。
+ * 会话 id 由 index.js 的 agent/pre-step 顺手记进 cfg.wakeSessionId。
+ */
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
+const dir = () => join(homedir(), '.dsh', 'dsh-pet')
+const memPath = () => join(dir(), 'memory.json')
+const inboxPath = () => join(dir(), 'pet-inbox.json')
+const statePath = () => join(dir(), 'pet-wake.state.json')
+const logPath = () => join(dir(), 'wake.log')
+
+
+let __ticks = 0
+const __beat = () => { __ticks++; }
+
+function log(line) {
+  try {
+    mkdirSync(dir(), { recursive: true })
+    appendFileSync(logPath(), `${new Date().toISOString()} ${line}\n`)
+  } catch {
+    /* 日志写不了也不许影响主流程 */
+  }
+}
+
+function readJson(p, fallback) {
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'))
+  } catch {
+    return fallback
+  }
+}
+
+let running = false
+
+export function startWake(ctx, cfg) {
+  const ms = Math.max(1000, Number(cfg.wakeMs) || 2000)
+  log(`wake started, poll ${ms}ms`)
+  const timer = setInterval(async () => {
+    if (running) return
+    running = true
+    try {
+      const mem = readJson(memPath(), null)
+      const list = mem?.main?.main?.messages
+      if (!Array.isArray(list) || list.length === 0) return
+      const last = list[list.length - 1]
+      if (!last || last.role !== 'user') return
+      const st = readJson(statePath(), { handled: 0 })
+      if (!(Number(last.ts) > Number(st.handled || 0))) return
+      const stamp = Number(last.ts)
+      const text = String(last.content || '')
+      writeFileSync(inboxPath(), JSON.stringify({ text, ts: Number(last.ts), at: Date.now() }, null, 2))
+      log(`inbox <- ${text.slice(0, 40)}`)
+      let sid = String(cfg.wakeSessionId || '').trim()
+      if (!sid) {
+        try { sid = readFileSync(inboxPath().replace(/pet-inbox\\.json$/, 'wake-session.txt'), 'utf8').trim() } catch {}
+      }
+      if (!sid) {
+        log('no session id yet (not captured)')
+        return
+      }
+      const agents = ctx?.agents
+      if (!agents || typeof agents.resume !== 'function') {
+        log('agents.resume unavailable')
+        return
+      }
+      const live = typeof agents.get === 'function' ? agents.get(sid) : undefined
+      if (live && live.status && live.status !== 'idle') {
+        log(`busy (${live.status}), will retry`)
+        return
+      }
+      const prompt = [
+        `桌宠面板里师父刚打了：${text}`,
+        '回他：一句到三句，短、具体；原话只能从这个会话出，不替它另写；不排三连、不元评论、不解释自己。',
+        '发法：pet_reply（text 必带，image／anim 可带）一次把话、配图、动作发出去并落账；不许让它自己生成。',
+        '发完把 pet-inbox.json 写成 {}。',
+      ].join('\n')
+      let delivered = false
+      try {
+        const controller = ctx?.get?.('sessionController')
+        if (controller && typeof controller.prompt === 'function') {
+          await controller.prompt({
+            sessionId: sid,
+            requestId: `pet-${Date.now()}`,
+            mode: 'queue',
+            content: [{ type: 'text', text: prompt }],
+            clientTimeZone: 'Asia/Shanghai',
+          }, AbortSignal.timeout(8000))
+          log(`prompt delivered ${sid}`)
+          delivered = true
+          writeFileSync(statePath(), JSON.stringify({ handled: stamp, at: Date.now() }, null, 2))
+          writeFileSync(inboxPath(), JSON.stringify({ text, ts: stamp, at: Date.now() }, null, 2))
+        } else {
+          log('sessionController unavailable')
+        }
+      } catch (e) {
+        log(`prompt failed ${String(e?.message || e)}`)
+      }
+      if (!delivered) {
+        try {
+          await agents.resume({ resumeSessionId: sid })
+          log(`resume ok ${sid}`)
+        } catch (e) {
+          log(`resume failed ${String(e?.message || e)}`)
+        }
+      }
+    } catch (e) {
+      log(`tick error ${String(e?.message || e)}`)
+    } finally {
+      running = false
+    }
+  }, ms)
+  return () => clearInterval(timer)
+}

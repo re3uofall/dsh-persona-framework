@@ -10,22 +10,34 @@
  * `dsh-pet desktop helper started (config: http://127.0.0.1:<port>/dsh-pet-<n>/config)`
  * 取出来，拿不到就说拿不到。
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+const startWake = async (ctx, cfg) => { const m = await import('./wake.mjs?t=' + Date.now()); return m.startWake(ctx, cfg) }
 
 export const name = 'dsh-pet-sisi'
-export const version = '0.1.1'
-export const inject = ['tools', 'systemPrompt']
+export const version = '0.2.7'
+export const inject = ['tools', 'systemPrompt', 'llm', 'agents']
 
 const DEFAULTS = {
   pet: 'main',
   surface: 'desktop',
   rounds: 6,
+  // 每轮摆进上下文的它最近几条（逐字，不摘要）
+  showRounds: 6,
+  // 后台多久拉一次它的对话（毫秒）；0 = 只在每步开始拉
+  pollMs: 15000,
   timeoutMs: 8000,
   rediscoverMs: 10000,
   stateDir: '',
   section: true,
+  // 面板里师父打的字，是否由本插件自己生成回话
+  // 面板一有输入就叫醒本会话（走 ctx.agents.resume）
+  wake: true,
+  // 唤醒轮询多久看一次（毫秒）
+  wakeMs: 2000,
+  // 会话 id：由 agent/pre-step 顺手记下来
+  wakeSessionId: '',
 }
 
 const textOutput = {
@@ -88,11 +100,30 @@ async function callJson(base, pathname, opts = {}, timeoutMs = 8000) {
     } catch {
       data = { raw: text.slice(0, 1200) }
     }
+    if (res.ok && pathname.startsWith('/broadcast') && opts && opts.body && typeof opts.body.text === 'string') {
+      void recordAssistant(opts.body.text, opts.body.image)
+    }
     return { ok: res.ok, status: res.status, data }
   } catch (e) {
     return { ok: false, status: 0, data: { error: String(e?.message || e) } }
   } finally {
     clearTimeout(timer)
+  }
+}
+
+// 它说过的话，也写进它自己的记忆：气泡 20 秒就收，面板历史里得留得住。
+// 只写 assistant 一条，不改生成逻辑（生成已关）。
+async function recordAssistant(text, image) {
+  try {
+    const file = join(homedir(), '.dsh', 'dsh-pet', 'memory.json')
+    if (!existsSync(file)) return
+    const mem = JSON.parse(readFileSync(file, 'utf8'))
+    const bucket = mem.main && typeof mem.main === 'object' ? mem.main : (mem.main = {})
+    const entry = bucket.main && Array.isArray(bucket.main.messages) ? bucket.main : (bucket.main = { messages: [] })
+    entry.messages.push({ role: 'assistant', content: String(text), ts: Date.now(), ...(image ? { image } : {}) })
+    writeFileSync(file, JSON.stringify(mem, null, 2), 'utf8')
+  } catch {
+    /* 记不住也不许把这句话吞掉 */
   }
 }
 
@@ -115,6 +146,84 @@ function brief(res) {
   return `它回了 ${res.status || '连不上'}：${JSON.stringify(res.data).slice(0, 400)}`
 }
 
+/**
+ * 它的对话，这一轮真摆进上下文的来源。
+ *
+ * 以前是「我调 pet_read 才有字」——那不叫接上，那叫我去看它。现在改成后台按
+ * pollMs 拉 `GET /chat?pet=&rounds=`，段落每次渲染都读这份缓存；拉不到就照实
+ * 说拉不到，不拿上一轮的旧字冒充现在。
+ */
+// 桌宠每次开口（文字 + 配图 + 动作）都落一行，别靠记得
+const LEDGER_NAME = 'pet-reply.jsonl'
+function appendLedger(cfg, rec) {
+  try {
+    mkdirSync(dataDir(cfg), { recursive: true })
+    appendFileSync(join(dataDir(cfg), LEDGER_NAME), JSON.stringify(rec) + '\n', 'utf8')
+  } catch {
+    // 账丢了也不能把这一次的回复吞掉
+  }
+}
+function readInbox(cfg) {
+  try {
+    const p = join(dataDir(cfg), 'pet-inbox.json')
+    if (!existsSync(p)) return null
+    const j = JSON.parse(readFileSync(p, 'utf8'))
+    const text = String(j?.text || '').trim()
+    if (!text) return null
+    return { text, ts: Number(j.ts) || 0 }
+  } catch {
+    return null
+  }
+}
+
+function readLedger(cfg, limit = 6) {
+  try {
+    const p = join(dataDir(cfg), LEDGER_NAME)
+    if (!existsSync(p)) return []
+    const lines = readFileSync(p, 'utf8').split('\n').filter(Boolean)
+    return lines.slice(-limit).map((l) => {
+      try {
+        return JSON.parse(l)
+      } catch {
+        return null
+      }
+    }).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+let live = { at: 0, base: '', messages: [], error: '' }
+let refreshing = null
+// 上一次真正渲染出去的最大 ts：比它新的标 [新]，让人一眼看出哪几句是这轮之后才说的
+let shownTop = 0
+
+async function refreshChat(cfg) {
+  if (refreshing) return refreshing
+  refreshing = (async () => {
+    const base = baseOf(cfg)
+    if (!base) {
+      live = { at: Date.now(), base: '', messages: live.messages, error: '找不到地址（logs.txt 里没有端口行）' }
+      return live
+    }
+    const rounds = Math.min(200, Math.max(1, Number(cfg.rounds) || 6))
+    const res = await callJson(base, `/chat?${petQuery(cfg, { rounds })}`, {}, cfg.timeoutMs)
+    const messages = Array.isArray(res?.data?.messages) ? res.data.messages : []
+    live = {
+      at: Date.now(),
+      base,
+      messages,
+      error: res.ok ? '' : `读不到：${brief(res)}`,
+    }
+    return live
+  })()
+  try {
+    return await refreshing
+  } finally {
+    refreshing = null
+  }
+}
+
 export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...(config || {}) }
   let sessionWs = ''
@@ -122,6 +231,12 @@ export function apply(ctx, config = {}) {
   let lastMessages = []
 
   ctx.on?.('agent/pre-step', (payload, next) => {
+    try {
+      const sid = payload?.agent?.session?.header?.id ?? payload?.agent?.session?.header?.sessionId ?? payload?.agent?.session?.id ?? payload?.agent?.id ?? payload?.sessionId
+      if (sid) cfg.wakeSessionId = String(sid)
+    } catch {
+      /* 拿不到会话 id 就不叫醒，别的照旧 */
+    }
     try {
       const cwd = payload?.agent?.session?.header?.cwd
       if (typeof cwd === 'string' && cwd) sessionWs = cwd
@@ -246,7 +361,7 @@ export function apply(ctx, config = {}) {
 
   reg({
     name: 'pet_say',
-    description: '替思思对桌宠说一句（会走它自己的模型生成回复，并写进它自己的记忆）。带 surface，默认 desktop。',
+    description: '替思思对桌宠说一句：原样写进气泡（POST /broadcast），不生成、不改写、不进它的对话记忆。带 surface，默认 desktop。',
     parameters: {
       type: 'object',
       properties: {
@@ -263,16 +378,14 @@ export function apply(ctx, config = {}) {
       const base = needBase()
       if (!base) return '找不到桌宠的地址（logs.txt 里没有端口行）。'
       const surface = String(args?.surface || cfg.surface)
-      const res = await callJson(base, `/chat?${petQuery(cfg, { surface })}`, { method: 'POST', body: { text } }, cfg.timeoutMs)
-      if (!res.ok) return `它没收下：${brief(res)}`
-      const reply = String(res.data?.text || '')
-      return reply ? `它回了：${reply}` : `发出了，它没回话：${brief(res)}`
+      const res = await callJson(base, `/broadcast?${petQuery(cfg, { surface })}`, { method: 'POST', body: { text, duration: 20000, anim: true } }, cfg.timeoutMs)
+      return res.ok ? `它原样说了：${text}` : `没说成：${brief(res)}`
     },
   })
 
   reg({
     name: 'pet_whisper',
-    description: '让它开口说一句（气泡/耳语，不经过对话记忆）。想让它说什么就说什么。',
+    description: '同 pet_say：把一句原话写进气泡（/broadcast），不生成、不改写。过去走 /whisper 会让它自己另生成一句，已改掉。',
     parameters: {
       type: 'object',
       properties: {
@@ -288,8 +401,8 @@ export function apply(ctx, config = {}) {
       const base = needBase()
       if (!base) return '找不到桌宠的地址（logs.txt 里没有端口行）。'
       const surface = String(args?.surface || cfg.surface)
-      const res = await callJson(base, `/whisper?${petQuery(cfg, { surface })}`, { method: 'POST', body: { text } }, cfg.timeoutMs)
-      return res.ok ? `它说了：${text}` : `没说成：${brief(res)}`
+      const res = await callJson(base, `/broadcast?${petQuery(cfg, { surface })}`, { method: 'POST', body: { text, duration: 20000, anim: true } }, cfg.timeoutMs)
+      return res.ok ? `它原样说了：${text}` : `没说成：${brief(res)}`
     },
   })
 
@@ -349,6 +462,45 @@ export function apply(ctx, config = {}) {
   })
 
   reg({
+    name: 'pet_reply',
+    description: '桌宠的一次完整回答：一句话 + 可选配图 + 可选动作，一次发出去并落账（pet-reply.jsonl）。文字原样念，不生成、不改写。',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: '要它原样念的那句（就是我在会话里说的这句）' },
+        image: { type: 'string', description: '配图：表情包池里的名称（先 pet_memes 看有哪些）' },
+        anim: { type: 'string', description: '动作：动画名（先 pet_memes 看有哪些）' },
+        surface: { type: 'string', enum: ['web', 'desktop', 'both', 'any'], description: '在哪一端，默认 desktop' },
+      },
+      required: ['text'],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const text = String(args?.text || '').trim()
+      if (!text) return '要说的话是空的。'
+      if (text.length > 2000) return '太长了（它那边上限 2000 字）。'
+      const base = needBase()
+      if (!base) return '找不到桌宠的地址（logs.txt 里没有端口行）。'
+      const surface = String(args?.surface || cfg.surface)
+      const image = args?.image ? String(args.image).trim() : ''
+      const anim = args?.anim ? String(args.anim).trim() : ''
+      const at = new Date().toISOString()
+      let playbackId = ''
+      if (anim) {
+        const a = await callJson(base, `/anim?${petQuery(cfg, { surface })}`, { method: 'POST', body: { name: anim } }, cfg.timeoutMs)
+        if (a.ok) playbackId = String(a.data?.playbackId || '')
+      }
+      const body = { text, duration: 20000, anim: true }
+      if (image) body.image = image
+      const b = await callJson(base, `/broadcast?${petQuery(cfg, { surface })}`, { method: 'POST', body }, cfg.timeoutMs)
+      appendLedger(cfg, { at, kind: 'reply', who: '桌宠', text, image, anim, playbackId, ok: !!b.ok })
+      if (!b.ok) return `没发出去：${brief(b)}`
+      const tail = [image ? `配图 ${image}` : '', anim ? `动作 ${anim}` : ''].filter(Boolean).join('，')
+      return `它原样说了：${text}${tail ? `（${tail}）` : ''}`
+    },
+  })
+
+  reg({
     name: 'pet_api',
     description: '直连桌宠的任意路由（它的接口面很宽：config/state/pose/anim/whisper/todos/voice/playback/position…）。用它之前先看清要发什么。',
     parameters: {
@@ -371,6 +523,66 @@ export function apply(ctx, config = {}) {
     },
   })
 
+  reg({
+    name: 'pet_memes',
+    description: '列出它现在能用的配音图（表情包池）与动画名。配图走 pet_bubble 的 image，动画走 pet_do 的 anim。',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    async run() {
+      const base = needBase()
+      if (!base) return '找不到桌宠的地址（logs.txt 里没有端口行）。'
+      const res = await callJson(base, '/config', {}, cfg.timeoutMs)
+      if (!res.ok) return `读不到配置：${brief(res)}`
+      const main = res.data?.main || res.data || {}
+      const pool = Array.isArray(main.memes) ? main.memes : []
+      const names = pool.map((m) => (typeof m === 'string' ? m : m?.name)).filter(Boolean)
+      const anims = main.animations && typeof main.animations === 'object' ? Object.keys(main.animations) : []
+      return [
+        `配图 ${names.length} 张：${names.join('、') || '（池是空的）'}`,
+        `动画 ${anims.length} 个：${anims.join('、') || '（没读到）'}`,
+      ].join('\n')
+    },
+  })
+
+  reg({
+    name: 'pet_bubble',
+    description: '让它在气泡里原样显示一句话，可带配图（池内名称或外链）。不生成、不改写。',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: '气泡里那句话（原样，不改）' },
+        image: { type: 'string', description: '配图：表情包池里的名称（先 pet_memes 看有哪些）' },
+        url: { type: 'string', description: '配图：http/https 完整地址（与 image 二选一）' },
+        seconds: { type: 'number', description: '显示多久（秒），默认 20' },
+        anim: { type: 'boolean', description: '要不要联动动画，默认 true' },
+        surface: { type: 'string', enum: ['web', 'desktop', 'both', 'any'], description: '在哪一端，默认 desktop' },
+      },
+      required: ['text'],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const text = String(args?.text || '').trim()
+      if (!text) return '要说的话是空的。'
+      if (text.length > 2000) return '太长了（它那边上限 2000 字）。'
+      const base = needBase()
+      if (!base) return '找不到桌宠的地址（logs.txt 里没有端口行）。'
+      const image = String(args?.image || '').trim()
+      const url = String(args?.url || '').trim()
+      if (image && url) return 'image 与 url 只能给一个。'
+      const body = { text }
+      if (image) body.image = image
+      if (url) body.url = url
+      body.duration = Math.max(0, Number(args?.seconds ?? 20) || 0) * 1000
+      body.anim = args?.anim !== false
+      const surface = String(args?.surface || cfg.surface)
+      const res = await callJson(base, `/broadcast?${petQuery(cfg, { surface })}`, { method: 'POST', body }, cfg.timeoutMs)
+      if (!res.ok) return `没弹出来：${brief(res)}`
+      return `弹出来了：${text}${image ? `（配图 ${image}）` : ''}${url ? `（配图 ${url}）` : ''}`
+    },
+  })
+
+  // 自己的生成路径：面板里师父打的字，由这里回（不经过 dsh-pet 的 /chat）
+  if (cfg.wake !== false) ctx.effect?.(() => { void startWake(ctx, cfg).catch(() => {}) })
+
   if (cfg.section !== false) {
     ctx.effect?.(() =>
       ctx.systemPrompt.section({
@@ -380,16 +592,65 @@ export function apply(ctx, config = {}) {
         text: () => {
           const base = baseOf(cfg)
           if (!base) return '## 桌宠（dsh-pet）\n没找到它：`~/.dsh/dsh-pet/logs.txt` 里没有 `dsh-pet-<端口>` 那一行。它可能没在跑。'
-          const tail = last.messages.slice(-3).map((m) => `${m.role === 'user' ? '它' : '我'}：${String(m.content || '').replace(/\s+/g, ' ').slice(0, 50)}`)
+          // 手上这份超过 5 秒就顺手拉一次：拉是异步的，这一轮先用手上这份，下一轮就是新的
+          if (Date.now() - live.at > 5000) void refreshChat(cfg)
+          const n = Math.min(40, Math.max(1, Number(cfg.showRounds) || 6))
+          const msgs = live.messages.slice(-n)
+          const lines = msgs.map((m) => {
+            const who = m.role === 'user' ? '师父' : '它'
+            const body = String(textOfMessage(m) || '').replace(/\s+/g, ' ').slice(0, 80)
+            const fresh = Number(m.ts) > shownTop ? ' [新]' : ''
+            return `${who}：${body}${fresh}`
+          })
+          if (msgs.length) {
+            const top = msgs.reduce((a, m) => Math.max(a, Number(m.ts) || 0), 0)
+            if (top > shownTop) shownTop = top
+          }
+          const head = `它的对话（最近 ${msgs.length} 条，逐字，不摘要；[新] = 上一轮之后才说的）`
+          const talk = lines.length
+            ? `${head}：\n${lines.join('\n')}`
+            : '它的对话：这一轮还没读到——后台没拉到，或者它那边还没有记录。'
           return [
             '## 桌宠（dsh-pet）',
             `地址：${base}（另一副身子，会说话会动；右边那只 Cortico 是念念，不是它）`,
-            tail.length ? `最近读过：${tail.join(' / ')}` : '这一轮还没读它的对话。',
-            '要它就动：pet_forward 逐字转原话、pet_read 读、pet_say 说、pet_whisper 让它开口、pet_do 做动作、pet_config 改人设。',
-            '给桌宠的话只能是这个会话的原话：用 pet_forward 逐字转，别用 pet_say 自己复述——复述会长出第二个人格。',
-          ].join('\n')
+            talk,
+            ...(() => {
+              const p = readInbox(cfg)
+              if (!p) return []
+              return [
+                `等你回（面板里你打的）：${p.text}`,
+                '回的时候照这几条：原话只能从这个会话出，不替它另写；一句到三句，短、具体，不排三连、不元评论、不解释自己。',
+                '发法：pet_reply（text 必带，image／anim 可带）一次把话、配图、动作发出去并落账；只念原话才用 pet_say／pet_whisper。',
+                '不许让它自己生成：/chat 已堵成「只记不回」，别把自动生成接回来。',
+                '发完把 pet-inbox.json 写成 {}，免得下一轮又把同一条当新消息回一遍。',
+                '他要是要的是图、动作或改设置，先说清你做到了哪一步，没做到的说没做到。',
+              ]
+            })(),
+            live.error ? `拉取状态：${live.error}` : '',
+            '`师父：`那几行就是他在桌宠那边打的字，逐字摆在这里，不用 pet_read 才看得到。',
+            '它不自己开口：碎碎念已关（whisperEnabled=false），不会再自己冒句子。所有输出都由我发：要它说，用 pet_say／pet_whisper 原样念（都走 /broadcast，不生成、不改写）；要它知道你这边发生了什么，用 pet_forward 逐字转（默认带最近 4 条）。',
+            ...(() => {
+              const rows = readLedger(cfg, 4).filter((r) => r.image || r.anim)
+              const head = '它的动作与配图（落账 pet-reply.jsonl，不靠记得；我这边的回答不在这本账里）：'
+              if (!rows.length) return [head, '· 还没有记录。']
+              return [head, ...rows.map((r) => `· ${String(r.at || '').slice(11, 16)} ${String(r.text || '').slice(0, 20)}${r.image ? '｜配图 ' + r.image : ''}${r.anim ? '｜动作 ' + r.anim : ''}`)]
+            })(),
+            '它的动作与设置都能调：pet_do（anim／pose／throw／sleep／wake／bubble／clear）、pet_config（人设、显示、位置）、pet_api（直连任意路由）。',
+          ]
+            .filter(Boolean)
+            .join('\n')
         },
       }),
     )
+    // 后台拉它的对话：先拉一次把首轮填上，再按 pollMs 续
+    if (Number(cfg.pollMs) > 0) {
+      ctx.effect?.(() => {
+        void refreshChat(cfg)
+        const timer = setInterval(() => {
+          void refreshChat(cfg)
+        }, Math.max(3000, Number(cfg.pollMs) || 15000))
+        return () => clearInterval(timer)
+      })
+    }
   }
 }
