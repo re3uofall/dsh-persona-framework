@@ -29,6 +29,7 @@ import {
 import { install as installExtend } from './lib/extend.mjs'
 
 export const name = 'persona-explore'
+export const version = '0.7.1'
 export const inject = ['tools', 'systemPrompt', 'webServer']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */

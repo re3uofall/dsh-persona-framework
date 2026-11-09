@@ -18,6 +18,7 @@ import { findItem, renderSearch, renderShow, searchItems } from './lib/query.mjs
 import { dirname, join } from 'node:path'
 
 export const name = 'dsh-persona-results'
+export const version = '1.2.5'
 export const inject = ['tools', 'webServer', 'systemPrompt']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */

@@ -27,6 +27,7 @@ import {
 } from './lib/tidy.mjs'
 
 export const name = 'persona-grow'
+export const version = '1.4.2'
 export const inject = ['tools', 'systemPrompt']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */

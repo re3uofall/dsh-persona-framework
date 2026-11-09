@@ -24,6 +24,7 @@ import { auditItems, renderAudit } from './lib/audit.mjs'
 import { dirname, join } from 'node:path'
 
 export const name = 'dsh-persona-diary'
+export const version = '1.3.5'
 export const inject = ['tools', 'webServer', 'systemPrompt']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */

@@ -1,6 +1,6 @@
 {
   "name": "dsh-persona-memory",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "private": true,
   "description": "记忆池分层：流水不是记忆——按预算取、超期归档、流水压成一行（带指针可翻原文）。五个工具：看账／按预算取／提炼／归档／翻原文；设置页可调短期天数、字数预算、即时分段、注入顺序",
   "type": "module",

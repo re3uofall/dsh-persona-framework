@@ -55,6 +55,7 @@ import { renderFlywheel } from './lib/flywheel.mjs'
 import { DEFAULT_LIVE, liveMemory, renderLive } from './lib/live.mjs'
 
 export const name = 'persona-memory'
+export const version = '1.5.4'
 // systemPrompt 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
 // 下面那几处 `ctx.effect(() => ctx.systemPrompt.section(...))` 会抛 TypeError 被 catch 吞掉——
 // 表现就是「插件 active、自测全过、渲染得出内容，但注入里一个字都没有」。
