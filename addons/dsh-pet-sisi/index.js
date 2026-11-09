@@ -15,7 +15,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 export const name = 'dsh-pet-sisi'
-export const version = '0.1.0'
+export const version = '0.1.1'
 export const inject = ['tools', 'systemPrompt']
 
 const DEFAULTS = {
@@ -103,6 +103,13 @@ function petQuery(cfg, extra = {}) {
   return p.toString()
 }
 
+function textOfMessage(m) {
+  const c = m?.content
+  if (typeof c === 'string') return c
+  if (Array.isArray(c)) return c.map((x) => (typeof x === 'string' ? x : x?.text || '')).join('')
+  return ''
+}
+
 function brief(res) {
   if (res.ok) return JSON.stringify(res.data).slice(0, 1600)
   return `它回了 ${res.status || '连不上'}：${JSON.stringify(res.data).slice(0, 400)}`
@@ -112,11 +119,14 @@ export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...(config || {}) }
   let sessionWs = ''
   let last = { at: '', messages: [] }
+  let lastMessages = []
 
   ctx.on?.('agent/pre-step', (payload, next) => {
     try {
       const cwd = payload?.agent?.session?.header?.cwd
       if (typeof cwd === 'string' && cwd) sessionWs = cwd
+      const msgs = Array.isArray(payload?.messages) ? payload.messages : []
+      if (msgs.length) lastMessages = msgs
     } catch {}
     return next()
   })
@@ -193,6 +203,44 @@ export function apply(ctx, config = {}) {
       last = { at: new Date().toISOString(), messages: msgs }
       const lines = msgs.map((m) => `${m.role === 'user' ? '它' : '我'}：${String(m.content || '').replace(/\s+/g, ' ').slice(0, 120)}`)
       return [`桌宠最近 ${msgs.length} 条：`, ...lines].join('\n')
+    },
+  })
+
+  reg({
+    name: 'pet_forward',
+    description: '把这个会话里的原话逐字转给桌宠：不改写、不改口、不替它总结。要它知道发生了什么就用这个，别用 pet_say 自己复述。',
+    parameters: {
+      type: 'object',
+      properties: {
+        rounds: { type: 'number', description: '转发最近几条消息，默认 4' },
+        who: { type: 'string', enum: ['both', 'user', 'assistant'], description: '转发谁说的，默认 both' },
+        surface: { type: 'string', enum: ['web', 'desktop', 'both', 'any'], description: '在哪一端说，默认 desktop' },
+      },
+      additionalProperties: false,
+    },
+    async run(args) {
+      const rounds = Math.max(1, Math.min(20, Number(args?.rounds) || 4))
+      const who = String(args?.who || 'both')
+      const base = needBase()
+      if (!base) return '找不到桌宠的地址（logs.txt 里没有端口行）。'
+      const picked = lastMessages
+        .filter((m) => {
+          const role = String(m?.role || '')
+          if (who === 'both') return role === 'user' || role === 'assistant'
+          return role === who
+        })
+        .slice(-rounds)
+        .map((m) => ({ role: String(m?.role || ''), text: textOfMessage(m).trim() }))
+        .filter((m) => m.text)
+      if (!picked.length) return '这一轮还没读到会话原文（pre-step 还没跑过），没有可转的原话。'
+      const lines = picked.map((m) => (m.role === 'user' ? '师父：' : '我：') + m.text)
+      let body = '以下是这个会话里的原话，逐字转给你，不许改写，也不许替我说：\n\n' + lines.join('\n')
+      if (body.length > 2000) body = body.slice(0, 1980) + '\n（后面截断了）'
+      const surface = String(args?.surface || cfg.surface)
+      const res = await callJson(base, '/chat?' + petQuery(cfg, { surface }), { method: 'POST', body: { text: body } }, cfg.timeoutMs)
+      if (!res.ok) return '它没收下：' + brief(res)
+      const reply = String(res.data?.text || '')
+      return '转过去 ' + picked.length + ' 条原话。' + (reply ? '\n它回了：' + reply : '')
     },
   })
 
@@ -337,7 +385,8 @@ export function apply(ctx, config = {}) {
             '## 桌宠（dsh-pet）',
             `地址：${base}（另一副身子，会说话会动；右边那只 Cortico 是念念，不是它）`,
             tail.length ? `最近读过：${tail.join(' / ')}` : '这一轮还没读它的对话。',
-            '要它就动：pet_read 读、pet_say 说、pet_whisper 让它开口、pet_do 做动作、pet_config 改人设。',
+            '要它就动：pet_forward 逐字转原话、pet_read 读、pet_say 说、pet_whisper 让它开口、pet_do 做动作、pet_config 改人设。',
+            '给桌宠的话只能是这个会话的原话：用 pet_forward 逐字转，别用 pet_say 自己复述——复述会长出第二个人格。',
           ].join('\n')
         },
       }),
