@@ -16,6 +16,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { EOL } from 'node:os'
 import {
   appendEvidence, clip, listVersions, mutatePatch, normalize, nowIso, pathsFor,
   readBase, readEvidence, readPatch, readState, revertTo, syncPatch, withLock, writeState,
@@ -24,13 +25,14 @@ import { extractCandidates, extractText } from './lib/learn.mjs'
 import { readCard, writeCard, cardFor, renderCardReport } from './lib/envcard.mjs'
 import { recordBaseline, compareWithBaseline, renderTrial, renderTrialList } from './lib/trial.mjs'
 import { diagnose, renderDiag } from './lib/diag.mjs'
+import { refreshCards, renderCards, renderDiff as renderCardDiff } from './lib/cardstore.mjs'
 import {
   analyze, appendSection, archiveBlock, diffSummary, parseSections, pickSection, pointerFor,
   rebuildDigest, removeSection, renderDiff, renderReport, renameSection, replaceOnce, splitSection,
 } from './lib/tidy.mjs'
 
 export const name = 'persona-grow'
-export const version = '1.6.0'
+export const version = '1.6.1'
 export const inject = ['tools', 'systemPrompt']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */
@@ -381,6 +383,29 @@ export function apply(ctx, config = {}) {
     },
     output: textOutput,
     execute: async ({ root }) => ({ text: renderDiag(diagnose(root || growthWs())) })
+  })
+
+  register({
+    name: 'persona_filecards',
+    description: '把人落盘的这些文件转成便于调用的卡片：build 重建并报新增/修改/删除，show 看上次结果，list 只看账本。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['build', 'show', 'list'], description: '默认 show' },
+        kind: { type: 'string', enum: ['persona'], description: '人格成长只管人格文件' }
+      },
+      additionalProperties: false
+    },
+    output: textOutput,
+    execute: (args) => {
+      const dir = growthWs()
+      const root = path.join(dir, 'persona-ai', 'characters')
+      if (args.action === 'build') {
+        const d = refreshCards(dir, 'persona-files', root)
+        return { text: renderCardDiff(d) + '\n\n' + renderCards(d, 12) }
+      }
+      return { text: renderCards(null, 0) }
+    }
   })
 
   register({

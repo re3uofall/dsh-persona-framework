@@ -1,5 +1,21 @@
 # 变更记录
 
+## 6.6.0 — 三类文件卡片与空闲整理
+
+- 新增 `impl/cardstore.mjs`：把人落盘的人格/记忆/框架文件各转成卡片，报新增/修改/未变/删除。
+- 空闲整理到点自动重建三类卡片（`空闲整理账.jsonl` 里带上 counts），原来的、改过的、新加的都会进片子。
+- 框架加 `framework_filecards`（build/show/list），人格成长加 `persona_filecards`，记忆加 `memory_filecards`。
+
+## 6.5.0 — 状态行与空闲整理
+
+- `impl/statusline.mjs`：工具跑起来记一行（名字／开始／用时），**短于 60 秒的不进前缀**；框架段末尾按需拼上。
+- `impl/idle.mjs`：pre-step 记「人还在」；闲够 45 分钟才落一行 `空闲整理账.jsonl`，冷却 180 分钟、每天最多 2 次——判据是「真的没人说话」，不是到点。
+- 两件都抄自 `dsh-working-activity` 与 `@modusensus/dsh-mneme` 的形状，不搬代码。
+## 6.4.0 — 工具三态（抄 capability-menu）
+
+- 新增 `impl/tooltier.mjs`：常驻／按需／停用三档，写在 `.persona-framework/工具三态.json`；读坏回默认（工具宁可多注册，不能因账本坏而消失）。
+- 注册器先过一次三态：`off` 的工具连定义都不注册，省的不只是正文，是整段工具清单。
+- 新增工具 `framework_tiers`（list/set）：改完要重启 DSH 才生效，因为工具注册只在装配期发生。
 ## 6.3.0 — 工具搬家：试跑账与账本诊断从记忆插件搬到框架
 
 - `framework_trial`（record / check / list）：改前刻基线，改后跑同一批自检，过数、失败数与指纹三项一起比，不一样就说明这次改动伤了什么。

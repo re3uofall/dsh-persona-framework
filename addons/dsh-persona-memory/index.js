@@ -32,6 +32,7 @@ import {
 } from './lib/pools.mjs'
 import { condenseJournal, excerpt, renderCondense } from './lib/journal.mjs'
 import { condenseSkeleton } from './lib/skeleton.mjs'
+import { refreshCards, renderCards, renderDiff, loadIndex } from './lib/cardstore.mjs'
 import { decideWrite, explain as explainGate } from './lib/writegate.mjs'
 import {
   renderReinforce, saveReinforce, scoreFiles, DEFAULT_SUBJECTS, loadReinforce,
@@ -952,6 +953,28 @@ ${seg}` }
     ...opts,
     text: cardify(opts.name || "记忆", opts.text),
   })
+
+tools.push({
+  name: 'memory_filecards',
+  description: '把记忆池的文件转成便于调用的卡片：build 重建并报新增/修改/删除，show 看上次结果。',
+  parameters: {
+    type: 'object',
+    properties: {
+      action: { type: 'string', enum: ['build', 'show'], description: '默认 show' }
+    },
+    additionalProperties: false
+  },
+  output: textOutput,
+  async execute(args) {
+    const dir = resolveRoot(ctx, live())
+    const root = join(dir, 'knowledge')
+    if (args.action === 'build') {
+      const d = refreshCards(dir, 'memory-files', root)
+      return { text: renderDiff(d) + '\n\n' + renderCards(d, 12) }
+    }
+    return { text: renderCards(loadIndex(dir, 'memory-files'), 12) }
+  }
+})
 
   for (const t of tools) ctx.tools?.register?.(t)
 

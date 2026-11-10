@@ -1,0 +1,8 @@
+- insert:
+    - id: persona-card
+      name: dsh-persona-card
+      config:
+        workspace: ''
+        dir: '.persona-framework'
+        maxChars: 4000
+        showAfterCards: 3

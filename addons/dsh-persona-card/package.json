@@ -1,0 +1,17 @@
+{
+  "name": "dsh-persona-card",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": ["index.js", "lib", "locale", "icon.svg", "cordis.patch.yml", "README.md"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "license": "MIT",
+  "description": "卡片的两半：语言与逻辑（每句话、每个连接都落成确定的卡），结构与拓扑（卡片本身的变化与滑动）"
+}

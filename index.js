@@ -38,6 +38,10 @@ import { ensureWorkspace, pickPersonaFile as pickPersona, inspectWorkspace, SKEL
 import { doctorCheck, renderDoctor } from './impl/doctor.mjs'
 import { envCheck, renderEnvCheck } from './impl/envcheck.mjs'
 import { readEnvCard, writeEnvCard, cardOf, renderEnvCard, cardFor, readCard, writeCard, renderCardReport } from './impl/envcard.mjs'
+import { tierOf, setTier, renderTiers } from './impl/tooltier.mjs'
+import { beginRun, endRun, renderStatusline } from './impl/statusline.mjs'
+import { noteIdleStep, refreshAll, cardsSummary } from './impl/idle.mjs'
+import { refreshCards, loadIndex, renderCards, renderDiff } from './impl/cardstore.mjs'
 import { recordBaseline, compareWithBaseline, renderTrial, renderTrialList } from './impl/trial.mjs'
 import { diagnose, renderDiag } from './impl/diag.mjs'
 import { appendToPool, WRITE_TARGETS, undoWrite, undoPathOf } from './impl/poolwrite.mjs'
@@ -55,7 +59,7 @@ import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from
 import { IMPLS } from './impl/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '6.3.0'
+const VERSION = '6.6.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 // 插件自带的模块**正文**（85 个）。
 // 原来只有 BUNDLED_MODULES（索引），别人装了插件只能看见目录、取不到内容——
@@ -1410,7 +1414,7 @@ export function apply(ctx, config = {}) {
   // 记步：自己那一份 gate 得自己写、自己读，才算不依赖别人。
   // 不记的话 gateSkip() 永远说「第一步」，人格每步都全量注一遍——省 token 就白做了。
   try {
-    ctx.on('agent/pre-step', (payload, next) => { gateNoteStep(payload); return next() })
+    ctx.on('agent/pre-step', (payload, next) => { gateNoteStep(payload); try { noteIdleStep(wsRoot()) } catch {} return next() })
   } catch { /* 没有这个钩子也能用：退化成每步全量，不坏 */ }
 
 
@@ -1435,7 +1439,7 @@ export function apply(ctx, config = {}) {
     name: 'persona:framework',
     order: cfg.order,
     interpolate: false,
-    text: () => { const t = gateApply(buildText, GATE_ANCHOR); const c = readEnvCard(wsRoot()); return cardFor(wsRoot(), 'framework', '人格框架', t) },
+    text: () => { const t = gateApply(buildText, GATE_ANCHOR); const c = readEnvCard(wsRoot()); const body = cardFor(wsRoot(), 'framework', '人格框架', t); let sl = ''; try { sl = renderStatusline(wsRoot()) } catch {} return sl ? body + '\n\n' + sl : body },
   }))
 
   // ── 工具 ────────────────────────────────────────────────────────────────────
@@ -1451,20 +1455,90 @@ export function apply(ctx, config = {}) {
     },
   }
 
-  const register = (spec) => ctx.effect(() => ctx.tools.register({
-    name: spec.name,
-    description: spec.description,
-    parameters: spec.parameters,
-    output: textOutput,
-    async execute(args, exec) {
-      try {
-        return { text: String(await spec.run(args && typeof args === 'object' ? args : {}, exec)) }
-      } catch (error) {
-        return { text: `没办成：${errText(error)}` }
-      }
-    },
-  }))
+  const EOL_LINE = '\n'
+  const register = (spec) => {
+    // 工具三态（抄 capability-menu 的形状）：停用的不注册，连定义都不进每轮请求
+    try {
+      if (tierOf(wsRoot(), spec.name) === 'off') return
+    } catch {}
+    return ctx.effect(() => ctx.tools.register({
+      name: spec.name,
+      description: spec.description,
+      parameters: spec.parameters,
+      output: textOutput,
+      async execute(args, exec) {
+        let rid = null
+        try { rid = beginRun(wsRoot(), spec.name) } catch {}
+        try {
+          const out = { text: String(await spec.run(args && typeof args === 'object' ? args : {}, exec)) }
+          try { if (rid) endRun(wsRoot(), rid, true) } catch {}
+          return out
+        } catch (error) {
+          try { if (rid) endRun(wsRoot(), rid, false) } catch {}
+          return { text: `没办成：${errText(error)}` }
+        }
+      },
+    }))
+  }
 
+  register({
+    name: 'framework_filecards',
+    description: '文件卡片：把人格文件 / 记忆文件 / 框架文件摊成便于调用的卡片（指针、标题、字节、指纹、摘要），并报出新增 / 修改 / 未变 / 已删。action=build 重建（默认）/ show 看上次 / list 三类都列。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['build', 'show', 'list'], description: '默认 build' },
+        kind: { type: 'string', enum: ['persona', 'memory', 'framework'], description: '只做一类（可省）' },
+      },
+      additionalProperties: false,
+    },
+    async run(args) {
+      const ws = wsRoot()
+      const kind = args && args.kind ? String(args.kind) : ''
+      const roots = {
+        persona: join(ws, 'persona-ai', 'characters'),
+        memory: join(ws, 'persona-ai', 'knowledge'),
+        framework: ws,
+      }
+      const kinds = kind ? [kind] : Object.keys(roots)
+      const lines = []
+      for (const k of kinds) {
+        if (!roots[k]) { lines.push(k + '：没有这一类'); continue }
+        try {
+          const r = (args && args.action === 'show') ? { diff: null } : refreshCards(ws, k + '-files', roots[k])
+          const payload = loadIndex(ws, k + '-files')
+          lines.push('## ' + k)
+          if (r && r.diff) lines.push(renderDiff(r.diff))
+          lines.push(renderCards(payload, 12))
+        } catch (error) {
+          lines.push(k + '：没办成（' + String(error && error.message ? error.message : error) + '）')
+        }
+      }
+      return lines.filter(Boolean).join('\n')
+    },
+  })
+  register({
+    name: 'framework_tiers',
+    description: '工具三态（常驻/按需/停用）：停用的工具不注册、不占每轮前缀。action=list 看现状 / set 改一个。改完要重启 DSH 才生效。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'set'], description: 'list 看现状 / set 改一个' },
+        name: { type: 'string', description: '工具名，如 framework_view' },
+        tier: { type: 'string', enum: ['always', 'ondemand', 'off'], description: '常驻 / 按需 / 停用' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    async run(args) {
+      const ws = wsRoot()
+      if (args.action === 'set') {
+        const r = setTier(ws, String(args.name || ''), String(args.tier || ''))
+        return r.ok ? `改了：${args.name} → ${args.tier}` + EOL_LINE + renderTiers(ws) : `没改成：${r.why}`
+      }
+      return renderTiers(ws)
+    },
+  })
   register({
     name: 'framework_trial',
     description: '试跑账（抄 dsh-soul 的演化纪律）：改前刻一次基线，改后再跑同一批检查，比通过数与指纹；不一样就说不一样。action=record 刻基线 / check 比对 / list 看账。',
@@ -1541,7 +1615,7 @@ export function apply(ctx, config = {}) {
       if (a === 'set') {
         const r = writeCard(ws, 'framework', { mode: args.mode, budget: args.budget })
         if (r && r.ok === false) return r.why
-        return '改好了。' + EOL + renderCardReport(ws)
+        return '改好了。' + EOL_LINE + renderCardReport(ws)
       }
       if (a === 'sample') return '这只影响下一轮注入，整段预览请用 framework_view。'
       return renderCardReport(ws)

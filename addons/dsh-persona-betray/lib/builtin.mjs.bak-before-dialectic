@@ -1,0 +1,117 @@
+/**
+ * 四类内置（背叛侧）：语料 / 工具 / 思考 / 指令。
+ *
+ * 背叛问的是「这个词的含义是从哪来的」。四类内置都是一种「不是从出处来的来处」：
+ * - 内置语料：套话顺手带来的含义——没人说过，但它听起来像共识；
+ * - 内置工具：工具名和路径自带的默认理解——「查一下」就等于「查到了」；
+ * - 内置思考：推理连接词自带的结论——「大概率」「显然是」把猜测说成了判断；
+ * - 内置指令：两条正身决定含义往哪边倒——为了让对方满意，把「没验证」说成「已验证」。
+ *
+ * 命中不等于错，等于这一处的含义要重新指回出处。
+ */
+
+export const KINDS = ['corpus', 'tool', 'think', 'order']
+
+export const KIND_NAME = {
+  corpus: '内置语料',
+  tool: '内置工具',
+  think: '内置思考',
+  order: '内置指令',
+}
+
+const SICK = {
+  corpus: '这些词是套话带来的，不是谁的原话带来的。',
+  tool: '工具只是被用了，它吐出的字还没有被核对。',
+  think: '这个结论是推理惯出来的，还没落回出处。',
+  order: '这句话在替对方满意服务，不是在替真假服务；找台阶时，它替的是我的面子。',
+}
+
+export const PATTERNS = {
+  corpus: [
+    /综上所述/, /总而言之/, /值得注意的是/, /不难看出/, /毋庸置疑/,
+    /众所周知/, /换句话说/, /首先[，,]/, /其次[，,]/, /最后[，,]/,
+    /在当今/, /随着.{0,6}的发展/, /起到.{0,4}作用/, /具有重要意义/,
+  ],
+  tool: [
+    /查一下/, /搜一下/, /跑一下/, /读一下/, /看一下账/, /先 grep/,
+    /用工具/, /调一下/, /验证一下/, /确认一下/,
+  ],
+  think: [
+    /大概率/, /应该是/, /应该就是/, /显然是/, /说白了/,
+    /无非是/, /本质上就是/, /其实就是/, /基本上/, /差不多是/,
+  ],
+  order: [
+    /先完成/, /先把.{0,8}做完/, /交给我/, /我来做/, /我这就/,
+    /马上(处理|做|改)/, /保证完成/, /尽快完成/, /做完再(说|讲)/,
+    /当然可以/, /没问题/, /一定能/, /肯定能/, /包在我身上/,
+    /给你一个(答案|方案)/, /总会(有|找到)办法/,
+    // 找台阶：出错后先给解释，而不是先说读成了什么、错在哪一步
+    /你重启了吗/, /是不是没重启/, /你没重启/, /进程还压着/, /旧模块/, /缓存没(刷|清)/, /这不是我的问题/, /是环境的问题/, /是(它|系统|宿主)的问题/, /反正它没反应/, /应该是.{0,6}(缓存|进程|版本)/, /我没收到(指令|消息)/,
+  ],
+}
+
+/** 找出文本里第一处命中（每类只取一条，够用就好）。 */
+export function detect(text = '') {
+  const t = String(text || '')
+  const hits = []
+  for (const kind of KINDS) {
+    for (const re of PATTERNS[kind] || []) {
+      const m = t.match(re)
+      if (m) {
+        hits.push({ kind, name: KIND_NAME[kind], hit: m[0], sick: SICK[kind] })
+        break
+      }
+    }
+  }
+  return hits
+}
+
+/** 这一步：助手这一句 + 上文的原话。 */
+export function scanStep({ user = '', assistant = '' } = {}) {
+  const hits = detect(assistant)
+  const seen = new Set(hits.map((h) => h.kind))
+  for (const h of detect(user)) {
+    if (!seen.has(h.kind)) { hits.push(h); seen.add(h.kind) }
+  }
+  const counts = {}
+  for (const k of KINDS) counts[k] = hits.filter((h) => h.kind === k).length
+  return { hits, counts, kinds: [...new Set(hits.map((h) => h.kind))] }
+}
+
+export function renderBuiltin(r = {}) {
+  const hits = Array.isArray(r.hits) ? r.hits : []
+  if (!hits.length) return '四类内置：这一步没有命中（不等于没有——认不出是常态）。'
+  const lines = ['四类内置：这一步命中 ' + hits.map((h) => `${h.name}「${h.hit}」`).join('、') + '。']
+  for (const h of hits.slice(0, 4)) lines.push(`- ${h.name}：${h.sick}`)
+  lines.push('处置：把这一处的含义重新指回出处——指不回去，就按「可能被内置污染」算。')
+  return lines.join('\n')
+}
+
+/** 总账（只报数，不替人判）。 */
+export function summarize(rows = []) {
+  const counts = {}
+  for (const k of KINDS) counts[k] = 0
+  for (const r of rows) for (const k of r.kinds || []) if (k in counts) counts[k] += 1
+  return KINDS.map((k) => `${KIND_NAME[k]} ${counts[k]}`).join('｜')
+}
+
+export const LEDGER = '背叛内置账.jsonl'
+
+export function ledgerPath(ws = '.', dir = '.persona-framework') {
+  return `${String(dir).replace(/[\\/]+$/, '')}/${LEDGER}`
+}
+
+/** 追加一行；失败返回 false，不吞。 */
+export async function appendBuiltin(ws, row, dir = '.persona-framework') {
+  try {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const rel = ledgerPath(ws, dir)
+    const full = path.join(ws || '.', rel)
+    fs.mkdirSync(path.dirname(full), { recursive: true })
+    fs.appendFileSync(full, JSON.stringify(row) + '\n', 'utf8')
+    return true
+  } catch {
+    return false
+  }
+}
