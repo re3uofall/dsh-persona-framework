@@ -33,6 +33,7 @@ import {
 import { condenseJournal, excerpt, renderCondense } from './lib/journal.mjs'
 import { condenseSkeleton } from './lib/skeleton.mjs'
 import { refreshCards, renderCards, renderDiff, loadIndex } from './lib/cardstore.mjs'
+import { fuseFromRoot, renderFused } from './lib/fusion.mjs'
 import { decideWrite, explain as explainGate } from './lib/writegate.mjs'
 import {
   renderReinforce, saveReinforce, scoreFiles, DEFAULT_SUBJECTS, loadReinforce,
@@ -60,7 +61,7 @@ import { DEFAULT_LIVE, liveMemory, renderLive } from './lib/live.mjs'
 import { wrapWithCard, readEnvCard, cardOf, cardFor, renderEnvCard, writeEnvCard } from './lib/envcard.mjs'
 
 export const name = 'persona-memory'
-export const version = '1.6.1'
+export const version = '1.7.0'
 // systemPrompt 必须声明：不声明它就不会先加载，`ctx.systemPrompt` 是 undefined，
 // 下面那几处 `ctx.effect(() => ctx.systemPrompt.section(...))` 会抛 TypeError 被 catch 吞掉——
 // 表现就是「插件 active、自测全过、渲染得出内容，但注入里一个字都没有」。
@@ -976,6 +977,31 @@ tools.push({
   }
 })
 
+tools.push({
+    name: 'memory_fuse',
+    description: '融合检索（抄 dsh-engram 的 RRF）：关键词道与词袋向量道各自排名，按 1/(60+名次) 累加融合；回带指针，细节在本地按指针回捞。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '要找的话或词。' },
+        limit: { type: 'number', description: '最多几条，默认 8。' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    output: textOutput,
+    run: async (args) => {
+      const q = String(args.query || '')
+      const limit = Number(args.limit || 8)
+      try {
+        const root = String((function(){ try { return resolveRoot(ctx, live()) } catch { return process.cwd() } })() + '/knowledge')
+        const r = fuseFromRoot(root, q, { limit })
+        return renderFused(r.rows, { query: q })
+      } catch (error) {
+        return '记忆融合检索没跑成：' + ((error && error.message) || String(error))
+      }
+    },
+})
   for (const t of tools) ctx.tools?.register?.(t)
 
   // ── 加固账自动刷新 ──────────────────────────────────────────────────────

@@ -1,5 +1,10 @@
 # 变更记录
 
+## 6.7.0 — 融合检索与巩固蒸馏（抄 dsh-engram）
+
+- `impl/fusion.mjs`：关键词道 + 词袋向量道，按 RRF（K=60，1/(K+名次) 累加）融合排序，带指针回捞。
+- 巩固蒸馏：多条卡片合成一条信念（form / refine / confirm / refute），每条信念必须留来源 id；SM-2 复习（1 天 / 6 天 / 乘 ease）与半衰期衰减 30 天。
+- 新增工具 `framework_fuse`；人格成长 `persona_fuse`、记忆 `memory_fuse` 各一份（各自扫自己的目录）。
 ## 6.6.0 — 三类文件卡片与空闲整理
 
 - 新增 `impl/cardstore.mjs`：把人落盘的人格/记忆/框架文件各转成卡片，报新增/修改/未变/删除。

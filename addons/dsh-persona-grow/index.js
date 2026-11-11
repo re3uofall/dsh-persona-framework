@@ -25,6 +25,7 @@ import { extractCandidates, extractText } from './lib/learn.mjs'
 import { readCard, writeCard, cardFor, renderCardReport } from './lib/envcard.mjs'
 import { recordBaseline, compareWithBaseline, renderTrial, renderTrialList } from './lib/trial.mjs'
 import { diagnose, renderDiag } from './lib/diag.mjs'
+import { fuseFromRoot, renderFused } from './lib/fusion.mjs'
 import { refreshCards, renderCards, renderDiff as renderCardDiff } from './lib/cardstore.mjs'
 import {
   analyze, appendSection, archiveBlock, diffSummary, parseSections, pickSection, pointerFor,
@@ -32,7 +33,7 @@ import {
 } from './lib/tidy.mjs'
 
 export const name = 'persona-grow'
-export const version = '1.6.1'
+export const version = '1.7.0'
 export const inject = ['tools', 'systemPrompt']
 
 /** 默认值。任何一条都能在 patch 的 `config` 里改。 */
@@ -408,6 +409,31 @@ export function apply(ctx, config = {}) {
     }
   })
 
+  register({
+    name: 'persona_fuse',
+    description: '融合检索（抄 dsh-engram 的 RRF）：关键词道与词袋向量道各自排名，按 1/(60+名次) 累加融合；回带指针，细节在本地按指针回捞。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '要找的话或词。' },
+        limit: { type: 'number', description: '最多几条，默认 8。' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    output: textOutput,
+    run: async (args) => {
+      const q = String(args.query || '')
+      const limit = Number(args.limit || 8)
+      try {
+        const root = String(growthWs() + '/characters')
+        const r = fuseFromRoot(root, q, { limit })
+        return renderFused(r.rows, { query: q })
+      } catch (error) {
+        return '人格成长融合检索没跑成：' + ((error && error.message) || String(error))
+      }
+    },
+  })
   register({
     name: 'grow_report',
     description: '整理人格文件之前的体检：多少字、多大几段、哪些标题像旧文、有没有重复行。'

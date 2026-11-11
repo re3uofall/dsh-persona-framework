@@ -38,6 +38,7 @@ import { ensureWorkspace, pickPersonaFile as pickPersona, inspectWorkspace, SKEL
 import { doctorCheck, renderDoctor } from './impl/doctor.mjs'
 import { envCheck, renderEnvCheck } from './impl/envcheck.mjs'
 import { readEnvCard, writeEnvCard, cardOf, renderEnvCard, cardFor, readCard, writeCard, renderCardReport } from './impl/envcard.mjs'
+import { fuseFromRoot, renderFused } from './impl/fusion.mjs'
 import { tierOf, setTier, renderTiers } from './impl/tooltier.mjs'
 import { beginRun, endRun, renderStatusline } from './impl/statusline.mjs'
 import { noteIdleStep, refreshAll, cardsSummary } from './impl/idle.mjs'
@@ -59,7 +60,7 @@ import { startLoop, stopLoop, loopStatus, lastCycle, renderLoop, spinOnce } from
 import { IMPLS } from './impl/impl.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const VERSION = '6.6.0'
+const VERSION = '6.7.0'
 const BUNDLED_MODULES = resolve(HERE, 'framework', 'MODULES.md')
 // 插件自带的模块**正文**（85 个）。
 // 原来只有 BUNDLED_MODULES（索引），别人装了插件只能看见目录、取不到内容——
@@ -1537,6 +1538,31 @@ export function apply(ctx, config = {}) {
         return r.ok ? `改了：${args.name} → ${args.tier}` + EOL_LINE + renderTiers(ws) : `没改成：${r.why}`
       }
       return renderTiers(ws)
+    },
+  })
+  register({
+    name: 'framework_fuse',
+    description: '融合检索（抄 dsh-engram 的 RRF）：关键词道与词袋向量道各自排名，按 1/(60+名次) 累加融合；回带指针，细节在本地按指针回捞。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '要找的话或词。' },
+        limit: { type: 'number', description: '最多几条，默认 8。' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    output: textOutput,
+    run: async (args) => {
+      const q = String(args.query || '')
+      const limit = Number(args.limit || 8)
+      try {
+        const root = String(wsRoot() + '/persona-ai')
+        const r = fuseFromRoot(root, q, { limit })
+        return renderFused(r.rows, { query: q })
+      } catch (error) {
+        return '框架融合检索没跑成：' + ((error && error.message) || String(error))
+      }
     },
   })
   register({
