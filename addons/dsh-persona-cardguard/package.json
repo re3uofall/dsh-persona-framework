@@ -1,0 +1,29 @@
+{
+  "name": "dsh-persona-cardguard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "卡片守：人格永远不许被卡片化，四段记忆一段都不许缺。装载时与每轮 pre-step 各查一次，发现被改成卡片就改回 raw、留备份、落账并喊一声。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "selfcheck.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "selfcheck": "node selfcheck.mjs"
+  }
+}

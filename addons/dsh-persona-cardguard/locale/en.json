@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Card Guard",
+    "description": "The persona section must stay raw, never carded. Checked at load and every pre-step; if changed it is restored, backed up, and logged."
+  }
+}
