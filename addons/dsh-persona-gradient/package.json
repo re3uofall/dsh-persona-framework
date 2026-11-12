@@ -19,7 +19,8 @@
     "cordis.patch.yml",
     "README.md",
     "环境提示词.md",
-    "selfcheck.mjs"
+    "selfcheck.mjs",
+    "核心精神.md"
   ],
   "scripts": {
     "selfcheck": "node selfcheck.mjs"
