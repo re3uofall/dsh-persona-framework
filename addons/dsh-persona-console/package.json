@@ -1,8 +1,8 @@
 {
   "name": "dsh-persona-console",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "private": true,
-  "description": "人格框架台：第一部分本体与模块正文，第二部分模块功能实现（探索/成果/日记/清扫的实现件都在这一栏，无独立包的标功能已实现），第三部分其余附加插件",
+  "description": "人格框架台：总模块／模块功能实现／四组附加插件（八大人格插件・器官・对外接口・其他），每组带实时启停勾选，写到 Loader 的条目上，不用重启。",
   "type": "module",
   "main": "index.js",
   "exports": {

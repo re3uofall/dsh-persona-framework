@@ -15,6 +15,7 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
     const API = '/api/persona-console'
+    const TOGGLE = '/api/persona-console/toggle'
 
     /** 侧栏那个小图标：三层叠起来的方块（本体 / 模块 / 附加）。 */
     function ConsoleIcon(props) {
@@ -49,11 +50,12 @@ window.__ModuleLoader__.load({
       })
     }
 
-    function Row(item, kind, depth) {
+    function Row(item, kind, depth, onToggle, busy) {
       const sub = kind === 'modules'
         ? item.file
         : [item.pkg, item.version ? 'v' + item.version : ''].filter(Boolean).join(' · ')
       const key = (item.id || item.pkg || item.dir) + ':' + (item.version || '')
+      const canToggle = Boolean(item.pkg) && !item.readOnly && Boolean(onToggle)
       const self = h('div', {
         key: key,
         style: {
@@ -62,6 +64,16 @@ window.__ModuleLoader__.load({
           borderBottom: '1px solid var(--dsw-alias-border-l1)',
         },
       },
+        canToggle
+          ? h('input', {
+            type: 'checkbox',
+            checked: Boolean(item.enabled),
+            disabled: Boolean(busy),
+            title: item.readOnly ? '这条不能从这里改' : (item.enabled ? '点一下停用' : '点一下启用'),
+            onChange: (e) => onToggle(item, e.target.checked),
+            style: { marginTop: 4, flex: '0 0 auto', cursor: 'pointer', accentColor: 'var(--dsw-alias-brand-primary)' },
+          })
+          : null,
         h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
           h('div', {
             style: {
@@ -69,7 +81,7 @@ window.__ModuleLoader__.load({
               fontSize: depth ? 13 : 13.5, color: 'var(--dsw-alias-label-primary)',
             },
           },
-            kind === 'addons' ? dot(Boolean(item.enabled)) : null,
+            kind === 'addons' || item.entryId ? dot(Boolean(item.enabled)) : null,
             h('span', { style: { fontWeight: depth ? 400 : 500 } }, item.title || item.id || item.pkg),
             item.children
               ? h('span', {
@@ -79,13 +91,26 @@ window.__ModuleLoader__.load({
                 },
               }, String(item.children.length) + ' 个程序')
               : null,
-            kind === 'addons' && !item.enabled
+            item.readOnly
               ? h('span', {
                 style: {
                   fontSize: 11, color: 'var(--dsw-alias-label-quaternary)',
                   border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 5, padding: '0 5px',
                 },
-              }, '未登记')
+              }, '不可寻址')
+              : null,
+            item.pkg && !item.installed
+              ? h('span', {
+                style: {
+                  fontSize: 11, color: 'var(--dsw-alias-label-quaternary)',
+                  border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 5, padding: '0 5px',
+                },
+              }, '未装载')
+              : null,
+            item.entryId && item.phase && !item.enabled
+              ? h('span', {
+                style: { fontSize: 11, color: 'var(--dsw-alias-label-quaternary)' },
+              }, '· 待重启')
               : null,
           ),
           h('div', { style: Object.assign({}, mono, { fontSize: 11.5, color: 'var(--dsw-alias-label-quaternary)', marginTop: 2, wordBreak: 'break-all' }) }, sub),
@@ -102,7 +127,7 @@ window.__ModuleLoader__.load({
             marginLeft: 4, paddingLeft: 8,
             borderLeft: '2px solid var(--dsw-alias-border-l1)',
           },
-        }, item.children.map((c) => Row(c, 'children', (depth || 0) + 1))),
+        }, item.children.map((c) => Row(c, 'children', (depth || 0) + 1, onToggle, busy))),
       )
     }
 
@@ -110,6 +135,31 @@ window.__ModuleLoader__.load({
       const [state, setState] = React.useState({ phase: 'loading', data: null, error: '' })
       const [nonce, setNonce] = React.useState(0)
       const [q, setQ] = React.useState('')
+      const [busyId, setBusyId] = React.useState('')
+      const [flash, setFlash] = React.useState('')
+
+      const toggle = React.useCallback((item, next) => {
+        const id = item.entryId
+        setBusyId(id)
+        setFlash('')
+        fetch(TOGGLE, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ entryId: id, pkg: item.pkg, dir: item.dir, enabled: next }),
+        })
+          .then((r) => r.json())
+          .then((json) => {
+            if (json && json.ok) {
+              setFlash((item.title || item.pkg) + (next ? ' 已启用' : ' 已停用'))
+              setNonce((n) => n + 1)
+            } else {
+              setFlash('没改成：' + String((json && json.error) || '原因不明'))
+              setNonce((n) => n + 1)
+            }
+          })
+          .catch((error) => setFlash('没改成：' + String((error && error.message) || error)))
+          .finally(() => setBusyId(''))
+      }, [])
 
       React.useEffect(() => {
         let alive = true
@@ -141,8 +191,8 @@ window.__ModuleLoader__.load({
 
       const summary = h('p', { style: { margin: '6px 0 18px', fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)', lineHeight: 1.7 } },
         counts
-          ? `三部分：总模块插件（本体 1 个 + 模块正文 ${counts.modules} 篇 + 程序模块 ${counts.programs} 个）· 模块功能实现 ${counts.impl} 支 · 附加插件 ${counts.addons} 个（已登记 ${counts.addonsOn}）`
-          : '三部分：总模块插件、模块功能实现、附加插件。',
+          ? `四组附加插件：八大人格插件 ${counts.personaOn}/${counts.persona} · 器官 ${counts.organsOn}/${counts.organs} · 对外接口 ${counts.interfacesOn}/${counts.interfaces} · 其他 ${counts.restOn}/${counts.rest}（勾了立刻启停）；模块正文 ${counts.modules} 篇 · 程序模块 ${counts.programs} 个 · 功能实现 ${counts.impl} 支`
+          : '四组附加插件：八大人格插件、所有器官、所有对外接口、其他附加插件。',
         data && data.workspace
           ? h('span', { style: Object.assign({}, mono, { display: 'block', fontSize: 11.5, color: 'var(--dsw-alias-label-quaternary)', marginTop: 4, wordBreak: 'break-all' }) }, data.workspace)
           : null,
@@ -162,6 +212,10 @@ window.__ModuleLoader__.load({
 
       const errorLine = state.error
         ? h('div', { style: { marginBottom: 14, fontSize: 13, color: 'var(--dsw-alias-state-error-primary)' } }, '读不出来：' + state.error)
+        : null
+
+      const flashLine = flash
+        ? h('div', { style: { marginBottom: 14, fontSize: 12.5, color: 'var(--dsw-alias-label-secondary)' } }, flash)
         : null
 
       const needle = q.trim().toLowerCase()
@@ -195,7 +249,7 @@ window.__ModuleLoader__.load({
             String(g.items.length) + ' 项' + (needle ? '（筛过的）' : '')),
         ),
         h('p', { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)', margin: '4px 0 10px', lineHeight: 1.6 } }, g.hint),
-        h('div', { style: null }, g.items.map((item) => Row(item, g.id))),
+        h('div', { style: null }, g.items.map((item) => Row(item, g.id, 0, toggle, busyId === item.entryId))),
       ))
 
       return h('div', {
@@ -203,7 +257,7 @@ window.__ModuleLoader__.load({
           boxSizing: 'border-box', height: '100%', overflowY: 'auto',
           padding: '32px 40px 64px',
         },
-      }, h('div', { style: { maxWidth: 820 } }, head, summary, search, errorLine, body))
+      }, h('div', { style: { maxWidth: 820 } }, head, summary, search, errorLine, flashLine, body))
     }
 
     return {

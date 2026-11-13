@@ -17,10 +17,28 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 export const name = 'dsh-persona-console'
-export const version = '0.3.3'
-export const inject = ['webServer']
+export const version = '0.4.0'
+export const inject = ['webServer', 'pluginManager']
 
 const API = '/api/persona-console'
+const TOGGLE = '/api/persona-console/toggle'
+
+/**
+ * 附加插件分四组。判据是**包名**，不是标题——
+ * 标题会改，包名不会；没进任何一组的，落进「其他附加插件」。
+ */
+const PERSONA_EIGHT = new Set([
+  'dsh-persona-grow', 'dsh-persona-gradient', 'dsh-persona-betray', 'dsh-persona-appear',
+  'dsh-persona-identity', 'dsh-persona-context', 'dsh-persona-bridge', 'dsh-persona-memory',
+])
+const ORGANS = new Set([
+  'dsh-persona-hand', 'dsh-persona-mouth', 'dsh-persona-hearing', 'dsh-persona-vision',
+  'dsh-persona-affect', 'dsh-persona-energy', 'dsh-persona-freedom', 'dsh-persona-practice',
+  'dsh-persona-virtual', 'dsh-persona-insight', 'dsh-persona-lesson', 'dsh-persona-results',
+  'dsh-persona-diary', 'dsh-persona-sweep', 'dsh-persona-card', 'dsh-persona-cardguard',
+  'dsh-persona-plugin', 'dsh-persona-futurealsome', 'dsh-persona-futurenotme',
+])
+const INTERFACES = new Set(['dsh-pet-sisi'])
 
 /** 这一步的会话工作区：宿主把它放在 payload.agent.session.header.cwd。 */
 let sessionWs = null
@@ -108,7 +126,30 @@ function bundlesOf(profileDir) {
   return new Set()
 }
 
-function collect(cfg) {
+/**
+ * 从 Loader 的实时条目表取启停真相：`include:<id>` 才是可寻址的入口 id，
+ * 只有这些能真启停；没在表里的（包名对不上）退回 bundles 判断，标成「不可寻址」。
+ */
+async function liveEntries(ctx) {
+  const map = new Map()
+  try {
+    const list = await ctx.pluginManager.listPlugins()
+    for (const e of Array.isArray(list) ? list : []) {
+      const mod = String(e.moduleName ?? '')
+      map.set(mod, {
+        entryId: String(e.entryId ?? ''),
+        moduleName: mod,
+        enabled: Boolean(e.enabled),
+        phase: e.fiberPhase ?? null,
+        readOnly: Boolean(e.readOnlyReason),
+        reason: e.readOnlyReason ?? '',
+      })
+    }
+  } catch { /* 取不到实时表就退回 bundles，不装作拿到了 */ }
+  return map
+}
+
+async function collect(cfg, ctx) {
   const ws = workspaceOf(cfg)
   if (!ws) {
     return { ok: false, error: '还没认到工作区：会话 cwd 没到，也没配 workspace。' }
@@ -217,8 +258,22 @@ function collect(cfg) {
       .sort((a, b) => a.title.localeCompare(b.title, 'zh'))
   }
 
-  // 第二部分只摆「功能实现」，不摆插件包：插件一律归第三部分（将来有了单独的实现插件，也仍归第三部分）。
-  const otherAddons = addons.slice()
+  // 实时启停真相：以 Loader 条目为准，bundles 只当退路。
+  const live = await liveEntries(ctx)
+  for (const a of addons) {
+    const hit = live.get(a.pkg)
+    a.entryId = hit?.entryId || ''
+    a.on = hit ? hit.enabled : a.enabled
+    a.enabled = a.on
+    a.readOnly = a.pkg === 'dsh-persona-console' || Boolean(hit?.readOnly)
+      || !(a.pkg.startsWith('dsh-persona-') || a.pkg.startsWith('dsh-pet-'))
+    a.installed = Boolean(hit)
+    a.phase = hit?.phase || null
+  }
+
+  // 分四组：八大人格插件／器官／对外接口／其余。
+  const byGroup = (set) => addons.filter((a) => set.has(a.pkg))
+  const restAddons = addons.filter((a) => !PERSONA_EIGHT.has(a.pkg) && !ORGANS.has(a.pkg) && !INTERFACES.has(a.pkg))
   // 模块类插件里真改状态的实现件（不是把正文再注一遍的那种）：第二部分写「功能已实现」，要写出包名。
   const IMPL_PKGS = new Set(["dsh-persona-plugin"])
   const moduleImpls = addons.filter((x) => IMPL_PKGS.has(x.pkg))
@@ -238,6 +293,14 @@ function collect(cfg) {
       implAddons: moduleImpls.length,
       addons: addons.length,
       addonsOn: addons.filter((x) => x.enabled).length,
+      persona: byGroup(PERSONA_EIGHT).length,
+      personaOn: byGroup(PERSONA_EIGHT).filter((x) => x.enabled).length,
+      organs: byGroup(ORGANS).length,
+      organsOn: byGroup(ORGANS).filter((x) => x.enabled).length,
+      interfaces: byGroup(INTERFACES).length,
+      interfacesOn: byGroup(INTERFACES).filter((x) => x.enabled).length,
+      rest: restAddons.length,
+      restOn: restAddons.filter((x) => x.enabled).length,
     },
     groups: [
       {
@@ -329,10 +392,28 @@ function collect(cfg) {
         ],
       },
       {
+        id: "persona",
+        title: "八大人格插件",
+        hint: "人格本体那一层：成长、梯度、背叛、出现、同一、上下文、桥、记忆。勾了立刻启停，不用重启；面板自己除外——关掉它，这块面板就没了。",
+        items: byGroup(PERSONA_EIGHT),
+      },
+      {
+        id: "organs",
+        title: "所有器官",
+        hint: "身子那一层：手、嘴、耳、眼、情感、电量、自由时间、练习、感悟、教训、成果、日记、清扫、卡片、卡片守、插件、虚拟、future*。",
+        items: byGroup(ORGANS),
+      },
+      {
+        id: "interfaces",
+        title: "所有对外接口",
+        hint: "跨进程、跨设备的那几个：人格桥、桌宠桥。它们只负责把里外接起来，不替谁判断。",
+        items: byGroup(INTERFACES),
+      },
+      {
         id: "addons",
-        title: "附加插件",
-        hint: "第三部分：挂在框架上的那些（记忆、日记、器官、电量……）。「已装」= 登记在 bundles 里。模块类实现（模块 29/35、通用清扫）不在这一栏，它们在第一部分那些模块的第二部分实现里。",
-        items: otherAddons,
+        title: "其他附加插件",
+        hint: "剩下的都在这儿。勾了立刻启停；标「不可寻址」的是 Loader 里没有独立条目的包，只能改 profile 的 bundles 再重启。",
+        items: restAddons,
       },
     ],
   }
@@ -356,9 +437,9 @@ export function apply(ctx, rawConfig) {
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: API,
-    handler(req, res) {
+    async handler(req, res) {
       try {
-        const body = collect(cfg)
+        const body = await collect(cfg, ctx)
         res.writeHead(body.ok ? 200 : 500, {
           'content-type': 'application/json; charset=utf-8',
           'cache-control': 'no-store',
@@ -367,6 +448,108 @@ export function apply(ctx, rawConfig) {
       } catch (error) {
         res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
         res.end(JSON.stringify({ ok: false, error: String(error?.message ?? error) }))
+      }
+    },
+  }))
+
+  // 启停：只认 Loader 真有的条目 id，只认 own 的包名，别的都拒——
+  // 面板不该能替人关掉不该关的东西。
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: TOGGLE,
+    async handler(req, res) {
+      const reply = (code, obj) => {
+        res.writeHead(code, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+        })
+        res.end(JSON.stringify(obj))
+      }
+      try {
+        const chunks = []
+        for await (const c of req) chunks.push(c)
+        const raw = Buffer.concat(chunks).toString('utf8')
+        const input = raw ? JSON.parse(raw) : {}
+        const entryId = String(input.entryId ?? '')
+        const pkgName = String(input.pkg ?? '')
+        const dirName = String(input.dir ?? '')
+        const enabled = Boolean(input.enabled)
+
+        const ws = workspaceOf(cfg)
+        const addonsDir = join(ws, 'dsh-persona-framework', 'addons')
+        const pkgDir = dirName ? join(addonsDir, dirName) : ''
+        const pkgJson = pkgDir ? readJson(join(pkgDir, 'package.json'), {}) ?? {} : {}
+        const realPkg = String(pkgJson.name ?? pkgName)
+
+        const live = await liveEntries(ctx)
+        const hit = entryId
+          ? [...live.values()].find((x) => x.entryId === entryId)
+          : [...live.values()].find((x) => x.moduleName === realPkg)
+
+        // 只许动人格框架这一套的包；别的包一律拒。
+        const own = realPkg.startsWith('dsh-persona-') || realPkg.startsWith('dsh-pet-')
+        if (!own || !pkgDir || !existsSync(pkgDir)) {
+          return reply(403, { ok: false, error: '只允许启停人格框架这一套：' + (realPkg || '(空)') })
+        }
+        if (hit?.readOnly) {
+          return reply(403, { ok: false, error: '这条是管理必需的，Loader 不让改：' + hit.entryId })
+        }
+
+        // 一、已有 Loader 条目：直接启停。
+        if (hit) {
+          const result = await ctx.pluginManager.setPluginEnabled(hit.entryId, enabled)
+          return reply(200, {
+            ok: true, mode: 'entry', entryId: hit.entryId, pkg: realPkg, enabled,
+            application: result?.application ?? 'unknown',
+          })
+        }
+
+        // 二、还没装载：先试「这条 bundle 只是被关着」，再试登记本地目录。
+        const notes = []
+        if (ctx.pluginManager.setBundleEnabled) {
+          try {
+            const r = await ctx.pluginManager.setBundleEnabled(realPkg, enabled)
+            notes.push({ step: 'setBundleEnabled', application: r?.application ?? 'unknown' })
+            const after = await liveEntries(ctx)
+            const fresh = [...after.values()].find((x) => x.moduleName === realPkg)
+            if (fresh) {
+              const applied = await ctx.pluginManager.setPluginEnabled(fresh.entryId, enabled)
+              return reply(200, {
+                ok: true, mode: 'bundle', entryId: fresh.entryId, pkg: realPkg, enabled,
+                application: applied?.application ?? 'unknown', notes,
+              })
+            }
+          } catch (error) {
+            notes.push({ step: 'setBundleEnabled', error: String(error?.message ?? error) })
+          }
+        }
+
+        for (const spec of [pkgDir, 'link:' + pkgDir]) {
+          try {
+            const r = await ctx.pluginManager.installBundle(spec)
+            notes.push({ step: 'installBundle', spec, application: r?.application ?? 'unknown', message: r?.message })
+            if (r?.application === 'applied') break
+          } catch (error) {
+            notes.push({ step: 'installBundle', spec, error: String(error?.message ?? error) })
+          }
+        }
+
+        const again = await liveEntries(ctx)
+        const fresh = [...again.values()].find((x) => x.moduleName === realPkg)
+        if (!fresh) {
+          return reply(500, {
+            ok: false,
+            error: '这条还没装进 Loader，登记也没成：' + realPkg + '；' + (notes.map((n) => JSON.stringify(n)).join(' / ')),
+            notes,
+          })
+        }
+        const result = await ctx.pluginManager.setPluginEnabled(fresh.entryId, enabled)
+        return reply(200, {
+          ok: true, mode: 'install', entryId: fresh.entryId, pkg: realPkg, enabled,
+          application: result?.application ?? 'unknown', notes,
+        })
+      } catch (error) {
+        return reply(500, { ok: false, error: String(error?.message ?? error) })
       }
     },
   }))
