@@ -179,16 +179,16 @@ ok('报告给认账率与最近被推翻的', () => {
   assert.match(text, /认账/);
 });
 
-ok('包元信息、段名与四个工具都对得上', () => {
+ok('包元信息、段名与五个工具都对得上', () => {
   assert.equal(pkg.name, 'dsh-persona-futurealsome');
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml');
   const idx = readFileSync(join(here, 'index.js'), 'utf8');
   assert.match(idx, /实时环境:futurealsome/);
   assert.match(idx, /order:\s*18/);
-  for (const t of ['future_leave', 'future_rising', 'future_settle', 'future_report']) {
+  for (const t of ['future_leave', 'future_rising', 'future_settle', 'future_report', 'future_cost']) {
     assert.match(idx, new RegExp(t));
   }
-  assert.match(idx, /export const version = '0\.1\.0'/);
+  assert.match(idx, /export const version = '0\.1\.1'/);
 });
 
 ok('中英双语目录都在，名字不为空', () => {

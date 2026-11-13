@@ -1,0 +1,6 @@
+- insert:
+    - id: persona-practice
+      name: dsh-persona-practice
+      config:
+        workspace: ''
+        dir: '.persona-framework'

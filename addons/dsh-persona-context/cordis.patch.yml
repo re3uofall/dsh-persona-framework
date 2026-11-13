@@ -1,0 +1,5 @@
+# dsh-persona-context · Cordis 补丁
+# 装进 profile 时插入的条目；不注册任何工具/段之外的东西。
+- insert:
+    - id: dsh-persona-context
+      name: dsh-persona-context

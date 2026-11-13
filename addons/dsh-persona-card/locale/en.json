@@ -1,4 +1,6 @@
 {
-  "name": "Persona Cards",
-  "description": "Language and logic: every referent and every connective becomes a positioned card. Structure and topology: how cards move and slip — name the invariant before claiming a change."
+  "meta": {
+    "title": "Persona Cards",
+    "description": "Language and logic: every reference and connective becomes a card with a place. Structure and topology: how cards shift and slide — name the invariants before the changes."
+  }
 }

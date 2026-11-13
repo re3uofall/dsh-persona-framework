@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "title": "Persona Context",
+    "description": "Context is everything the self has read (its own or external, from the session or from persona/memory). Its key property: read does not mean remembered — something can be in context and never enter memory."
+  },
+  "tools": {
+    "context_note": "Record that something was read: source, kind, pointer, chars, own or external, and whether it entered memory.",
+    "context_status": "Show the context ledger: how many reads, by kind, and how many live only in context.",
+    "context_check": "Look a phrase up: is it in context, and did it enter memory.",
+    "context_forget": "Mark an entry as no longer counted in context; memory is untouched."
+  }
+}

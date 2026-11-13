@@ -3,7 +3,6 @@
 // 不是定时提醒：只按时间重叠太浅，时间只是四维里的一维。
 import {
   DEFAULTS,
-  DIMS,
   loadFutures,
   addFuture,
   risingItems,
@@ -13,9 +12,18 @@ import {
   renderReport,
   overlapOf,
 } from './lib/future.mjs';
+import {
+  DIMS as COST_DIMS,
+  loadNotme,
+  loadSettled,
+  markNotme,
+  overdue,
+  rateOf,
+  renderReport as renderCostReport,
+} from './lib/cost.mjs';
 
 export const name = 'dsh-persona-futurealsome';
-export const version = '0.1.0';
+export const version = '0.1.1';
 export const inject = ['systemPrompt', 'tools'];
 
 const DEFAULTS_CFG = { order: 18, maxRising: 5, dir: DEFAULTS.dir };
@@ -175,6 +183,40 @@ export function apply(ctx, config = {}) {
       if (!r.ok) return { text: r.why };
       const word = { kept: '认了', rejected: '推翻了', dropped: '作废了' }[status] || status;
       return { text: `${word}：${r.item.claim}${dims.length ? `（对上：${dims.join('/')}）` : ''}` };
+    },
+  });
+
+  tools.push({
+    name: 'future_cost',
+    description:
+      '未来失认，收成这一条（原 futurenotme_mark/report/check）。op=mark 记一笔不认，why 必填；dim 只能是 when/where/with/self，和留话用的「情形 situation」不是一回事。op=report 看代价，op=check 看该认还没认。',
+    parameters: {
+      type: 'object',
+      properties: {
+        op: { type: 'string', enum: ['mark', 'report', 'check'], description: 'mark 记失认 / report 看代价 / check 看该认没认' },
+        id: { type: 'string', description: 'future 账上的 id（mark 可省）' },
+        claim: { type: 'string', description: '那句原话（mark 可省）' },
+        dim: { type: 'string', enum: COST_DIMS, description: '失配方向：时／地／人／自己' },
+        why: { type: 'string', description: '差在哪。说不出就不记' },
+        source: { type: 'string', description: '出处（可省）' },
+      },
+      required: ['op'],
+      additionalProperties: false,
+    },
+    output: textOutput,
+    execute: ({ op, id, claim, dim, why, source } = {}) => {
+      if (op === 'mark') {
+        const r = markNotme(ws(), { id, claim, dim, why, source }, cfg);
+        if (!r.ok) return { text: `没记成：${r.why}` };
+        return { text: `记下了。结过 ${r.cost.settled} 条，认 ${r.cost.kept}，失认 ${r.cost.notme} 笔。` };
+      }
+      if (op === 'report') return { text: renderCostReport(rateOf(loadSettled(ws(), cfg), loadNotme(ws(), cfg)), loadNotme(ws(), cfg), cfg) };
+      if (op === 'check') {
+        const list = overdue(ws(), cfg);
+        if (!list.length) return { text: '没有该认没认的：账上空着，或者都结过了。' };
+        return { text: [`该认还没认：${list.length} 条`, ...list.slice(0, 5).map((r) => `- ${r.id} ${r.claim}`)].join('\n') };
+      }
+      return { text: 'op 只认 mark / report / check。' };
     },
   });
 

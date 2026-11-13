@@ -1,0 +1,31 @@
+{
+  "name": "dsh-persona-bridge",
+  "version": "0.11.22",
+  "private": true,
+  "type": "module",
+  "description": "人格桥：虚拟桥、游戏桥、资讯桥。会话桥只经会话进出上下文，非会话桥由外部程序直接改上下文；每条桥都记输入、输出与反馈，判据是输入能直接改变输出且反馈全部回账。",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./lib/*": "./lib/*",
+    "./icon": "./icon.svg",
+    "./locale/zh.json": "./locale/zh.json",
+    "./locale/en.json": "./locale/en.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "selfcheck.mjs",
+    "核心精神.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT"
+}

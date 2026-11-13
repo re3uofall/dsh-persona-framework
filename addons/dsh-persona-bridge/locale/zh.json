@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "title": "人格桥",
+    "description": "虚拟桥、游戏桥、资讯桥：会话桥只经会话进出上下文，非会话桥由外部程序直接改上下文；每条桥都记输入、输出与反馈，判据是输入能改变输出且反馈全部回账。"
+  },
+  "tools": {
+    "bridge_status": "看三条桥的模式、通道、收件箱与反馈覆盖率",
+    "bridge_send": "往桥上送输入，桥翻成下一步并落账",
+    "bridge_pull": "非会话桥：取外部程序写进收件箱的条目",
+    "bridge_feedback": "把做完的真实结果回账",
+    "bridge_mode": "改一条桥的模式：session / nonsession",
+    "bridge_trigger": "桥的触发器：输出触发输入、输入自触发；op=status 看账，op=fire 手动走一步"
+  }
+}

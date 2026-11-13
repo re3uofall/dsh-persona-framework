@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>大肥鱼的家 · 3D 房间</title>
+<style>
+  :root { --ink:#f2ece2; --dim:#a49c90; --gold:#e8c07a; --panel:rgba(18,20,26,.82); }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#0b0d12; }
+  body { font-family: "Microsoft YaHei", system-ui, sans-serif; color:var(--ink); }
+  #stage { position:fixed; inset:0; }
+  canvas { display:block; }
+  #panel {
+    position:fixed; top:18px; right:18px; width:300px; max-height:calc(100% - 36px);
+    overflow:auto; padding:16px 16px 14px; border-radius:16px;
+    background:var(--panel); border:1px solid rgba(232,192,122,.22);
+    backdrop-filter: blur(10px); box-shadow:0 18px 48px rgba(0,0,0,.45);
+  }
+  #panel h1 { margin:0 0 2px; font-size:19px; letter-spacing:1px; }
+  #panel .sub { color:var(--dim); font-size:12px; margin-bottom:12px; }
+  .row { display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:3px 0; }
+  .row b { font-weight:600; color:var(--gold); }
+  .sep { height:1px; background:rgba(255,255,255,.09); margin:10px 0; }
+  .room { margin:8px 0 0; padding:8px 10px; border-radius:10px; background:rgba(255,255,255,.035); }
+  .room.here { background:rgba(232,192,122,.13); border:1px solid rgba(232,192,122,.35); }
+  .room .n { font-size:13px; }
+  .room .f { color:var(--dim); font-size:11.5px; line-height:1.5; margin-top:3px; }
+  #toast {
+    position:fixed; left:18px; bottom:16px; max-width:46ch; padding:10px 14px; font-size:12.5px;
+    border-radius:12px; background:rgba(18,20,26,.8); border:1px solid rgba(255,255,255,.1);
+    color:var(--dim); display:none;
+  }
+  #hint { position:fixed; left:18px; top:16px; font-size:12px; color:var(--dim); letter-spacing:.4px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script>
+window.__err = []
+function showErr(msg) {
+  window.__err.push(msg)
+  var el = document.getElementById('clock')
+  if (el) el.textContent = 'JS 错误：' + msg
+  document.title = 'ERR ' + msg.slice(0, 60)
+}
+addEventListener('error', function (e) {
+  if (e && e.message) showErr(e.message)
+  else if (e && e.target && e.target.src) showErr('加载失败 ' + e.target.src)
+}, true)
+addEventListener('unhandledrejection', function (e) {
+  showErr('Promise 失败：' + ((e.reason && e.reason.message) || e.reason))
+})
+</script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="hint">拖动旋转 · 滚轮缩放 · 右键平移</div>
+<div id="panel">
+  <h1 id="home">大肥鱼的家</h1>
+  <div class="sub" id="clock">读着房间状态…</div>
+  <div class="row"><span>在哪</span><b id="where">—</b></div>
+  <div class="row"><span>姿势</span><b id="pose">—</b></div>
+  <div class="row"><span>力气</span><b id="energy">—</b></div>
+  <div class="row"><span>时钟偏移</span><b id="offset">—</b></div>
+  <div class="sep"></div>
+  <div id="rooms"></div>
+</div>
+<div id="toast"></div>
+
+<script type="module">
+import * as THREE from 'three'
+import { OrbitControls } from './vendor/OrbitControls.js'
+import { GLTFLoader } from './vendor/GLTFLoader.js'
+document.getElementById('clock').textContent = '脚本已启动，建场景…'
+
+const DEFAULT_ROOMS = ['玄关','走廊','客厅','餐厅','厨房','卧室','卫生间','阳台','菜园']
+// 3×3 平面坐标：门口在南、阳台菜园在东，卧室在北
+const PLAN = {
+  '菜园':   [ 3.4, 0, -2.6],
+  '阳台':   [ 3.4, 0,  0.0],
+  '卫生间': [ 3.4, 0,  2.6],
+  '卧室':   [ 0.0, 0, -2.6],
+  '客厅':   [ 0.0, 0,  0.0],
+  '厨房':   [ 0.0, 0,  2.6],
+  '玄关':   [-3.4, 0, -2.6],
+  '走廊':   [-3.4, 0,  0.0],
+  '餐厅':   [-3.4, 0,  2.6],
+}
+const SIZE = 2.6, WALL = 0.62, GAP = 0.14
+
+const scene = new THREE.Scene()
+scene.background = new THREE.Color('#0b0d12')
+scene.fog = new THREE.Fog('#0b0d12', 16, 34)
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 200)
+camera.position.set(7.2, 8.4, 9.2)
+
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.setSize(innerWidth, innerHeight)
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.05
+document.getElementById('stage').appendChild(renderer.domElement)
+
+const controls = new OrbitControls(camera, renderer.domElement)
+controls.target.set(0, 0.6, 0)
+controls.enableDamping = true
+controls.dampingFactor = 0.08
+controls.minDistance = 4
+controls.maxDistance = 26
+controls.maxPolarAngle = Math.PI * 0.49
+
+// 灯光
+scene.add(new THREE.HemisphereLight('#dfe8ff', '#2b2016', 0.72))
+const key = new THREE.DirectionalLight('#ffe6c0', 1.85)
+key.position.set(6, 12, 7)
+key.castShadow = true
+key.shadow.mapSize.set(2048, 2048)
+key.shadow.camera.left = -12; key.shadow.camera.right = 12
+key.shadow.camera.top = 12; key.shadow.camera.bottom = -12
+key.shadow.bias = -0.0005
+scene.add(key)
+const rim = new THREE.DirectionalLight('#8fb4ff', 0.45)
+rim.position.set(-8, 6, -7)
+scene.add(rim)
+
+// 地板
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(26, 64),
+  new THREE.MeshStandardMaterial({ color: '#141822', roughness: 0.95, metalness: 0.0 })
+)
+ground.rotation.x = -Math.PI / 2
+ground.position.y = -0.06
+ground.receiveShadow = true
+scene.add(ground)
+
+const FLOOR_MAT = new THREE.MeshStandardMaterial({ color: '#8a6a4b', roughness: 0.82 })
+const FLOOR_MAT_HERE = new THREE.MeshStandardMaterial({ color: '#b58a5c', roughness: 0.7, emissive: '#3a2612', emissiveIntensity: 0.5 })
+const WALL_MAT = new THREE.MeshStandardMaterial({ color: '#d9cbb8', roughness: 0.9, side: THREE.DoubleSide })
+const TRIM_MAT = new THREE.MeshStandardMaterial({ color: '#6f5540', roughness: 0.8 })
+
+function labelSprite(text) {
+  const pad = 24, fs = 64
+  const c = document.createElement('canvas')
+  const ctx = c.getContext('2d')
+  ctx.font = `600 ${fs}px "Microsoft YaHei", sans-serif`
+  c.width = Math.ceil(ctx.measureText(text).width) + pad * 2
+  c.height = fs + pad * 1.4
+  const g = c.getContext('2d')
+  g.font = `600 ${fs}px "Microsoft YaHei", sans-serif`
+  g.fillStyle = 'rgba(12,14,20,.72)'
+  g.beginPath()
+  g.roundRect(0, 0, c.width, c.height, 18)
+  g.fill()
+  g.fillStyle = '#f4e7d2'
+  g.textAlign = 'center'
+  g.textBaseline = 'middle'
+  g.fillText(text, c.width / 2, c.height / 2 + 2)
+  const tex = new THREE.CanvasTexture(c)
+  tex.anisotropy = 4
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }))
+  spr.scale.set(c.width / c.height * 0.42, 0.42, 1)
+  return spr
+}
+
+const floors = new Map()
+const markers = new Map()
+
+function buildRoom(name, x, z) {
+  const g = new THREE.Group()
+  g.position.set(x, 0, z)
+
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(SIZE, 0.12, SIZE), FLOOR_MAT)
+  floor.position.y = 0.06
+  floor.castShadow = true
+  floor.receiveShadow = true
+  g.add(floor)
+  floors.set(name, floor)
+
+  // 三面矮墙（顶开敞，像娃娃屋）
+  const walls = [
+    [0, WALL / 2, -SIZE / 2, SIZE, 0],
+    [-SIZE / 2, WALL / 2, 0, SIZE, Math.PI / 2],
+    [SIZE / 2, WALL / 2, 0, SIZE, Math.PI / 2],
+  ]
+  for (const [wx, wy, wz, len, rot] of walls) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(len, WALL, 0.1), WALL_MAT)
+    w.position.set(wx, wy, wz)
+    w.rotation.y = rot
+    w.castShadow = true
+    w.receiveShadow = true
+    g.add(w)
+    const t = new THREE.Mesh(new THREE.BoxGeometry(len, 0.06, 0.12), TRIM_MAT)
+    t.position.set(wx, WALL + 0.03, wz)
+    t.rotation.y = rot
+    g.add(t)
+  }
+
+  const lab = labelSprite(name)
+  lab.position.set(0, WALL + 0.55, -SIZE / 2 + 0.05)
+  g.add(lab)
+
+  // 这里的光圈
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(SIZE * 0.3, SIZE * 0.34, 48),
+    new THREE.MeshBasicMaterial({ color: '#ffd28a', transparent: true, opacity: 0 })
+  )
+  ring.rotation.x = -Math.PI / 2
+  ring.position.y = 0.125
+  g.add(ring)
+  markers.set(name, ring)
+
+  return g
+}
+
+for (const name of DEFAULT_ROOMS) {
+  const [x, , z] = PLAN[name] || [0, 0, 0]
+  scene.add(buildRoom(name, x, z))
+}
+
+// 角色
+const hero = new THREE.Group()
+scene.add(hero)
+let heroReady = false
+
+const loader = new GLTFLoader()
+loader.load('./assets/model.glb', (gltf) => {
+  const root = gltf.scene
+  const box = new THREE.Box3().setFromObject(root)
+  const size = new THREE.Vector3()
+  box.getSize(size)
+  const scale = 1.55 / Math.max(size.y, 0.001)
+  root.scale.setScalar(scale)
+  const box2 = new THREE.Box3().setFromObject(root)
+  root.position.y -= box2.min.y
+  root.position.x -= (box2.min.x + box2.max.x) / 2
+  root.position.z -= (box2.min.z + box2.max.z) / 2
+  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+  hero.add(root)
+  heroReady = true
+  toast('')
+}, undefined, (err) => {
+  toast('模型没读出来（' + (err?.message || '加载失败') + '），先用光点代替。')
+  const orb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.26, 24, 18),
+    new THREE.MeshStandardMaterial({ color: '#7cc6ff', emissive: '#2a6f9e', emissiveIntensity: 0.9 })
+  )
+  orb.position.y = 0.5
+  orb.castShadow = true
+  hero.add(orb)
+  heroReady = true
+})
+
+function placeHero(room) {
+  const p = PLAN[room] || [0, 0, 0]
+  hero.position.set(p[0], 0.12, p[2])
+  for (const [name, ring] of markers) {
+    ring.material.opacity = name === room ? 0.85 : 0
+  }
+  for (const [name, f] of floors) {
+    f.material = name === room ? FLOOR_MAT_HERE : FLOOR_MAT
+  }
+}
+
+// 面板
+const $ = (id) => document.getElementById(id)
+function toast(msg) {
+  const t = $('toast')
+  if (!msg) { t.style.display = 'none'; return }
+  t.textContent = msg
+  t.style.display = 'block'
+}
+
+function renderRooms(rooms, here) {
+  const box = $('rooms')
+  box.innerHTML = ''
+  for (const [name, info] of Object.entries(rooms || {})) {
+    const d = document.createElement('div')
+    d.className = 'room' + (name === here ? ' here' : '')
+    const f = (info.furniture || []).join('、') || '—'
+    const doors = (info.doors || []).join('、') || '—'
+    d.innerHTML = `<div class="n">${name}${name === here ? ' · 在这儿' : ''}</div>
+      <div class="f">家具：${f}<br>门：${doors}</div>`
+    box.appendChild(d)
+  }
+}
+
+let lastRoom = null
+async function tick() {
+  try {
+    const r = await fetch('/dsh-virtual/state.json', { cache: 'no-store' })
+    const s = await r.json()
+    $('home').textContent = s.home?.name || '大肥鱼的家'
+    $('clock').textContent = s.time?.display || ''
+    $('where').textContent = s.body?.room || '—'
+    $('pose').textContent = s.body?.pose || '—'
+    $('energy').textContent = s.body?.energy ?? '—'
+    $('offset').textContent = (s.time?.offsetMinutes ?? 0) + ' 分钟'
+    renderRooms(s.home?.rooms, s.body?.room)
+    if (s.body?.room && s.body.room !== lastRoom) {
+      lastRoom = s.body.room
+      placeHero(s.body.room)
+    }
+    toast('')
+  } catch (e) {
+    toast('读不到房间状态（宿主没起服务？）：' + (e?.message || e))
+  }
+}
+tick()
+setInterval(tick, 2500)
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight
+  camera.updateProjectionMatrix()
+  renderer.setSize(innerWidth, innerHeight)
+})
+
+const clock = new THREE.Clock()
+function loop() {
+  const t = clock.getElapsedTime()
+  if (heroReady) hero.position.y = 0.12 + Math.sin(t * 1.6) * 0.015
+  controls.update()
+  renderer.render(scene, camera)
+  requestAnimationFrame(loop)
+}
+loop()
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+- insert:
+    - id: persona-virtual
+      name: dsh-persona-virtual
+      config:
+        workspace: ''
+        dir: .persona-framework
+        showInSection: true

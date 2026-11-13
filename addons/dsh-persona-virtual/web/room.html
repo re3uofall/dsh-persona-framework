@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>大肥鱼的家 · 可视化房间</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0f1218; color: #e8edf5;
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  #wrap { display: flex; height: 100%; }
+  #stage { flex: 1; position: relative; }
+  canvas { display: block; width: 100%; height: 100%; }
+  aside { width: 300px; border-left: 1px solid #232a36; padding: 16px 18px; overflow: auto; }
+  h1 { font-size: 16px; margin: 0 0 10px; font-weight: 600; letter-spacing: .5px; }
+  .row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
+  .k { color: #8b98ad; }
+  .rooms { margin-top: 14px; border-top: 1px solid #232a36; padding-top: 10px; }
+  .room { padding: 4px 0; color: #b9c4d6; }
+  .room b { color: #e8edf5; font-weight: 600; }
+  .tag { color: #6f7c91; font-size: 12px; }
+  #err { color: #ff8b8b; padding: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage"><canvas id="c"></canvas></div>
+  <aside>
+    <h1>大肥鱼的家</h1>
+    <div id="meta"></div>
+    <div class="rooms" id="rooms"></div>
+  </aside>
+</div>
+<div id="err"></div>
+<script>
+const CELL_W = 210, CELL_H = 120, WALL = 46;
+
+let state = null;
+
+function gridOf(name, index, total) {
+  const preset = {
+    '菜园': [1, 0], '阳台': [2, 0],
+    '卧室': [0, 1], '客厅': [1, 1], '餐厅': [2, 1],
+    '玄关': [0, 2], '走廊': [1, 2], '厨房': [2, 2],
+    '卫生间': [3, 1]
+  };
+  if (preset[name]) return preset[name];
+  return [index % 4, 3 + Math.floor(index / 4)];
+}
+
+function corners(gx, gy) {
+  const ox = 120 + gx * CELL_W - gy * CELL_W * 0.5;
+  const oy = 90 + gy * CELL_H * 0.62 + gx * CELL_H * 0.24;
+  return { x: ox, y: oy };
+}
+
+function drawIsoRoom(ctx, gx, gy, room, active) {
+  const p = corners(gx, gy);
+  const w = CELL_W * 0.5, h = CELL_H * 0.5;
+  const front = { x: p.x, y: p.y + h };
+  const right = { x: p.x + w, y: p.y + h * 0.72 };
+  const back = { x: p.x, y: p.y + h * 0.44 };
+  const left = { x: p.x - w, y: p.y + h * 0.72 };
+
+  ctx.beginPath();
+  ctx.moveTo(front.x, front.y);
+  ctx.lineTo(right.x, right.y);
+  ctx.lineTo(back.x, back.y);
+  ctx.lineTo(left.x, left.y);
+  ctx.closePath();
+  ctx.fillStyle = active ? 'rgba(86,152,255,.22)' : 'rgba(38,48,64,.55)';
+  ctx.fill();
+  ctx.strokeStyle = active ? '#5698ff' : '#2c3646';
+  ctx.lineWidth = active ? 2 : 1;
+  ctx.stroke();
+
+  for (const base of [right, left]) {
+    ctx.beginPath();
+    ctx.moveTo(base.x, base.y);
+    ctx.lineTo(base.x, base.y - WALL);
+    ctx.lineTo(back.x, back.y - WALL);
+    ctx.lineTo(back.x, back.y);
+    ctx.strokeStyle = active ? 'rgba(86,152,255,.6)' : '#232c3a';
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = active ? '#cfe2ff' : '#93a1b7';
+  ctx.font = '13px "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'center';
+  const labelY = (front.y + back.y) / 2 - WALL * 0.35;
+  ctx.fillText(room.name || '房间', p.x, labelY);
+
+  const furn = room.furniture || [];
+  furn.slice(0, 4).forEach((f, i) => {
+    const t = (i + 1) / (furn.length + 1);
+    ctx.beginPath();
+    ctx.arc(p.x - w * 0.4 + w * 0.8 * t, labelY + 16, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = active ? '#9fd0ff' : '#5b6a80';
+    ctx.fill();
+  });
+  return { x: p.x, y: labelY + 34 };
+}
+
+function drawAvatar(ctx, at, body) {
+  if (!at) return;
+  ctx.beginPath();
+  ctx.ellipse(at.x, at.y, 9, 12, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffd27d';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(at.x, at.y - 16, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffe9bd';
+  ctx.fill();
+  ctx.fillStyle = '#f3e2c0';
+  ctx.font = '12px "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText((body && body.pose ? body.pose : '') + (body && body.facing ? '·朝' + body.facing : ''), at.x, at.y + 26);
+}
+
+function render() {
+  const canvas = document.getElementById('c');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.max(320, rect.width * dpr);
+  canvas.height = Math.max(240, rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  if (!state || !state.home || !state.home.rooms) return;
+  const names = Object.keys(state.home.rooms);
+  const spots = {};
+  const here = state.body && state.body.room;
+
+  names.forEach((name, i) => {
+    const g = gridOf(name, i, names.length);
+    spots[name] = g;
+  });
+
+  const ordered = names.slice().sort((a, b) => {
+    const ga = spots[a], gb = spots[b];
+    return (ga[1] - gb[1]) || (ga[0] - gb[0]);
+  });
+
+  let avatarAt = null;
+  for (const name of ordered) {
+    const g = spots[name];
+    const pos = drawIsoRoom(ctx, g[0], g[1], state.home.rooms[name] || {}, name === here);
+    if (name === here) avatarAt = pos;
+  }
+  drawAvatar(ctx, avatarAt, state.body);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+function paintPanel() {
+  const t = state.time || {};
+  const b = state.body || {};
+  document.getElementById('meta').innerHTML = [
+    '<div class="row"><span class="k">虚拟时刻</span><span>' + esc(t.display) + '</span></div>',
+    '<div class="row"><span class="k">在哪</span><span>' + esc(b.room || '还没动') + '</span></div>',
+    '<div class="row"><span class="k">姿势</span><span>' + esc(b.pose || '') + '</span></div>',
+    '<div class="row"><span class="k">力气</span><span>' + esc(b.energy) + '</span></div>',
+    '<div class="row"><span class="k">时钟偏移</span><span>' + esc(t.offsetMinutes || 0) + ' 分钟</span></div>'
+  ].join('');
+
+  const names = Object.keys((state.home && state.home.rooms) || {});
+  document.getElementById('rooms').innerHTML = names.map((n) => {
+    const r = state.home.rooms[n] || {};
+    const f = (r.furniture || []).join('、');
+    const d = (r.doors || []).join('、');
+    return '<div class="room"><b>' + esc(n) + '</b>' +
+      (n === (state.body && state.body.room) ? ' <span class="tag">← 在这儿</span>' : '') +
+      (f ? '<div class="tag">家具：' + esc(f) + '</div>' : '') +
+      (d ? '<div class="tag">门：' + esc(d) + '</div>' : '') + '</div>';
+  }).join('');
+}
+
+async function tick() {
+  try {
+    const r = await fetch('/dsh-virtual/state.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state = await r.json();
+    document.getElementById('err').textContent = '';
+    paintPanel();
+    render();
+  } catch (e) {
+    document.getElementById('err').textContent = '读不到房间状态：' + e.message + '\n（插件重载后刷新本页）';
+  }
+}
+
+window.addEventListener('resize', render);
+tick();
+setInterval(tick, 3000);
+</script>
+</body>
+</html>

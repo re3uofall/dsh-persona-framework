@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "title": "Persona Bridge",
+    "description": "Three bridges between the persona and the outside: virtual, game, info. Every bridge must take input to output and turn output back into input; session bridges only change context through the conversation, non-session bridges let an outside program adjust context by writing files."
+  },
+  "tools": {
+    "bridge_status": "Read-only: three bridges, their modes, ledger counts and feedback coverage.",
+    "bridge_send": "Take one external input, translate it into a plan, and write it into the bridge ledger as in.",
+    "bridge_pull": "Read the inbox of a non-session bridge (files written by the outside program) and record them as input.",
+    "bridge_feedback": "Record what actually came out, so input and output can be compared.",
+    "bridge_mode": "Set a bridge to session (context only through conversation) or nonsession (context adjusted by an outside program).",
+    "bridge_trigger": "Bridge triggers: output feeds input and input self-triggers; op=status to read, op=fire to step once"
+  }
+}
