@@ -31,12 +31,11 @@ const PERSONA_EIGHT = new Set([
   'dsh-persona-grow', 'dsh-persona-gradient', 'dsh-persona-betray', 'dsh-persona-appear',
   'dsh-persona-identity', 'dsh-persona-context', 'dsh-persona-bridge', 'dsh-persona-memory',
 ])
+// 器官只认「身子上的那四件」：手、嘴、耳、眼——中文名带「器官·」前缀的也只有它们。
+// 其余（情感、电量、自由时间、练习、感悟、教训、成果、日记、清扫、卡片、卡片守、
+// 插件、虚拟、future*）不挂在身上，落进「其他附加插件」。
 const ORGANS = new Set([
   'dsh-persona-hand', 'dsh-persona-mouth', 'dsh-persona-hearing', 'dsh-persona-vision',
-  'dsh-persona-affect', 'dsh-persona-energy', 'dsh-persona-freedom', 'dsh-persona-practice',
-  'dsh-persona-virtual', 'dsh-persona-insight', 'dsh-persona-lesson', 'dsh-persona-results',
-  'dsh-persona-diary', 'dsh-persona-sweep', 'dsh-persona-card', 'dsh-persona-cardguard',
-  'dsh-persona-plugin', 'dsh-persona-futurealsome', 'dsh-persona-futurenotme',
 ])
 const INTERFACES = new Set(['dsh-pet-sisi'])
 
@@ -400,13 +399,13 @@ async function collect(cfg, ctx) {
       {
         id: "organs",
         title: "所有器官",
-        hint: "身子那一层：手、嘴、耳、眼、情感、电量、自由时间、练习、感悟、教训、成果、日记、清扫、卡片、卡片守、插件、虚拟、future*。",
+        hint: "身子上的那四件：手、嘴、耳、眼。只有中文名带「器官·」前缀的才归这里，别的都不算。",
         items: byGroup(ORGANS),
       },
       {
         id: "interfaces",
         title: "所有对外接口",
-        hint: "跨进程、跨设备的那几个：人格桥、桌宠桥。它们只负责把里外接起来，不替谁判断。",
+        hint: "跨设备的那个：桌宠桥。人格桥管的是会话之间，归八大人格插件。它们只负责把里外接起来，不替谁判断。",
         items: byGroup(INTERFACES),
       },
       {

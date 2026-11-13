@@ -1,0 +1,208 @@
+/**
+ * dsh-persona-insight —— client 半端
+ * ============================================================================
+ * 侧栏一个「感悟」图标，点开是一块面板：随心的那一下，一条一条摆着。
+ * 数据从 host 的 `/api/persona-insight` 取（见 index.js）。
+ *
+ * 版式与「成果」「日记」一致：同样的留白、字号、卡片圆角、宿主主题 token。
+ * 不引 Harness 的 Client 包，样式靠 React 元素带，卸载即走。
+ * ============================================================================
+ */
+window.__ModuleLoader__.load({
+  id: 'dsh-persona-insight',
+  factory(require) {
+    const React = require('react')
+    const h = React.createElement
+    const API = '/api/persona-insight'
+
+    const kindColor = (kind) => ({
+      '心得': 'var(--dsw-alias-brand-primary)',
+      '体会': 'var(--dsw-alias-state-success-primary)',
+      '感触': 'var(--dsw-alias-state-warn-primary)',
+      '念头': 'var(--dsw-alias-state-idle-primary)',
+      '感慨': 'var(--dsw-alias-label-secondary)',
+      '顿悟': 'var(--dsw-alias-state-error-primary)',
+    }[kind] || 'var(--dsw-alias-brand-primary)')
+
+    /** 侧栏那个小图标：一颗星，尾巴上带一点。 */
+    function InsightIcon(props) {
+      const size = props && Number(props.size) > 0 ? Number(props.size) : 20
+      const active = Boolean(props && props.active)
+      const color = active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-secondary)'
+      return h('svg', {
+        viewBox: '0 0 24 24', width: size, height: size, fill: 'none',
+        'aria-hidden': true, style: { display: 'block' },
+      },
+        h('path', {
+          d: 'M12 4.2l1.9 4.5 4.6 1.4-4.6 1.4L12 16l-1.9-4.5L5.5 10.1l4.6-1.4L12 4.2z',
+          stroke: color, strokeWidth: 1.6, strokeLinejoin: 'round',
+        }),
+        h('circle', { cx: 18.2, cy: 17.6, r: 1.9, stroke: color, strokeWidth: 1.3 }),
+      )
+    }
+
+    const buttonStyle = {
+      fontSize: 12,
+      lineHeight: '26px',
+      height: 26,
+      padding: '0 12px',
+      borderRadius: 7,
+      border: '1px solid var(--dsw-alias-border-l2)',
+      background: 'transparent',
+      color: 'var(--dsw-alias-label-secondary)',
+      cursor: 'pointer',
+    }
+
+    /** 「感悟」面板。 */
+    function InsightPanel() {
+      const [state, setState] = React.useState({ phase: 'loading', items: [], error: '' })
+      const [nonce, setNonce] = React.useState(0)
+
+      React.useEffect(() => {
+        let alive = true
+        const controller = new AbortController()
+        setState((prev) => ({ ...prev, phase: prev.items.length ? 'refreshing' : 'loading' }))
+        fetch(API, { signal: controller.signal, cache: 'no-store' })
+          .then(async (res) => {
+            const type = String(res.headers.get('content-type') || '')
+            const text = await res.text()
+            if (!res.ok || !type.includes('application/json')) {
+              throw new Error('接口还没装载（HTTP ' + res.status + '）：' + text.slice(0, 60))
+            }
+            return JSON.parse(text)
+          })
+          .then((data) => {
+            if (!alive) return
+            setState({
+              phase: 'ready',
+              items: Array.isArray(data && data.items) ? data.items : [],
+              error: data && data.ok === false ? String(data.error || '读取失败') : '',
+            })
+          })
+          .catch((error) => {
+            if (!alive || (error && error.name === 'AbortError')) return
+            setState((prev) => ({ ...prev, phase: 'error', error: (error && error.message) || String(error) }))
+          })
+        return () => {
+          alive = false
+          controller.abort()
+        }
+      }, [nonce])
+
+      const cards = state.items.map((item, index) => {
+        const color = kindColor(item.kind)
+        const clock = String(item.head || '').split('·').slice(1).join('·').trim()
+        return h('div', {
+          key: `${item.day || 'd'}-${index}`,
+          style: {
+            background: 'var(--dsw-alias-bg-layer-1)',
+            border: '1px solid var(--dsw-alias-border-l1)',
+            borderRadius: 12,
+            padding: '14px 16px',
+            display: 'block',
+          },
+        },
+          h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10 } },
+            h('span', {
+              style: {
+                flex: '0 0 auto', fontSize: 11, lineHeight: '18px', padding: '0 8px',
+                borderRadius: 999, border: '1px solid ' + color, color,
+              },
+            }, item.kind || '体会'),
+            h('span', {
+              style: {
+                flex: '1 1 auto', fontSize: 15, fontWeight: 600,
+                color: 'var(--dsw-alias-label-primary)', overflowWrap: 'anywhere',
+              },
+            }, clock || item.day || ''),
+            h('span', {
+              style: { flex: '0 0 auto', fontSize: 12, color: 'var(--dsw-alias-label-secondary)' },
+            }, item.day || ''),
+          ),
+          h('div', {
+            style: {
+              marginTop: 10, fontSize: 14, lineHeight: 1.85,
+              color: 'var(--dsw-alias-label-primary)',
+              whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+            },
+          }, String(item.text || '')),
+        )
+      })
+
+      const body = state.items.length
+        ? h('div', { style: { display: 'grid', gap: 10 } }, cards)
+        : state.phase === 'loading'
+          ? h('div', {
+            style: {
+              border: '1px dashed var(--dsw-alias-border-l2)', borderRadius: 12,
+              padding: '40px 20px', textAlign: 'center',
+              color: 'var(--dsw-alias-label-secondary)', fontSize: 13,
+            },
+          }, '翻一翻……')
+          : h('div', {
+            style: {
+              border: '1px dashed var(--dsw-alias-border-l2)', borderRadius: 12,
+              padding: '40px 20px', textAlign: 'center',
+              color: 'var(--dsw-alias-label-secondary)', fontSize: 14, lineHeight: 2,
+            },
+          },
+            h('div', {}, '还没有感悟。'),
+            h('div', { style: { fontSize: 13 } }, '空着比凑数强。'),
+          )
+
+      return h('div', {
+        style: {
+          boxSizing: 'border-box', height: '100%', overflowY: 'auto',
+          padding: '32px 40px 64px',
+          color: 'var(--dsw-alias-label-primary)',
+          fontFamily: 'inherit',
+        },
+      },
+        h('div', { style: { maxWidth: 880, margin: '0 auto' } },
+          h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 12 } },
+            h('h1', { style: { margin: 0, fontSize: 22, fontWeight: 650 } }, '感悟'),
+            h('span', {
+              style: { fontSize: 13, color: 'var(--dsw-alias-label-secondary)' },
+            }, `${state.items.length} 条`),
+            h('button', {
+              onClick: () => setNonce((n) => n + 1),
+              disabled: state.phase === 'loading',
+              style: Object.assign({}, buttonStyle, { marginLeft: 'auto' }),
+            }, '刷新'),
+          ),
+          h('p', {
+            style: {
+              margin: '8px 0 28px', fontSize: 13,
+              color: 'var(--dsw-alias-label-secondary)',
+            },
+          }, '随心的那一下，不是判断。'),
+          state.error
+            ? h('div', {
+              style: {
+                marginBottom: 14, fontSize: 13,
+                color: 'var(--dsw-alias-state-error-primary)',
+              },
+            }, '读不出来：' + state.error)
+            : null,
+          body,
+        ),
+      )
+    }
+
+    return {
+      inject: ['slots'],
+      apply(ctx) {
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist',
+          id: 'insight-panel',
+          order: 21,
+          label: '感悟',
+        }, InsightIcon))
+        ctx.slots.inject('main', () => ctx.slots.register({
+          name: 'main',
+          key: 'insight-panel',
+        }, InsightPanel))
+      },
+    }
+  },
+})

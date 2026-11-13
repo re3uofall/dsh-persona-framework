@@ -1,0 +1,8 @@
+# dsh-persona-lesson —— 教训的出口
+# 不注册注入段；只有被调用时才写。教训是负面的：错在哪、代价谁付、下次的判据。
+- insert:
+    - id: persona-lesson
+      name: dsh-persona-lesson
+      config:
+        # 教训落在哪，相对工作区。和日记、成果、感悟同在 growth。
+        dir: 'persona-ai/growth/教训'

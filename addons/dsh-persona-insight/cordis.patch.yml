@@ -1,0 +1,8 @@
+# dsh-persona-insight —— 感悟的出口
+# 它不注册注入段；只有被调用时才写。感悟不是判断，也不进结论。
+- insert:
+    - id: persona-insight
+      name: dsh-persona-insight
+      config:
+        # 感悟落在哪，相对工作区。和日记、成果同在 growth。
+        dir: 'persona-ai/growth/感悟'
